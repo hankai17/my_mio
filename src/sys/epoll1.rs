@@ -4,7 +4,8 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::time::Duration;
 use std::{cmp, i32, io, ptr}
 use std::num::NonZeroU8;
-use std::{fmt, ops}
+use std::{fmt, ops};
+use std::io;
 
 macro_rules! syscall {
     ($fn: ident ($($arg: expr),* $(,)*) ) => {
@@ -19,10 +20,22 @@ macro_rules! syscall {
     };
 }
 
+pub struct Token(pub usize);
+impl From<Token> for usize {
+    fn from(val: Token) -> usize {
+        val.0
+    }
+}
+
+pub type Event = libc:epoll_event;
+pub type Events = Vec<Event>;
+
 pub struct Interest(NonZeroU8);
 const READABLE: u8  = 0b0001;
 const WRITABLE: u8  = 0b0010;
 const PRIORITY: u8  = 0b0100
+
+const LOWEST_FD: libc::c_int = 3;
 
 impl Interest {
     pub const READABLE: Interest = Interest(unsafe { NonZeroU8::new_unchecked(READABLE) });
@@ -75,18 +88,11 @@ impl fmt::Debug for Interest {
     }
 }
 
-//pub struct Token(pub usize);
-//impl From<Token> for usize {
-//    fn from(val: Token) -> usize {
-//        val.0
-//    }
-//}
-
-
 pub mod event {
     use std::fmt;
-    //use 
+
     pub fn token(event: &Event) -> Token {
+        Token(event.u64 as usize)
     }
 
     pub fn is_readable(event: &Event) -> bool {
@@ -126,14 +132,9 @@ pub mod event {
 
 ////////////////////////////////////////////
 
-////////////////////////////////////////////
-
 pub struct Selector {
     ep: RawFd,
 }
-
-pub type Event = libc:epoll_event;
-pub type Events = Vec<Event>;
 
 fn interests_to_epoll(interests: Interest) -> u32 {
     let mut kind = EPOLLET;
@@ -226,6 +227,151 @@ impl Selector {
         }
     }
 }
+
+////////////////////////////////////////////
+
+pub struct Registry {
+    selector:   Selector,
+}
+
+impl Registry {
+    pub fn register<S>(&self, source: &mut S, token: Token, interests: Interest) -> io::Result<()>
+    where 
+        S: event::Source + ?Sized,
+    {
+        source.register(self, token, interests)
+    }
+
+    pub fn reregister<S>(&self, source: &mut S, token: Token, interests: Interest) -> io::Result<()>
+    where 
+        S: event::Source + ?Sized,
+    {
+        source.reregister(self, token, interests)
+    }
+
+    pub fn deregister<S>(&self, source: &mut S) -> io::Result<()>
+    where 
+        S: event::Source + ?Sized,
+    {
+        source.deregister(self)
+    }
+
+    pub fn try_clone(&self) -> io::Result<Registry> {
+        self.selector.try_clone().map(|selector| Registry {
+            selector,
+        })
+    }
+
+    pub fn selector(&self) -> &Selector {
+        &self.selector
+    }
+
+    pub fn as_raw_fd(&self) -> RawFd {
+        self.selector.as_raw_fd()
+    }
+}
+
+pub struct Poll {
+    registry:   Registry,
+}
+
+impl Poll {
+    pub fn new() -> io::Result<Poll> {
+        Selector::new().map(|selector| Poll {
+            registry: Registry {
+                selector,
+            },
+        })
+    }
+
+    pub fn registry(&self) -> &Registry {
+        &self.registry
+    }
+
+    pub fn poll(&mut self, events: &mut Events, timeout: Option<Duration>) -> io::Result<()> {
+        self.registry.selector.select(events.sys(), timeout)
+    }
+
+    pub fn as_raw_fd(&self) -> RawFd {
+        self.registry.as_raw_fd()
+    }
+}
+
+////////////////////////////////////////////
+
+mod eventfd {
+    use std::fs::File;
+    use std::io::{self, Read, Write};
+    use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+
+    pub struct WakerInternal {
+        fd: File,
+    }
+
+    impl WakerInternal {
+        pub fn new() -> io::Result<WakerInternal> {
+            let flags = libc::EFD_CLOEXEC | libc::EFD_NONBLOCK; 
+            let fd = syscall!(eventfd(0, falgs))?;
+            let file = unsafe { File::from_raw_fd(fd) };
+            Ok(WakerInternal { fd: file})
+        }
+        
+        pub fn wake(&self) -> ioResult<()> {
+            let buf: [u8; 8] = 1u64.to_ne_bytes();
+            match (&self.fd).write(&buf) {
+                Ok(_) => Ok(()),
+                Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => {
+                    self.reset()?;
+                    self.wake()
+                }
+                Err(err) => Err(err),
+            }
+        }
+
+        pub fn ack_and_reset(&self) {
+            let _ = self.reset()
+        }
+
+        pub fn reset() -> ioResult<()> {
+            let buf: [u8; 8] = 0u64.to_ne_bytes();
+            match (&self.fd).read(&buf) {
+                Ok(_) => Ok(()),
+                Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => Ok(()),
+                Err(err) => Err(err),
+            }
+        }
+
+        pub fn as_raw_fd(&self) -> RawFd {
+            self.fd.as_raw_fd() 
+        }
+    }
+}
+
+pub struct Waker {
+    selector: Selector,
+    token: Token,
+}
+
+impl Waker {
+    pub fn new(selector: &Selector, token: Token) -> io::Result<Waker> {
+        Ok(Waker{
+            Selector: selector.try_clone()?,
+            token,
+        })
+    }
+
+    pub fn wake(&self) -> io::Result<()> {
+        self.selector.wake(self.token)
+    }
+}
+
+////////////////////////////////////////////
+
+
+
+
+
+
 
 
 
