@@ -66,6 +66,13 @@ impl PollOpt {
     pub fn remove(&self, other: PollOpt) { self.0 &= !other.0; }
 }
 
+pub fn opt_as_usize(opt: PollOpt) -> usize {
+    opt.0
+}
+pub fn opt_from_usize(opt: usize) -> PollOpt {
+    PollOpt(opt)
+}
+
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct Event {
     kind: Ready,
