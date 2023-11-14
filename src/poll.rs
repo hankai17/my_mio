@@ -183,6 +183,48 @@ impl Poll {
 
 }
 
+pub struct Events {
+    inner: sys::Events,
+}
+
+pub struct Iter<'a> {
+    inner: &'a Events,
+    pos: usize,
+}
+
+pub struct IntoIter {
+    inner: Events,
+    pos: usize,
+}
+
+impl Events {
+    pub fn with_capacity(capacity: usize) -> Events {
+        Events {
+            inner: sys::Events::with_capacity(capacity),
+        }
+    }
+    pub fn get(&self, idx: usize) -> Option<Event> {
+        self.inner.get(idx)
+    }
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+    pub fn capacity(&self) -> usize {
+        self.inner.capacity()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+    pub fn clear(&mut self) {
+        self.inner.clear()
+    }
+    pub fn iter(&self) -> Iter {
+        Iter {
+            inner: self,
+            pos: 0
+        }
+    }
+}
 
 
 
