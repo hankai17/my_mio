@@ -286,8 +286,36 @@ impl ReadinessQueueInner {
                 self.clear_sleep_marker();
                 return Dequeue::Empty;
             }
-            *self.tail_readiness
+            *self.tail_readiness.get() = next;
+            tail = next;
+            next = (*next).next_readiness.load(Acquire);
         }
+        if tail == until {
+            return Dequeue::Empty;
+        }
+        if !next.is_null() {
+            *self.tail_readiness.get() = next;
+            return Dequeue::Data(tail);
+        }
+        if self.head_readiness.load(Acquire) != tail {
+            return Dequeue::Inconsistent;
+        }
+        self.enqueue_node(&*self.end_marker);
+        next = (*tail).next_readiness.load(Acquire);
+        if !next.is_null() {
+            *self.tail_readiness.get() = next;
+            return Dequeue::Data(tail);
+        }
+        return Dequeue::Inconsistent;
+    }
+    fn end_marker(&self) -> *mut ReadinessNode {
+        &*self.end_marker as *const ReadinessNode as *mut ReadinessNode
+    }
+    fn sleep_marker(&self) -> *mut ReadinessNode {
+        &*self.sleep_marker as *const ReadinessNode as *mut ReadinessNode
+    }
+    fn closed_marker(&self) -> *mut ReadinessNode {
+        &*self.closed_marker as *const ReadinessNode as *mut ReadinessNode
     }
 }
 
@@ -303,6 +331,107 @@ impl ReadinessQueue {
         is_send::<Self>();
         is_sync::<Self>();
         let end_marker = Box::new(ReadinessNode::marker())
+        let sleep_marker = Box::new(ReadinessNode::marker())
+        let closed_marker = Box::new(ReadinessNode::marker())
+        let ptr = &*end_marker as *const _ as *mut _;
+        Ok(ReadinessNode {
+            inner: Arc::new( ReadinessQueueInner{
+                awakener: sys::Awakener::new()?;
+                head_readiness: AtomicPtr::new(ptr),
+                tail_readiness: UnsafeCell::new(ptr),
+                end_marker,
+                sleep_marker,
+                closed_marker,
+            })
+        })
+    }
+    fn poll(&self, dst: &mut sys::Events) {
+        let mut until = ptr::null_mut();
+        if dst.len() == dst.capacity() {
+            self.inner.clear_sleep_marker();
+            'outer:
+            while dst.len() < dst.capacity() {
+                let ptr = match unsafe { self.inner.dequeue_node(until) } {
+                    Dequeue::Empty | Dequeue::Inconsistent => break,
+                    Dequeue::Data(ptr) => ptr,
+                };
+                let node = unsafe { &*ptr };
+                let mut state = node.state.load(Acquire);
+                let mut next;
+                let mut readiness;
+                let mut opt;
+                loop {
+                    next = state;
+                    debug_assert!(state.is_queued());
+                    if state.is_droped() {
+                        release_node(ptr);
+                        continue 'outer;
+                    }
+                    readiness = state.effective_readiness();
+                    opt = state.poll_opt();
+                    if opt.is_edge() {
+                        next.set_dequeued();
+                        if opt.is_oneshot() && !readiness.is_empty() {
+                            next.disarm();
+                        }
+                    } else if readiness.is_empty() {
+                        next.set_dequeued();
+                    }
+                    next.update_token_read_pos();
+                    if state == next {
+                        break;
+                    }
+                    let actual = node.state.compare_and_swap(state, next, AcqRel);
+                    if actual == state {
+                        break;
+                    }
+                    state = actual;
+                }
+                if next.is_queued() {
+                    if until.is_null() {
+                        until = ptr;
+                    }
+                    self.inner.enqueue_node(node);
+                }
+                if !readiness.is_empty() {
+                    let token = unsafe { token(node, next.token_read_pos()) };
+                    dst.push_event(Event::new(readiness, token));
+                }
+            }
+        }
+    }
+    fn prepare_for_sleep(&self) -> bool {
+        let end_marker = self.inner.end_marker(); 
+        let sleep_marker = self.inner.sleep_marker(); 
+        let tail = unsafe { *self.inner.tail_readiness.get() };
+        if tail == sleep_marker {
+            return self.inner.head_readiness.load(Acquire) == sleep_marker;
+        }
+        if tail == end_marker {
+            return false;
+        }
+        self.inner.sleep_marker.next_readiness.store(ptr::null_mut(), Relaxed);
+        let actual = self.inner.head_readiness.compare_and_swap(end_marker, sleep_marker, AcqRel);
+        debug_assert!(actual != sleep_marker);
+        if actual != end_marker {
+            return false;
+        }
+        debug_assert!(unsafe {*self.inner.tail_readiness.get() == end_marker});
+        debug_assert!(self.inner.end_marker.next_readiness.load(Relaxed).is_null());
+        unsafe { *self.inner.tail_readiness.get() = sleep_marker };
+        true
+    }
+}
+
+impl Drop for ReadinessQueue {
+    fn drop(&mut self) {
+        self.inner.enqueue_node(&*self.inner.closed_marker);
+        loop {
+            let node = unsafe { &*ptr };
+            let state = node.state.load(Acquire);
+            debug_assert!(state.is_queued());
+            release_node(ptr);
+        }
     }
 }
 
