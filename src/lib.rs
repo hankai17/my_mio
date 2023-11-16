@@ -1,3 +1,6 @@
+extern crate libc;
+extern crate log;
+
 mod event_imp;
 pub use event_imp:: {
     PollOpt,

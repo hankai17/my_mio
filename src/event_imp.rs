@@ -1,4 +1,5 @@
-use {Token}
+use {Poll, Token};
+use std::{fmt, io, ops};
 
 const READABLE: usize = 0b00001;
 const WRITABLE: usize = 0b00010;
@@ -32,7 +33,7 @@ impl Ready {
     }
     pub fn bits(&self) -> usize { self.0 }
     pub fn contains<T: Into<Self>>(&self, other: T) -> bool {
-        let other = other.into()
+        let other = other.into();
         (*self & other) == other
     }
     pub fn from_usize(val: usize) -> Ready { Ready(val) }
@@ -47,7 +48,7 @@ pub fn ready_from_usize(events: usize) -> Ready {
 }
 
 #[derive(Copy, PartialEq, Eq, Clone, PartialOrd, Ord)]
-pub struct PollOpt(usize)
+pub struct PollOpt(usize);
 
 impl PollOpt {
     pub fn empty() -> PollOpt { PollOpt(0) }
@@ -94,16 +95,16 @@ impl Event {
 }
 
 pub trait Evented {
-    fn register(&self, poll: &Poll, token: Token, intereset: Ready, opts: PollOpt) -> io::Result<()>;
-    fn reregister(&self, poll: &Poll, token: Token, intereset: Ready, opts: PollOpt) -> io::Result<()>;
+    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()>;
+    fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()>;
     fn deregister(&self, poll: &Poll) -> io::Result<()>;
 }
 
 impl Evented for Box<Evented> {
-    fn register(&self, poll: &Poll, token: Token, intereset: Ready, opts: PollOpt) -> io::Result<()> {
+    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
         self.as_ref().register(poll, token, interest, opts)
     }
-    fn reregister(&self, poll: &Poll, token: Token, intereset: Ready, opts: PollOpt) -> io::Result<()> {
+    fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
         self.as_ref().reregister(poll, token, interest, opts)
     }
     fn deregister(&self, poll: &Poll) -> io::Result<()> {
@@ -112,10 +113,10 @@ impl Evented for Box<Evented> {
 }
 
 impl <T: Evented> Evented for Box<T> {
-    fn register(&self, poll: &Poll, token: Token, intereset: Ready, opts: PollOpt) -> io::Result<()> {
+    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
         self.as_ref().register(poll, token, interest, opts)
     }
-    fn reregister(&self, poll: &Poll, token: Token, intereset: Ready, opts: PollOpt) -> io::Result<()> {
+    fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
         self.as_ref().reregister(poll, token, interest, opts)
     }
     fn deregister(&self, poll: &Poll) -> io::Result<()> {
@@ -123,11 +124,11 @@ impl <T: Evented> Evented for Box<T> {
     }
 }
 
-impl <T: Evented> Evented for ::std::sync::Arch<T> {
-    fn register(&self, poll: &Poll, token: Token, intereset: Ready, opts: PollOpt) -> io::Result<()> {
+impl <T: Evented> Evented for ::std::sync::Arc<T> {
+    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
         self.as_ref().register(poll, token, interest, opts)
     }
-    fn reregister(&self, poll: &Poll, token: Token, intereset: Ready, opts: PollOpt) -> io::Result<()> {
+    fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
         self.as_ref().reregister(poll, token, interest, opts)
     }
     fn deregister(&self, poll: &Poll) -> io::Result<()> {

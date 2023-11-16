@@ -35,7 +35,7 @@ mod pipe {
             let mut buf = [0; 128];
             loop {
                 match (&self.reader).read(&mut buf) {
-                    Ok(i) => if i > 0 => {},
+                    Ok(i) if i > 0 => {},
                     _ => return
                 }
             }

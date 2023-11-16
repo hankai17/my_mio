@@ -24,7 +24,7 @@ pub struct DlSym<F> {
 
 impl<F> DlSym<F> {
     pub fn get(&self) -> Option<&F> {
-        assert_eq!(mem::sizeof::<F>(), mem::size_of::<usize>());
+        assert_eq!(mem::size_of::<F>(), mem::size_of::<usize>());
         unsafe {
             if self.addr.load(Ordering::SeqCst) == 0 {
                 self.addr.store(fetch(self.name), Ordering::SeqCst);

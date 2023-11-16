@@ -17,14 +17,14 @@ const POLL_OPT_SHIFT: usize = 8;
 const TOKEN_RD_SHIFT: usize = 12;
 const TOKEN_WR_SHIFT: usize = 14;
 const QUEUED_SHIFT: usize = 16;
-const DROPPED_SHIFT: usize = 17
+const DROPPED_SHIFT: usize = 17;
 
 const MASK_2: usize = 4 - 1;
 const MASK_4: usize = 16 - 1;
 const QUEUED_MASK: usize = 1 << QUEUED_SHIFT;
 const DROPPED_MASK: usize = 1 << DROPPED_SHIFT;
 
-const AWAKEN: Token = Token(usize::MAX)
+const AWAKEN: Token = Token(usize::MAX);
 const MAX_REFCOUNT: usize = (isize::MAX) as usize;
 
 fn validate_args(token: Token) -> io::Result<()> {
@@ -33,7 +33,7 @@ fn validate_args(token: Token) -> io::Result<()> {
     }
 }
 
-struct ReadinessState(usize)    // | queue |  RW  | opt | interest | readiness
+struct ReadinessState(usize);   // | queue |  RW  | opt | interest | readiness
                                 // 20      16     12    8          4      <--0
 impl ReadinessState {
     fn new(interest: Ready, opt: PollOpt) -> ReadinessState {
@@ -73,7 +73,7 @@ impl ReadinessState {
         self.set(event::ready_as_usize(v), MASK_4, INTEREST_SHIFT);
     }
     fn set_poll_opt(&mut self, v: PollOpt) {
-        self.set(event::opt_as_usize(v), MAST_4, POLL_OPT_SHIFT); 
+        self.set(event::opt_as_usize(v), MASK_4, POLL_OPT_SHIFT); 
     }
     fn disarm(&mut self) {
         self.set_interest(Ready::empty())
@@ -155,7 +155,7 @@ struct AtomicState {
 }
 
 impl AtomicState {
-    fn new(intereset: Ready, opt: PollOpt) -> AtomicState {
+    fn new(interest: Ready, opt: PollOpt) -> AtomicState {
         let state = ReadinessState::new(interest, opt);
         AtomicState {
             inner: AtomicUsize::new(state.into()),
@@ -304,7 +304,7 @@ impl ReadinessQueueInner {
             if tail != self.sleep_marker() {
                 return;
             }
-            self.end_marker.next_readiness.store(ptr::null_ptr(), Relaxed);
+            self.end_marker.next_readiness.store(ptr::null_mut(), Relaxed);
             let act = self.head_readiness.compare_and_swap(sleep_marker, end_marker, AcqRel);
             debug_assert!(act != end_marker);
             if act != sleep_marker {
@@ -373,13 +373,13 @@ impl ReadinessQueue {
     fn new() -> io::Result<ReadinessQueue> {
         is_send::<Self>();
         is_sync::<Self>();
-        let end_marker = Box::new(ReadinessNode::marker())
-        let sleep_marker = Box::new(ReadinessNode::marker())
-        let closed_marker = Box::new(ReadinessNode::marker())
+        let end_marker = Box::new(ReadinessNode::marker());
+        let sleep_marker = Box::new(ReadinessNode::marker());
+        let closed_marker = Box::new(ReadinessNode::marker());
         let ptr = &*end_marker as *const _ as *mut _;   // hankai
         Ok(ReadinessNode {
             inner: Arc::new( ReadinessQueueInner{
-                awakener: sys::Awakener::new()?;
+                awakener: sys::Awakener::new()?,
                 head_readiness: AtomicPtr::new(ptr),
                 tail_readiness: UnsafeCell::new(ptr),
                 end_marker,
@@ -470,6 +470,13 @@ impl Drop for ReadinessQueue {
     fn drop(&mut self) {
         self.inner.enqueue_node(&*self.inner.closed_marker);
         loop {
+            let ptr = match unsafe { self.inner.dequeue_node(ptr::null_mut()) } {
+                Dequeue::Empty => break,
+                Dequeue::Inconsistent => {
+                    continue;
+                }
+                Dequeue::Data(ptr) => ptr,
+            };
             let node = unsafe { &*ptr };
             let state = node.state.load(Acquire);
             debug_assert!(state.is_queued());
@@ -489,13 +496,17 @@ pub struct Poll {
 fn is_send<T: Send>() {}
 fn is_sync<T: Sync>() {}
 
+pub fn selector(poll: &Poll) -> &sys::Selector {
+    &poll.selector
+}
+
 impl Poll {
     pub fn new() -> io::Result<(Poll)> {
         is_send::<Poll>(); 
         is_sync::<Poll>(); 
         let poll = Poll {
-            selector: sys::Selector::new()?;
-            readiness_queue: ReadinessQueue::new()?;
+            selector: sys::Selector::new()?,
+            readiness_queue: ReadinessQueue::new()?,
             lock_state: AtomicUsize::new(0),
             lock: Mutex::new(()),                       // hankai
             condvar: Condvar::new(),
@@ -503,37 +514,37 @@ impl Poll {
         poll.readiness_queue.inner.awakener.register(&poll, AWAKEN, Ready::readable(), PollOpt::edge())?;
         Ok(poll)
     }
-    pub fn register<E: ?sized>(&self, handle: &E, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()>
+    pub fn register<E: ?Sized>(&self, handle: &E, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()>
         where E: Evented
     {
         validate_args(token)?;
-        trace!("register poller");
+        log::trace!("register poller");
         handle.register(self, token, interest, opts)?;
         Ok(())
     }
-    pub fn reregister<E: ?sized>(&self, handle: &E, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()>
+    pub fn reregister<E: ?Sized>(&self, handle: &E, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()>
         where E: Evented
     {
         validate_args(token)?;
-        trace!("reregister poller");
+        log::trace!("reregister poller");
         handle.reregister(self, token, interest, opts)?;
         Ok(())
     }
-    pub fn deregister<E: ?sized>(&self, handle: &E) -> io::Result<()>
+    pub fn deregister<E: ?Sized>(&self, handle: &E) -> io::Result<()>
         where E: Evented
     {
         validate_args(token)?;
-        trace!("degister poller");
+        log::trace!("degister poller");
         handle.deregister(self)?;
         Ok(())
     }
-    pub fn poll(&self, event: &mut Events, timeout: Option<Duration>) -> io::Result<(usize)> {
+    pub fn poll(&self, events: &mut Events, timeout: Option<Duration>) -> io::Result<(usize)> {
         self.poll1(events, timeout, false)
     }
-    pub fn poll_interruptible(&self, event: &mut Events, timeout: Option<Duration>) -> io::Result<(usize)> {
+    pub fn poll_interruptible(&self, events: &mut Events, timeout: Option<Duration>) -> io::Result<(usize)> {
         self.poll1(events, timeout, true)
     }
-    fn poll2(&self, events: &mut Events, mut timeout: Option<Duration>, interuptiable: bool) -> io::Result<(usize)> {
+    fn poll2(&self, events: &mut Events, mut timeout: Option<Duration>, interruptible: bool) -> io::Result<(usize)> {
         if timeout == Some(Duration::from_millis(0)) {
         } else if self.readiness_queue.prepare_for_sleep() {
         } else {
@@ -549,7 +560,7 @@ impl Poll {
                 }
                 Ok(false) => break,
                 Err(ref e) if e.kind() == io::ErrorKind::Interrupted && !interruptible => {
-                    if let Some(to) == timeout {
+                    if let Some(to) = timeout {
                         let elapsed = now.elapsed();
                         if elapsed >= to {
                             break;
@@ -564,7 +575,7 @@ impl Poll {
             Ok(events.inner.len())
         }
     }
-    fn poll1(&self, events: &mut Events, mut timeout: Option<Duration>, interuptiable: bool) -> io::Result<(usize)> {
+    fn poll1(&self, events: &mut Events, mut timeout: Option<Duration>, interruptible: bool) -> io::Result<(usize)> {
         let zero = Some(Duration::from_millis(0));
         let mut curr = self.lock_state.compare_and_swap(0, 1, SeqCst);
         if 0 != curr {
@@ -606,7 +617,7 @@ impl Poll {
                         if elapsed >= to {
                             timeout = zero;
                         } else {
-                            timout = Some(to - elapsed);
+                            timeout = Some(to - elapsed);
                         }
                         l
                     }
@@ -617,7 +628,7 @@ impl Poll {
                 curr = self.lock_state.load(SeqCst);
             }
         }
-        let ret = self.poll2(events, timouet, interuptiable);
+        let ret = self.poll2(events, timeout, interruptible);
         if 1 != self.lock_state.fetch_add(!1, Release) {
             let _lock = self.lock.lock().unwrap();
             self.condvar.notify_one();
@@ -701,7 +712,7 @@ impl IntoIterator for Events {
     }
 }
 
-impl<'a> IntoInterator for &'a Events {
+impl<'a> IntoIterator for &'a Events {
     type Item = Event;
     type IntoIter = Iter<'a>;
     fn into_iter(self) -> Self::IntoIter {
@@ -780,7 +791,7 @@ impl RegistrationInner {
             return Err(io::Error::new(io::ErrorKind::Other, "Registration handle associated with another Poll instance"));
         }
         unsafe {
-            let actual = &poll.readiness_queue.inner as *const _ as *cosnt usize;
+            let actual = &poll.readiness_queue.inner as *const _ as *const usize;
             debug_assert!(queue as usize, *actual);
         }
         if self.update_lock.compare_and_swap(false, true, Acquire) {
@@ -857,7 +868,7 @@ unsafe impl Send for SetReadiness {}
 unsafe impl Sync for SetReadiness {}
 
 pub struct Registration {
-    inner: RegistrationInner;
+    inner: RegistrationInner,
 }
 
 impl SetReadiness {
@@ -928,19 +939,19 @@ impl Registration {
         };
         (registration, set_readiness)
     }
-    pub fn update(&self, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()> {
+    pub fn update(&self, poll: Poll, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()> {
         self.inner.update(poll, token, interest, opt)
     }
-    pub fn deregister(*self, poll: Poll) -> io::Result<()> {
+    pub fn deregister(&self, poll: Poll) -> io::Result<()> {
         self.inner.update(poll, Token(0), Ready::empty(), PollOpt::empty())
     }
 }
 
 impl Evented for Registration {
-    fn register(&self, poll: &Poll, token: Token, intereset: Ready, opts: PollOpt) -> io::Result<()> {
+    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
         self.inner.update(poll, token, interest, opts)
     }
-    fn reregister(&self, poll: &Poll, token: Token, intereset: Ready, opts: PollOpt) -> io::Result<()> {
+    fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
         self.inner.update(poll, token, interest, opts)
     }
     fn deregister(&self, poll: &Poll) -> io::Result<()> {

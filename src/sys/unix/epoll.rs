@@ -46,7 +46,7 @@ impl Selector {
         let timeout_ms = timeout
                 .map(|to| cmp::min(millis(to), i32::MAX as u64) as i32)
                 .unwrap_or(-1);
-        evts.clear()
+        evts.clear();
         unsafe {
             let cnt = cvt(libc::epoll_wait(self.epfd,
                                             evts.events.as_mut_ptr(),
@@ -85,9 +85,9 @@ impl Selector {
     }
     pub fn deregister(&self, fd: RawFd) -> io::Result<()> {
         let mut info = libc::epoll_event {
-            events: 0
+            events: 0,
             u64: 0,
-        }
+        };
         unsafe {
             cvt(libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_DEL, fd, &mut info))?;
             Ok(())
@@ -103,7 +103,7 @@ fn ioevent_to_epoll(interest: Ready, opts: PollOpt) -> u32 {
     if interest.is_writable() {
         kind |= EPOLLOUT;
     }
-    if UninxReady::from(interest).is_priority() {
+    if UnixReady::from(interest).is_priority() {
         kind |= EPOLLPRI;
     }
     if opts.is_edge() {
