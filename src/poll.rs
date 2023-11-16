@@ -1,10 +1,15 @@
-
+use std::{fmt, io, ptr, usize};
+use std::{mem, ops, isize};
+use std::os::unix::io::{AsRawFd, RawFd};
+use std::process;
 use std::sync::atomic::{AtomicUsize, AtomicPtr, AtomicBool};
 use std::cell::UnsafeCell;
 use std::sync::{Arc, Mutex, Condvar};
 use std::sync::atomic::Ordering::{self, Acquire, Release, AcqRel, Relaxed, SeqCst};
+use std::time::{Duration, Instant};
 
 use event_imp::{self as event, Ready, Event, Evented, PollOpt};
+use {Token, sys};
 
 const READINESS_SHIFT: usize = 0;
 const INTEREST_SHIFT: usize = 4;
@@ -19,7 +24,17 @@ const MASK_4: usize = 16 - 1;
 const QUEUED_MASK: usize = 1 << QUEUED_SHIFT;
 const DROPPED_MASK: usize = 1 << DROPPED_SHIFT;
 
-struct ReadinessState(usize)
+const AWAKEN: Token = Token(usize::MAX)
+const MAX_REFCOUNT: usize = (isize::MAX) as usize;
+
+fn validate_args(token: Token) -> io::Result<()> {
+    if token == AWAKEN {
+        return Err(io::Error::new(io::ErrorKind::Other, "invalid token"));
+    }
+}
+
+struct ReadinessState(usize)    // | queue |  RW  | opt | interest | readiness
+                                // 20      16     12    8          4      <--0
 impl ReadinessState {
     fn new(interest: Ready, opt: PollOpt) -> ReadinessState {
         let interest = event::ready_as_usize(interest);
@@ -44,6 +59,10 @@ impl ReadinessState {
         let v = self.get(MASK_4, INTEREST_SHIFT);
         event::ready_from_usize(v)
     }
+    fn poll_opt(self) -> PollOpt {
+        let v = self.get(MASK_4, POLL_OPT_SHIFT);
+        event::opt_from_usize(v)
+    }
     fn effective_readiness(self) -> Ready {
         self.readiness() & self.interest()
     }
@@ -53,15 +72,11 @@ impl ReadinessState {
     fn set_interest(&mut self, v: Ready) {
         self.set(event::ready_as_usize(v), MASK_4, INTEREST_SHIFT);
     }
-    fn disarm(&mut self) {
-        self.set_interest(Ready::empty())
-    }
-    fn poll_opt(self) -> PollOpt {
-        let v = self.get(MASK_4, POLL_OPT_SHIFT);
-        event::opt_from_usize(v)
-    }
     fn set_poll_opt(&mut self, v: PollOpt) {
         self.set(event::opt_as_usize(v), MAST_4, POLL_OPT_SHIFT); 
+    }
+    fn disarm(&mut self) {
+        self.set_interest(Ready::empty())
     }
     fn is_queued(self) -> bool {
         self.0 & QUEUED_MASK == QUEUED_MASK
@@ -86,8 +101,8 @@ impl ReadinessState {
     fn set_token_write_pos(&mut self, val: usize) {
         self.set(val, MASK_2, TOKEN_WR_SHIFT)
     }
-    fn update_token_read_pos(&mut self, val: usize) {
-        let val = self.token_write_post();
+    fn update_token_read_pos(&mut self) {
+        let val = self.token_write_pos();
         self.set(val, MASK_2, TOKEN_RD_SHIFT);
     }
     fn next_token_pos(self) -> usize {
@@ -136,7 +151,7 @@ impl From<usize> for ReadinessState {
 }
 
 struct AtomicState {
-    inner: AtomicUszie,
+    inner: AtomicUsize,
 }
 
 impl AtomicState {
@@ -166,20 +181,26 @@ struct ReadinessNode {
     token_2: UnsafeCell<Token>,
     next_readiness: AtomicPtr<ReadinessNode>,
     update_lock: AtomicBool,
-    readiness_queue: AtomicPtr<>,
+    readiness_queue: AtomicPtr<()>,
     ref_count: AtomicUsize,
+}
+
+enum Dequeue {
+    Date(*mut ReadinessNode),
+    Empty,
+    Inconsistent,
 }
 
 fn enqueue_with_wakeup(queue: *mut(), node: &ReadinessNode) -> io::Result<()> {
     debug_assert!(!queue.is_null());
     let queue: Arc<ReadinessQueueInner> = unsafe {
-        &*(&queue as *count *mut () as * const Arc<ReadinessQueueInner>)
+        &*(&queue as *const *mut () as * const Arc<ReadinessQueueInner>)    // hankai?
     };
     queue.enqueue_node_with_wakeup(node)
 }
 
 impl ReadinessNode {
-    fn new(queue: *mut(),
+    fn new(queue: *mut(),       // 表达的意思是queue内部可变
            token: Token,
            interest: Ready,
            opt: PollOpt,
@@ -201,7 +222,7 @@ impl ReadinessNode {
             token_0: UnsafeCell::new(Token(0)),
             token_1: UnsafeCell::new(Token(0)),
             token_2: UnsafeCell::new(Token(0)),
-            next_readiness: AtomicPtr::new(ptr::null_mut()),
+            next_readiness: AtomicPtr::new(ptr::null_mut()),    // *mut类型
             update_lock: AtomicBool::new(false),
             readiness_queue: AtomicPtr::new(ptr::null_mut()),
             ref_count: AtomicUsize::new(0),
@@ -225,6 +246,20 @@ struct ReadinessQueueInner {
     closed_marker: Box<ReadinessNode>,
 }
 
+fn release_node(ptr: *mut ReadinessNode) {
+    unsafe {
+        if (*ptr).ref_count.fetch_sub(1, AcqRel) != 1 {
+            return;
+        }
+        let node = Box::from_raw(ptr);
+        let queue = node.readiness_queue.load(Acquire);
+        if queue.is_null() {
+            return;
+        }
+        let _: Arc<ReadinessQueueInner> = mem::transmute(queue);
+    }
+}
+
 impl ReadinessQueueInner {
     fn wakeup(&self) -> io::Result<()> {
         self.awakener.wakeup()
@@ -236,7 +271,7 @@ impl ReadinessQueueInner {
         Ok(())
     }
     fn enqueue_node(&self, node: &ReadinessNode) -> bool {
-        let node_ptr = node as * const _ as *mut _;
+        let node_ptr = node as * const _ as * mut _;            // hankai
         node.next_readiness.store(ptr::null_mut(), Relaxed);
         unsafe {
             let mut prev = self.head_readiness.load(Acquire);
@@ -257,7 +292,7 @@ impl ReadinessQueueInner {
                 prev = act;
             }
             debug_assert!((*prev).next_readiness.load(Relaxed).is_null());
-            (*prev).next_readiness.store(node_ptr, Release);
+            (*prev).next_readiness.store(node_ptr, Release);    // 尾插 头在尾
             prev == self.sleep_marker()
         }
     }
@@ -279,8 +314,8 @@ impl ReadinessQueueInner {
         }
     }
     unsafe fn dequeue_node(&self, until: *mut ReadinessNode) -> Dequeue {
-        let tail = *self.tail_readiness.get(); 
-        let next = (*tail).next_readiness.load(Acquire); 
+        let tail = *self.tail_readiness.get();
+        let next = (*tail).next_readiness.load(Acquire);
         if tail == self.marker() || tail == self.sleep_marker() || tail == self.closed_marker() {
             if next.is_null() {
                 self.clear_sleep_marker();
@@ -325,6 +360,14 @@ struct ReadinessQueue {
 
 unsafe impl Send for ReadinessQueue {}
 unsafe impl Sync for ReadinessQueue {}
+unsafe fn token(node: &ReadinessNode, pos: usize) -> Token {
+    match pos {
+        0 => *node.token_0.get(),
+        1 => *node.token_1.get(),
+        2 => *node.token_2.get(),
+        _ => unreachable!(),
+    }
+}
 
 impl ReadinessQueue {
     fn new() -> io::Result<ReadinessQueue> {
@@ -333,7 +376,7 @@ impl ReadinessQueue {
         let end_marker = Box::new(ReadinessNode::marker())
         let sleep_marker = Box::new(ReadinessNode::marker())
         let closed_marker = Box::new(ReadinessNode::marker())
-        let ptr = &*end_marker as *const _ as *mut _;
+        let ptr = &*end_marker as *const _ as *mut _;   // hankai
         Ok(ReadinessNode {
             inner: Arc::new( ReadinessQueueInner{
                 awakener: sys::Awakener::new()?;
@@ -349,54 +392,54 @@ impl ReadinessQueue {
         let mut until = ptr::null_mut();
         if dst.len() == dst.capacity() {
             self.inner.clear_sleep_marker();
-            'outer:
-            while dst.len() < dst.capacity() {
-                let ptr = match unsafe { self.inner.dequeue_node(until) } {
-                    Dequeue::Empty | Dequeue::Inconsistent => break,
-                    Dequeue::Data(ptr) => ptr,
-                };
-                let node = unsafe { &*ptr };
-                let mut state = node.state.load(Acquire);
-                let mut next;
-                let mut readiness;
-                let mut opt;
-                loop {
-                    next = state;
-                    debug_assert!(state.is_queued());
-                    if state.is_droped() {
-                        release_node(ptr);
-                        continue 'outer;
-                    }
-                    readiness = state.effective_readiness();
-                    opt = state.poll_opt();
-                    if opt.is_edge() {
-                        next.set_dequeued();
-                        if opt.is_oneshot() && !readiness.is_empty() {
-                            next.disarm();
-                        }
-                    } else if readiness.is_empty() {
-                        next.set_dequeued();
-                    }
-                    next.update_token_read_pos();
-                    if state == next {
-                        break;
-                    }
-                    let actual = node.state.compare_and_swap(state, next, AcqRel);
-                    if actual == state {
-                        break;
-                    }
-                    state = actual;
+        }
+        'outer:
+        while dst.len() < dst.capacity() {
+            let ptr = match unsafe { self.inner.dequeue_node(until) } { // hankai
+                Dequeue::Empty | Dequeue::Inconsistent => break,
+                Dequeue::Data(ptr) => ptr,
+            };
+            let node = unsafe { &*ptr };
+            let mut state = node.state.load(Acquire);
+            let mut next;
+            let mut readiness;
+            let mut opt;
+            loop {
+                next = state;
+                debug_assert!(state.is_queued());
+                if state.is_droped() {
+                    release_node(ptr);
+                    continue 'outer;
                 }
-                if next.is_queued() {
-                    if until.is_null() {
-                        until = ptr;
+                readiness = state.effective_readiness();
+                opt = state.poll_opt();
+                if opt.is_edge() {
+                    next.set_dequeued();
+                    if opt.is_oneshot() && !readiness.is_empty() {
+                        next.disarm();
                     }
-                    self.inner.enqueue_node(node);
+                } else if readiness.is_empty() {
+                    next.set_dequeued();
                 }
-                if !readiness.is_empty() {
-                    let token = unsafe { token(node, next.token_read_pos()) };
-                    dst.push_event(Event::new(readiness, token));
+                next.update_token_read_pos();
+                if state == next {
+                    break;
                 }
+                let actual = node.state.compare_and_swap(state, next, AcqRel);
+                if actual == state {
+                    break;
+                }
+                state = actual;
+            }
+            if next.is_queued() {
+                if until.is_null() {
+                    until = ptr;
+                }
+                self.inner.enqueue_node(node);
+            }
+            if !readiness.is_empty() {
+                let token = unsafe { token(node, next.token_read_pos()) };
+                dst.push_event(Event::new(readiness, token));
             }
         }
     }
@@ -454,10 +497,10 @@ impl Poll {
             selector: sys::Selector::new()?;
             readiness_queue: ReadinessQueue::new()?;
             lock_state: AtomicUsize::new(0),
-            lock: Mutex::new(()),
+            lock: Mutex::new(()),                       // hankai
             condvar: Condvar::new(),
         };
-        poll.readiness_queue.inner.awkener.register(&poll, AWAKEN, Ready::readable(), PollOpt::edge())?;
+        poll.readiness_queue.inner.awakener.register(&poll, AWAKEN, Ready::readable(), PollOpt::edge())?;
         Ok(poll)
     }
     pub fn register<E: ?sized>(&self, handle: &E, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()>
@@ -584,6 +627,18 @@ impl Poll {
 
 }
 
+impl fmt::Debug for Poll {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("Poll").finish()
+    }
+}
+
+impl AsRawFd for Poll {
+    fn as_raw_fd(&self) -> RawFd {
+        self.selector.as_raw_fd()
+    }
+}
+
 pub struct Events {
     inner: sys::Events,
 }
@@ -627,55 +682,283 @@ impl Events {
     }
 }
 
+impl fmt::Debug for Events {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Events")
+                .field("capacity", &self.capacity())
+                .finish()
+    }
+}
+
+impl IntoIterator for Events {
+    type Item = Event;
+    type IntoIter = IntoIter;
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter {
+            inner: self,
+            pos: 0,
+        }
+    }
+}
+
+impl<'a> IntoInterator for &'a Events {
+    type Item = Event;
+    type IntoIter = Iter<'a>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a> Iterator for Iter<'a> {
+    type Item = Event;
+    fn next(&mut self) -> Option<Event> {
+        let ret = self.inner.inner.get(self.pos);
+        self.pos += 1;
+        ret
+    }
+}
+
+impl Iterator for IntoIter {
+    type Item = Event;
+    fn next(&mut self) -> Option<Event> {
+        let ret = self.inner.inner.get(self.pos);
+        self.pos += 1;
+        ret
+    }
+}
+
+struct RegistrationInner {
+    node: *mut ReadinessNode,
+}
+
+impl RegistrationInner {
+    fn readiness(&self) -> Ready {
+        self.state.load(Relaxed).readiness()
+    }
+    fn set_readiness(&self, ready: Ready) -> io::Result<()> {
+        let mut state = self.state.load(Acquire);
+        let mut next;
+        loop {
+            next = state;
+            if state.is_dropped() {
+                return Ok(());
+            }
+            next.set_readiness(ready);
+            if !next.effective_readiness().is_empty() {
+                next.set_queued();
+            }
+            let actual = self.state.compare_and_swap(state, next, AcqRel);
+            if state == actual {
+                break;
+            }
+            state = actual;
+        }
+        if !state.is_queued() && next.is_queued() {
+            self.enqueue_with_wakeup()?;
+        }
+        Ok(())
+    }
+    fn update(&self, poll: &Poll, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()> {
+        let mut queue = self.readiness_queue.load(Relaxed);
+        let other: &*mut () = unsafe {
+            &*(&poll.readiness_queue.inner as *const _ as *const *mut())
+        };
+        let other = *other;
+        debug_assert!(mem::size_of::<Arc<ReadinessQueueInner>>() == mem::size_of::<*mut ()>());
+        if queue.is_null() {
+            let actual = self.readiness_queue.compare_and_swap(queue, other, Release);
+            if actual.is_null() {
+                self.ref_count.fetch_add(1, Relaxed);
+                mem::forget(poll.readiness_queue.clone());
+            } else {
+                if actual != other {
+                    return Err(io::Error::new(io::ErrorKind::Other, "Registration handle associated with another Poll instance"));
+                }
+            }
+            queue = other;
+        } else if queue != other {
+            return Err(io::Error::new(io::ErrorKind::Other, "Registration handle associated with another Poll instance"));
+        }
+        unsafe {
+            let actual = &poll.readiness_queue.inner as *const _ as *cosnt usize;
+            debug_assert!(queue as usize, *actual);
+        }
+        if self.update_lock.compare_and_swap(false, true, Acquire) {
+            return Ok(());
+        }
+        let mut state = self.state.load(Relaxed);
+        let mut next;
+        let curr_token_pos = state.token_write_pos();
+        let curr_token = unsafe { self::token(self, curr_token_pos) };
+        let mut next_token_pos = curr_token_pos;
+        if token != curr_token {
+            next_token_pos = state.next_token_pos();
+            match next_token_pos {
+                0 => unsafe { *self.token_0.get() = token },
+                1 => unsafe { *self.token_1.get() = token },
+                2 => unsafe { *self.token_2.get() = token },
+                _ => unreachable!(),
+            }
+        }
+        loop {
+            next = state;
+            debug_assert!(!state.is_dropped());
+            next.set_token_write_pos(next_token_pos);
+            next.set_interest(interest);
+            next.set_poll_opt(opt);
+            if !next.effective_readiness().is_empty() {
+                next.set_queued();
+            }
+            let actual = self.state.compare_and_swap(state, next, Release);
+            if actual == state {
+                break;
+            }
+            debug_assert_eq!(curr_token_pos, actual.token_write_pos());
+            state = actual;
+        }
+        self.update_lock.store(false, Release);
+        if !state.is_queued() && next.is_queued() {
+            enqueue_with_wakeup(queue, self)?;
+        }
+        Ok(())
+    }
+}
+
+impl ops::Deref for RegistrationInner {
+    type Target = ReadinessNode;
+    fn deref(&self) -> &ReadinessNode {
+        unsafe { &*self.node }
+    }
+}
+
+impl Clone for RegistrationInner {
+    fn clone(&self) -> RegistrationInner {
+        let old_size = self.ref_count.fetch_add(1, Relaxed);
+        if old_size & !MAX_REFCOUNT != 0 {
+            process::abort();
+        }
+        RegistrationInner {
+            node: self.node,
+        }
+    }
+}
+
+impl Drop for RegistrationInner {
+    fn drop(&mut self) {
+        release_node(self.node);
+    }
+}
+
+pub struct SetReadiness {
+    inner: RegistrationInner,
+}
+
+unsafe impl Send for SetReadiness {}
+unsafe impl Sync for SetReadiness {}
+
+pub struct Registration {
+    inner: RegistrationInner;
+}
+
+impl SetReadiness {
+    pub fn readiness(&self) -> Ready {
+        self.inner.readiness()
+    }
+    pub fn set_readiness(&self, ready: Ready) -> io::Result<()> {
+        self.inner.set_readiness(ready)
+    }
+}
+
+impl fmt::Debug for SetReadiness {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("SetReadiness").finish()
+    }
+}
 
 
+unsafe impl Send for Registration {}
+unsafe impl Sync for Registration {}
 
+pub fn new_registration(poll: &Poll, token: Token, ready: Ready, opt: PollOpt) 
+        -> (Registration, SetReadiness)
+{
+    Registration::new_priv(poll, token, ready, opt)
+}
 
+impl Registration {
+    pub fn new2() -> (Registration, SetReadiness) {
+        let node = Box::into_raw(Box::new(ReadinessNode::new(
+                ptr::null_mut(), Token(0), Ready::empty(), PollOpt::empty(), 2)));
+        let registration = Registration {
+            inner: RegistrationInner {
+                node,
+            },
+        };
+        let set_readiness = SetReadiness {
+            inner: RegistrationInner {
+                node,
+            },
+        };
+        (registration, set_readiness)
+    }
+    pub fn new(poll: &Poll, token: Token, interest: Ready, opt: PollOpt)
+            -> (Registration, SetReadiness)
+    {
+        Registration::new_priv(poll, token, interest, opt)
+    }
+    fn new_priv(poll: &Poll, token: Token, interest: Ready, opt: PollOpt)
+            -> (Registration, SetReadiness)
+    {
+        is_send::<Registration>();
+        is_sync::<Registration>();
+        is_send::<SetReadiness>();
+        is_sync::<SetReadiness>();
+        let queue = poll.readiness_queue.inner.clone();
+        let queue: *mut () = unsafe { mem::transmute(queue) };
+        let node = Box::into_raw(Box::new(ReadinessNode::new(queue, token, interest, opt, 3)));
+        let registration = Registration {
+            inner: RegistrationInner {
+                node,
+            },
+        };
+        let set_readiness = SetReadiness {
+            inner: RegistrationInner {
+                node,
+            },
+        };
+        (registration, set_readiness)
+    }
+    pub fn update(&self, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()> {
+        self.inner.update(poll, token, interest, opt)
+    }
+    pub fn deregister(*self, poll: Poll) -> io::Result<()> {
+        self.inner.update(poll, Token(0), Ready::empty(), PollOpt::empty())
+    }
+}
 
+impl Evented for Registration {
+    fn register(&self, poll: &Poll, token: Token, intereset: Ready, opts: PollOpt) -> io::Result<()> {
+        self.inner.update(poll, token, interest, opts)
+    }
+    fn reregister(&self, poll: &Poll, token: Token, intereset: Ready, opts: PollOpt) -> io::Result<()> {
+        self.inner.update(poll, token, interest, opts)
+    }
+    fn deregister(&self, poll: &Poll) -> io::Result<()> {
+        self.inner.update(poll, Token(0), Ready::empty(), PollOpt::empty())
+    }
+}
 
+impl Drop for Registration {
+    fn drop(&mut self) {
+        if self.inner.state.flag_as_dropped() {
+            let _ = self.inner.enqueue_with_wakeup();
+        }
+    }
+}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+impl fmt::Debug for Registration {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("Registration").finish()
+    }
+}
 
