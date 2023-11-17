@@ -166,7 +166,8 @@ impl AtomicState {
     fn load(&self, order: Ordering) -> ReadinessState {
         self.inner.load(order).into()
     }
-    fn compare_and_swap(&self, current: ReadinessState, new: ReadinessState, order: Ordering) -> ReadinessState {
+    fn compare_and_swap(&self, current: ReadinessState, 
+            new: ReadinessState, order: Ordering) -> ReadinessState {
         self.inner.compare_and_swap(current.into(), new.into(), order).into()
     }
     fn flag_as_dropped(&self) -> bool {
@@ -196,17 +197,15 @@ enum Dequeue {
 fn enqueue_with_wakeup(queue: *mut(), node: &ReadinessNode) -> io::Result<()> {
     debug_assert!(!queue.is_null());
     let queue: &Arc<ReadinessQueueInner> = unsafe {
-        &*(&queue as *const *mut () as * const Arc<ReadinessQueueInner>)    // hankai?
+        //&*(&queue as *const *mut () )                                     // expected reference `&Arc<ReadinessQueueInner>` found reference `&*mut ()`
+        &*(&queue as *const *mut () as * const Arc<ReadinessQueueInner>)
     };
-    queue.enqueue_node_with_wakeup(node)
+    queue.enqueue_node_with_wakeup(node)                                    // 为何强转为&Arc<>类型?
 }
 
 impl ReadinessNode {
-    fn new(queue: *mut(),       // 表达的意思是queue内部可变
-           token: Token,
-           interest: Ready,
-           opt: PollOpt,
-           ref_count: usize) -> ReadinessNode {
+    fn new(queue: *mut(), token: Token, interest: Ready,                    // 表达的意思是queue内部可变(非const queue)
+            opt: PollOpt, ref_count: usize) -> ReadinessNode {
         ReadinessNode {
             state: AtomicState::new(interest, opt),
             token_0: UnsafeCell::new(token),
@@ -224,7 +223,7 @@ impl ReadinessNode {
             token_0: UnsafeCell::new(Token(0)),
             token_1: UnsafeCell::new(Token(0)),
             token_2: UnsafeCell::new(Token(0)),
-            next_readiness: AtomicPtr::new(ptr::null_mut()),    // *mut类型
+            next_readiness: AtomicPtr::new(ptr::null_mut()),
             update_lock: AtomicBool::new(false),
             readiness_queue: AtomicPtr::new(ptr::null_mut()),
             ref_count: AtomicUsize::new(0),
@@ -273,8 +272,8 @@ impl ReadinessQueueInner {
         Ok(())
     }
     fn enqueue_node(&self, node: &ReadinessNode) -> bool {
-        let node_ptr = node as * const _ as * mut _;            // hankai
-        node.next_readiness.store(ptr::null_mut(), Relaxed);
+        let node_ptr = node as * const _ as * mut _;                // 定义一个可写属性的node_ptr
+        node.next_readiness.store(ptr::null_mut(), Relaxed);        // node只读 但可改其子成员
         unsafe {
             let mut prev = self.head_readiness.load(Acquire);
             loop {
@@ -294,7 +293,7 @@ impl ReadinessQueueInner {
                 prev = act;
             }
             debug_assert!((*prev).next_readiness.load(Relaxed).is_null());
-            (*prev).next_readiness.store(node_ptr, Release);    // 尾插 头在尾
+            (*prev).next_readiness.store(node_ptr, Release);        // 尾插 头在尾
             prev == self.sleep_marker()
         }
     }
@@ -379,9 +378,9 @@ impl ReadinessQueue {
         let end_marker = Box::new(ReadinessNode::marker());
         let sleep_marker = Box::new(ReadinessNode::marker());
         let closed_marker = Box::new(ReadinessNode::marker());
-        let ptr = &*end_marker as *const _ as *mut _;   // hankai
+        let ptr = &*end_marker as *const _ as *mut _;
         Ok(ReadinessQueue {
-            inner: Arc::new( ReadinessQueueInner{
+            inner: Arc::new(ReadinessQueueInner {                          // hankai1
                 awakener: sys::Awakener::new()?,
                 head_readiness: AtomicPtr::new(ptr),
                 tail_readiness: UnsafeCell::new(ptr),
@@ -398,7 +397,7 @@ impl ReadinessQueue {
         }
         'outer:
         while dst.len() < dst.capacity() {
-            let ptr = match unsafe { self.inner.dequeue_node(until) } { // hankai
+            let ptr = match unsafe { self.inner.dequeue_node(until) } {     // hankai
                 Dequeue::Empty | Dequeue::Inconsistent => break,
                 Dequeue::Data(ptr) => ptr,
             };
