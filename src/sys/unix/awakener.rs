@@ -40,7 +40,7 @@ mod pipe {
                 }
             }
         }
-        pub fn reader(&self) -> unix::Io {
+        pub fn reader(&self) -> &unix::Io {
             &self.reader
         }
     }

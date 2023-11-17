@@ -47,6 +47,88 @@ pub fn ready_from_usize(events: usize) -> Ready {
     Ready(events)
 }
 
+impl <T: Into<Ready>> ops::BitOr<T> for Ready {
+    type Output = Ready;
+    fn bitor(self, other: T) -> Ready {
+        Ready(self.0 | other.into().0)
+    }
+}
+
+impl <T: Into<Ready>> ops::BitOrAssign<T> for Ready {
+    fn bitor_assign(&mut self, other: T) {
+        self.0 |= other.into().0
+    }
+}
+
+impl <T: Into<Ready>> ops::BitXor<T> for Ready {
+    type Output = Ready;
+    fn bitxor(self, other: T) -> Ready {
+        Ready(self.0 ^ other.into().0)
+    }
+}
+
+impl <T: Into<Ready>> ops::BitXorAssign<T> for Ready {
+    fn bitxor_assign(&mut self, other: T) {
+        self.0 ^= other.into().0
+    }
+}
+
+impl <T: Into<Ready>> ops::BitAnd<T> for Ready {
+    type Output = Ready;
+    fn bitand(self, other: T) -> Ready {
+        Ready(self.0 & other.into().0)
+    }
+}
+
+impl <T: Into<Ready>> ops::BitAndAssign<T> for Ready {
+    fn bitand_assign(&mut self, other: T) {
+        self.0 &= other.into().0
+    }
+}
+
+impl <T: Into<Ready>> ops::Sub<T> for Ready {
+    type Output = Ready;
+    fn sub(self, other: T) -> Ready {
+        Ready(self.0 & !other.into().0)
+    }
+}
+
+impl <T: Into<Ready>> ops::SubAssign<T> for Ready {
+    fn sub_assign(&mut self, other: T) {
+        self.0 &= !other.into().0
+    }
+}
+
+impl ops::Not for Ready {
+    type Output = Ready;
+    fn not(self) -> Ready {
+        Ready(!self.0)
+    }
+}
+
+impl fmt::Debug for Ready {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        let mut one = false;
+        let flags = [
+            (Ready::readable(), "Readable"),
+            (Ready::writable(), "Writable"),
+            (Ready(ERROR), "Error"),
+            (Ready(HUP), "HUP")
+        ];
+        for &(flag, msg) in &flags {
+            if self.contains(flag) {
+                if one { write!(fmt, " | ")? }
+                write!(fmt, "{}", msg)?;
+                one = true
+            }
+        }
+        if !one {
+            fmt.write_str("(empty)")?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Copy, PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub struct PollOpt(usize);
 
@@ -63,8 +145,8 @@ impl PollOpt {
     pub fn is_urgent(&self) -> bool { self.contains(PollOpt::urgent()) }
     pub fn bits(&self) -> usize { self.0 }
     pub fn contains(&self, other: PollOpt) -> bool { *self & other == other }
-    pub fn insert(&self, other: PollOpt) { self.0 |= other.0; }
-    pub fn remove(&self, other: PollOpt) { self.0 &= !other.0; }
+    pub fn insert(&mut self, other: PollOpt) { self.0 |= other.0; }
+    pub fn remove(&mut self, other: PollOpt) { self.0 &= !other.0; }
 }
 
 pub fn opt_as_usize(opt: PollOpt) -> usize {
@@ -72,6 +154,63 @@ pub fn opt_as_usize(opt: PollOpt) -> usize {
 }
 pub fn opt_from_usize(opt: usize) -> PollOpt {
     PollOpt(opt)
+}
+
+impl ops::BitOr for PollOpt {
+    type Output = PollOpt;
+    fn bitor(self, other: PollOpt) -> PollOpt {
+        PollOpt(self.0 | other.0)
+    }
+}
+
+impl ops::BitXor for PollOpt {
+    type Output = PollOpt;
+    fn bitxor(self, other: PollOpt) -> PollOpt {
+        PollOpt(self.0 ^ other.0)
+    }
+}
+
+impl ops::BitAnd for PollOpt {
+    type Output = PollOpt;
+    fn bitand(self, other: PollOpt) -> PollOpt {
+        PollOpt(self.0 & other.0)
+    }
+}
+
+impl ops::Sub for PollOpt {
+    type Output = PollOpt;
+    fn sub(self, other: PollOpt) -> PollOpt {
+        PollOpt(self.0 & !other.0)
+    }
+}
+
+impl ops::Not for PollOpt {
+    type Output = PollOpt;
+    fn not(self) -> PollOpt {
+        PollOpt(!self.0)
+    }
+}
+
+impl fmt::Debug for PollOpt {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        let mut one = false;
+        let flags = [
+            (PollOpt::edge(), "Edge-Triggered"),
+            (PollOpt::level(), "Level-Triggered"),
+            (PollOpt::oneshot(), "OneShot")
+        ];
+        for &(flag, msg) in &flags {
+            if self.contains(flag) {
+                if one { write!(fmt, " | ")? }
+                write!(fmt, "{}", msg)?;
+                one = true
+            }
+        }
+        if !one {
+            fmt.write_str("(empty)")?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]

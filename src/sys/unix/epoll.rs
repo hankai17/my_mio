@@ -151,7 +151,7 @@ impl Events {
                 kind = kind | Ready::readable();
             }
             if (epoll & EPOLLOUT) != 0 {
-                kind = kind | Ready::writeable()
+                kind = kind | Ready::writable()
             }
             if (epoll & EPOLLPRI) != 0 {
                 kind = kind | Ready::readable() | UnixReady::priority();

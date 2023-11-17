@@ -52,13 +52,13 @@ impl AsRawFd for Io {
 
 impl Evented for Io {
     fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
-        EventedFd(&self.as_raw_fd().register(poll, token, interest, opts))
+        EventedFd(&self.as_raw_fd()).register(poll, token, interest, opts)
     }
     fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
-        EventedFd(&self.as_raw_fd().reregister(poll, token, interest, opts))
+        EventedFd(&self.as_raw_fd()).reregister(poll, token, interest, opts)
     }
     fn deregister(&self, poll: &Poll) -> io::Result<()> {
-        EventedFd(&self.as_raw_fd().deregister(poll))
+        EventedFd(&self.as_raw_fd()).deregister(poll)
     }
 }
 

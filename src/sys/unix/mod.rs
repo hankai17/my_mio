@@ -52,7 +52,7 @@ pub fn pipe() -> ::io::Result<(Io, Io)> {
         match pipe2.get() {
             Some(pipe2_fn) => {
                 let flags = libc::O_NONBLOCK | libc::O_CLOEXEC;
-                cvt(pip2_fn(pipes.as_mut_ptr(), flags))?;
+                cvt(pipe2_fn(pipes.as_mut_ptr(), flags))?;
                 Ok((Io::from_raw_fd(pipes[0]), Io::from_raw_fd(pipes[1])))
             }
             None => {

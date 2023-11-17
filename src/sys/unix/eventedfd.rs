@@ -9,7 +9,7 @@ impl <'a> Evented for EventedFd<'a> {
         poll::selector(poll).register(*self.0, token, interest, opts)
     }
     fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
-        poll::selector(poll).rereregister(*self.0, token, interest, opts)
+        poll::selector(poll).reregister(*self.0, token, interest, opts)
     }
     fn deregister(&self, poll: &Poll) -> io::Result<()> {
         poll::selector(poll).deregister(*self.0)
