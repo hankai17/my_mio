@@ -265,7 +265,7 @@ impl ReadinessQueueInner {
     fn wakeup(&self) -> io::Result<()> {
         self.awakener.wakeup()
     }
-    fn enqueue_node_with_wakeup(&self, node: &ReadinessNode) -> io::Result<()> {
+    fn enqueue_node_with_wakeup(&self, node: &ReadinessNode) -> io::Result<()> {    // 跨线程
         if self.enqueue_node(node) {
             self.wakeup()?;
         }
@@ -552,7 +552,7 @@ impl Poll {
             timeout = Some(Duration::from_millis(0))
         }
         loop {
-            let now = Instant::now(); 
+            let now = Instant::now();
             let res = self.selector.select(&mut events.inner, AWAKEN, timeout);
             match res {
                 Ok(true) => {

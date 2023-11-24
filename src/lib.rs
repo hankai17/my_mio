@@ -14,7 +14,7 @@ mod token;
 pub use token::Token;
 
 mod poll;
-pub use poll::{Poll};
+pub use poll::{Poll, Registration, SetReadiness};
 
 pub mod event {
     pub use super::poll::{Events, Iter}; 
@@ -27,3 +27,9 @@ pub mod unix {
     pub use sys::{EventedFd,};
     pub use sys::unix::UnixReady;
 }
+
+mod lazycell;
+
+pub mod channel;
+
+

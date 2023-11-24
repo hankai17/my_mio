@@ -51,7 +51,7 @@ impl Selector {
             let cnt = cvt(libc::epoll_wait(self.epfd,
                                             evts.events.as_mut_ptr(),
                                             evts.events.capacity() as i32,
-                                            timeout_ms))?; 
+                                            timeout_ms))?;
             let cnt = cnt as usize;
             evts.events.set_len(cnt);
             for i in 0..cnt {
