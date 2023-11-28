@@ -32,4 +32,4 @@ mod lazycell;
 
 pub mod channel;
 
-
+pub mod deprecated;

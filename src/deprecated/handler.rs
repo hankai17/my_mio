@@ -1,2 +1,13 @@
 use {Ready, Token};
-use de
+use deprecated::{EventLoop};
+
+pub trait Handler: Sized {
+    type Timeout;
+    type Message;
+
+    fn ready(&mut self, event_loop: &mut EventLoop<Self>, token: Token, events: Ready) {}
+    fn notify(&mut self, event_loop: &mut EventLoop<Self>, msg: Self::Message) {}
+    fn timeout(&mut self, event_loop: &mut EventLoop<Self>, timeout: Self::Timeout) {}
+    fn interrupted(&mut self, event_loop: &mut EventLoop<Self>) {}
+    fn tick(&mut self, event_loop: &mut EventLoop<Self>) {}
+}

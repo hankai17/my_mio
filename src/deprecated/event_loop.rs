@@ -1,0 +1,202 @@
+use {channel, Poll, Events, Token};
+use event::Evented;
+use deprecated::{Handler, NotifyError};
+use event_imp::{Event, Ready, PollOpt};
+use timer::{self, Timer, Timeout};
+use std::{io, usize};
+use std::default::Default;
+use std::time::Duration;
+
+struct Config {
+    notify_capacity: usize,
+    messages_per_tick: usize,
+    timer_tick: Duration,
+    timer_wheel_size: usize,
+    timer_capacity: usize,
+}
+
+impl Default for Config {
+    fn default() -> Config {
+        Config {
+            notify_capacity: 4_096,
+            messages_per_tick: 256,
+            timer_tick: Duration::from_millis(100),
+            timer_wheel_size: 1_024,
+            timer_capacity: 65_536,
+        }
+    }
+}
+
+pub struct Sender<M> {
+    tx: channel::SyncSender<M>
+}
+
+impl<M> Clone for Sender<M> {
+    fn clone(&self) -> Sender<M> {
+        Sender { tx: self.tx.clone() }
+    }
+}
+
+impl<M> Sender<M> {
+    fn new(tx: channel::SyncSender<M>) -> Sender<M> {
+        Sender { tx }
+    }
+    pub fn send(&self, msg: M) -> Result<(), NotifyError<M>> {
+        self.tx.try_send(msg)?;
+        Ok(())
+    }
+}
+
+pub struct EventLoop<H: Handler> {
+    run: bool,
+    poll: Poll,
+    events: Events,
+    timer: Timer<H::Timeout>,
+    notify_tx: channel::SyncSender<H::Message>,
+    notify_rx: channel::Receiver<H::Message>,
+    config: Config
+}
+
+const NOTIFY: Token = Token(usize::MAX - 1);
+const TIMER: Token = Token(usize::MAX - 2);
+
+impl<H: Handler> EventLoop<H> {
+    fn configured(config: Config) -> io::Result<EventLoop<H>> {
+        let poll = Poll::new()?;
+        let timer = timer::Builder::default()
+            .tick_duration(config.timer_tick)
+            .num_slots(config.timer_wheel_size)
+            .capacity(config.timer_capacity)
+            .build();
+        let (tx, tx) = channel::sync_channel(config.notify_capacity);
+        poll.register(&rx, NOTIFY, Ready::readable(), PollOpt::edge() | PollOpt::oneshot())?;
+        poll.register(&timer, TIMER, Ready::readable(), PollOpt::edge())?;
+        Ok(EventLoop {
+            run: true,
+            poll,
+            timer,
+            notify_tx: tx,
+            notify_rx: rx,
+            config,
+            events: Events::with_capacity(1024),
+        })
+    }
+    pub fn new() -> io::Result<EventLoop<H>> {
+        EventLoop::configured(config::default())
+    }
+    pub fn channel(&self) -> Sender<H::Message> {
+        Sender::new(self.notify_tx.clone())
+    }
+    pub fn timeout(&mut self, token: H::Timeout, delay: Duration) -> timer::Result<Timeout> {
+        self.timer.set_timeout(delay, token)
+    }
+    pub fn clear_timeout(&mut self, timeout: &Timeout) -> bool {
+        self.timer.cancel_timeout(&timeout).is_some()
+    }
+    pub fn shutdown(&mut self) { self.run = false; }
+    pub fn is_running(&self) -> bool { self.run }
+    pub fn register<E: ?Sized>(&mut self, io: &E, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()>
+        where E: Evented {
+        self.poll.register(io, token, interest, opt)
+    }
+    pub fn reregister<E: ?Sized>(&mut self, io: &E, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()>
+        where E: Evented {
+        self.poll.reregister(io, token, interest, opt)
+    }
+    pub fn deregister<E: ?Sized>(&mut self, io: &E) -> io::Result<()>
+        where E: Evented {
+        self.poll.deregister(io)
+    }
+    fn io_poll(&mut self, timeout: Option<Duration>) -> io::Result<usize> {
+        self.poll.poll(&mut self.events, timeout)
+    }
+    fn io_event(&mut self, handler: &mut H, evt: Event) {
+        handler.ready(self, evt.token(), evt.readiness());
+    }
+    fn notify(&mut self, handler: &mut H) {
+        for _ in 0..self.config.messages_per_tick {
+            match self.notify_tx.try_recv() {
+                Ok(msg) => handler.notify(self, msg),
+                _ => break,
+            }
+        }
+        let _ = self.poll.reregister(&self.notify_rx, NOTIFY, Ready::readable(), PollOpt::edge() | PollOpt::oneshot());
+    }
+    fn timer_process(&mut self, handler: &mut H) {
+        while let Some(t) = self.timer.poll() {
+            handler.timeout(self, t);
+        }
+    }
+    fn io_process(&mut self, handler: &mut H, cnt: usize) {
+        let mut i = 0;
+        log::trace!("io_process(..); cnt={}; len={}", cnt, self.events.len());
+        while i < cnt {
+            let evt = self.events.get(i).unwrap();
+            log::trace!("event={:?}; idx={:?}", evt, i);
+            match evt.token() {
+                NOTIFY => self.notify(handler),
+                TIMER => self.timer_process(handler),
+                _ => self.io_event(handler, evt)
+            }
+            i += 1;
+        }
+    }
+    pub fn run_once(&mut self, handler: &mut H, timeout: Option<Duration>) -> io::Result<()> {
+        log::trace!("event loop tick");
+        let events = match self.io_poll(timeout) {
+            Ok(e) => e,
+            Err(err) => {
+                if err.kind() == io::ErrorKind::Interrupted {
+                    handler.interrupted(self);
+                    0
+                } else {
+                    return Err(err);
+                }
+            }
+        };
+        self.io_process(handler, events);
+        handler.tick(self);
+        Ok(())
+    }
+    pub fn run(&mut self, handler: &mut H) -> io::Result<()> {
+        self.run = true;
+        while self.run {
+            self.run_once(handler, None)?;
+        }
+        Ok(())
+    }
+}
+
+pub struct EventLoopBuilder {
+    config: Config,
+}
+
+impl EventLoopBuilder {
+    pub fn new() -> EventLoopBuilder {
+        EventLoopBuilder::default()
+    }
+    pub fn notify_capacity(&mut self, capacity: usize) -> &mut Self {
+        self.config.notiy_capacity = capacity;
+        self
+    }
+    pub fn messages_per_tick(&mut self, messages: usize) -> &mut Self {
+        self.config.messages_per_tick = messages;
+        self
+    }
+    pub fn timer_tick(&mut self, val: Duration) -> &mut Self {
+        self.config.timer_tick = val;
+        self
+    }
+    pub fn timer_wheel_size(&mut self, size: usize) -> &mut Self {
+        self.config.timer_wheel_size = size;
+        self
+    }
+    pub fn timer_capacity(&mut self, cap: usize) -> &mut Self {
+        self.config.timer_capacity = cap;
+        self
+    }
+    pub fn build<H: Handler>(self) -> io::Result<EventLoop<H>> {
+        EventLoop::Configured(self.config)
+    }
+}
+
