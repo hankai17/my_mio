@@ -124,7 +124,7 @@ impl ReceiverCtl {
     pub fn dec(&self) -> io::Result<()> {
         let first = self.inner.pending.load(Ordering::Acquire);
         if first == 1 {
-            if let Some(set_readiness) = self.inner.set_readiness.borrot() {
+            if let Some(set_readiness) = self.inner.set_readiness.borrow() {
                 set_readiness.set_readiness(Ready::empty())?;
             }
         }
@@ -226,7 +226,7 @@ pub fn ctl_pair() -> (SenderCtl, ReceiverCtl) {
     let inner = Arc::new(Inner {
         pending: AtomicUsize::new(0),
         senders: AtomicUsize::new(1),
-        set_readinesss: AtomicLazyCell::new(),
+        set_readiness: AtomicLazyCell::new(),
     });
     let tx = SenderCtl {
         inner: inner.clone(),
@@ -254,7 +254,7 @@ pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
 
 pub fn sync_channel<T>(bound: usize) -> (SyncSender<T>, Receiver<T>) {
     let (tx_ctl, rx_ctl) = ctl_pair();
-    let (tx, rx) = mpsc::sync_channel();
+    let (tx, rx) = mpsc::sync_channel(bound);
     let tx = SyncSender {
         tx,
         ctl: tx_ctl,
