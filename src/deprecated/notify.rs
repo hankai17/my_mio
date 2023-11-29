@@ -32,3 +32,31 @@ impl<M> From<channel::TrySendError<M>> for NotifyError<M> {
         }
     }
 }
+
+impl<M> fmt::Debug for NotifyError<M> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            NotifyError::Io(ref e) => {
+                write!(fmt, "NotifyError::IO({:?})", e)
+            }
+            NotifyError::Full(..) => {
+                write!(fmt, "NotifyError::Full(..)")
+            }
+            NotifyError::Closed(..) => {
+                write!(fmt, "NotifyError::Closed(..)")
+            }
+        }
+    }
+}
+
+impl<M> fmt::Display for NotifyError<M> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            NotifyError::Io(ref e) => {
+                write!(fmt, "IO error: {}", e)
+            }
+            NotifyError::Full(..) => write!(fmt, "Full"),
+            NotifyError::Closed(..) => write!(fmt, "Closed"),
+        }
+    }
+}

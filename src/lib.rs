@@ -1,5 +1,6 @@
 extern crate libc;
 extern crate log;
+extern crate slab;
 
 mod event_imp;
 pub use event_imp:: {
@@ -31,5 +32,15 @@ pub mod unix {
 mod lazycell;
 
 pub mod channel;
-
+pub mod timer;
 pub mod deprecated;
+
+mod convert {
+    use std::time::Duration;
+    const NANOS_PER_MILLI: u32 = 1_000_000;
+    const MILLIS_PER_SEC: u64 = 1_000;
+    pub fn millis(duration: Duration) -> u64 {
+        let millis = (duration.subsec_nanos() + NANOS_PER_MILLI - 1) / NANOS_PER_MILLI;
+        duration.as_secs().saturating_mul(MILLIS_PER_SEC).saturating_add(u64::from(millis))
+    }
+}

@@ -68,7 +68,7 @@ impl<H: Handler> EventLoop<H> {
             .num_slots(config.timer_wheel_size)
             .capacity(config.timer_capacity)
             .build();
-        let (tx, tx) = channel::sync_channel(config.notify_capacity);
+        let (tx, rx) = channel::sync_channel(config.notify_capacity);
         poll.register(&rx, NOTIFY, Ready::readable(), PollOpt::edge() | PollOpt::oneshot())?;
         poll.register(&timer, TIMER, Ready::readable(), PollOpt::edge())?;
         Ok(EventLoop {
@@ -82,7 +82,7 @@ impl<H: Handler> EventLoop<H> {
         })
     }
     pub fn new() -> io::Result<EventLoop<H>> {
-        EventLoop::configured(config::default())
+        EventLoop::configured(Config::default())
     }
     pub fn channel(&self) -> Sender<H::Message> {
         Sender::new(self.notify_tx.clone())
@@ -115,7 +115,7 @@ impl<H: Handler> EventLoop<H> {
     }
     fn notify(&mut self, handler: &mut H) {
         for _ in 0..self.config.messages_per_tick {
-            match self.notify_tx.try_recv() {
+            match self.notify_rx.try_recv() {
                 Ok(msg) => handler.notify(self, msg),
                 _ => break,
             }
@@ -167,6 +167,7 @@ impl<H: Handler> EventLoop<H> {
     }
 }
 
+#[derive(Default)]
 pub struct EventLoopBuilder {
     config: Config,
 }
@@ -176,7 +177,7 @@ impl EventLoopBuilder {
         EventLoopBuilder::default()
     }
     pub fn notify_capacity(&mut self, capacity: usize) -> &mut Self {
-        self.config.notiy_capacity = capacity;
+        self.config.notify_capacity = capacity;
         self
     }
     pub fn messages_per_tick(&mut self, messages: usize) -> &mut Self {
@@ -196,7 +197,7 @@ impl EventLoopBuilder {
         self
     }
     pub fn build<H: Handler>(self) -> io::Result<EventLoop<H>> {
-        EventLoop::Configured(self.config)
+        EventLoop::configured(self.config)
     }
 }
 
