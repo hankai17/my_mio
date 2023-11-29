@@ -15,3 +15,10 @@ pub use self::notify::{
     NotifyError,
 };
 
+pub mod unix;
+pub use self::unix::{
+    pipe,
+    PipeReader,
+    PipeWriter,
+};
+

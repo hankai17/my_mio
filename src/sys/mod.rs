@@ -9,5 +9,6 @@ pub use self::unix::{
     Io,
     Selector,
     set_nonblock,
+    pipe,
 };
 
