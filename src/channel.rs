@@ -65,7 +65,7 @@ impl SenderCtl {
     pub fn inc(&self) -> io::Result<()> {
         let cnt = self.inner.pending.fetch_add(1, Ordering::Acquire);
         if 0 == cnt {
-            if let Some(set_readiness) = self.inner.set_readiness.borrow() {
+            if let Some(set_readiness) = self.inner.set_readiness.borrow() {    // Option类型 需用Some来接
                 set_readiness.set_readiness(Ready::readable())?;
             }
         }
@@ -93,6 +93,24 @@ pub struct ReceiverCtl {
     inner: Arc<Inner>,
 }
 
+impl ReceiverCtl {
+    pub fn dec(&self) -> io::Result<()> {
+        let first = self.inner.pending.load(Ordering::Acquire);
+        if first == 1 {
+            if let Some(set_readiness) = self.inner.set_readiness.borrow() {
+                set_readiness.set_readiness(Ready::empty())?;
+            }
+        }
+        let second = self.inner.pending.fetch_sub(1, Ordering::AcqRel);
+        if first == 1 && second > 1 {
+            if let Some(set_readiness) = self.inner.set_readiness.borrow() {
+                set_readiness.set_readiness(Ready::readable())?;
+            }
+        }
+        Ok(())
+    }
+}
+
 impl Evented for ReceiverCtl {
     fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
         if self.registration.borrow().is_some() {
@@ -117,24 +135,6 @@ impl Evented for ReceiverCtl {
             Some(registration) => registration.deregister(poll),
             None => Err(io::Error::new(io::ErrorKind::Other, "receiver not registered")),
         }
-    }
-}
-
-impl ReceiverCtl {
-    pub fn dec(&self) -> io::Result<()> {
-        let first = self.inner.pending.load(Ordering::Acquire);
-        if first == 1 {
-            if let Some(set_readiness) = self.inner.set_readiness.borrow() {
-                set_readiness.set_readiness(Ready::empty())?;
-            }
-        }
-        let second = self.inner.pending.fetch_sub(1, Ordering::AcqRel);
-        if first == 1 && second > 1 {
-            if let Some(set_readiness) = self.inner.set_readiness.borrow() {
-                set_readiness.set_readiness(Ready::readable())?;
-            }
-        }
-        Ok(())
     }
 }
 

@@ -3,21 +3,21 @@ use std::mem;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub struct LazyCell<T> {
-    inner: UnsafeCell<Option<T>>,
+    inner: UnsafeCell<Option<T>>,       // Option包装的是枚举(Some None) 
+                                        // UnsafeCell作用是编译期不能决定大小
 }
 
 impl<T> LazyCell<T> {
     pub fn new() -> LazyCell<T> {
-        LazyCell { inner: UnsafeCell::new(None) }
+        LazyCell { inner: UnsafeCell::new(None) }       // 默认填入None值
     }
 
-    pub fn fill(&self, value: T) -> Result<(), T> {
-        let slot = unsafe { &mut *self.inner.get() };
-        if slot.is_some() {
+    pub fn fill(&self, value: T) -> Result<(), T> {     // 封装的是枚举Ok Err
+        let slot = unsafe { &mut *self.inner.get() };   // get()返回值为 *mut T
+        if slot.is_some() {                             // 确保是None
             return Err(value);
         }
         *slot = Some(value);
-
         Ok(())
     }
 
@@ -25,16 +25,16 @@ impl<T> LazyCell<T> {
         mem::replace(unsafe { &mut *self.inner.get() }, Some(value))
     }
 
-    pub fn filled(&self) -> bool {
+    pub fn borrow(&self) -> Option<&T> {
+        unsafe { &*self.inner.get() }.as_ref()  //  converts from &Option<T> to Option<&T>
+    }
+
+    pub fn filled(&self) -> bool {              // 已经有值填充了
         self.borrow().is_some()
     }
 
-    pub fn borrow(&self) -> Option<&T> {
-        unsafe { &*self.inner.get() }.as_ref()
-    }
-
     pub fn borrow_mut(&mut self) -> Option<&mut T> {
-        unsafe { &mut *self.inner.get() }.as_mut()
+        unsafe { &mut *self.inner.get() }.as_mut()  // converts from &mut Option<T> to Option<&mut T>
     }
 
     pub fn borrow_with<F: FnOnce() -> T>(&self, f: F) -> &T {
@@ -45,7 +45,7 @@ impl<T> LazyCell<T> {
         if self.fill(value).is_err() {
             panic!("borrow_with: cell was filled by closure")
         }
-        self.borrow().unwrap()
+        self.borrow().unwrap()  // 去掉Option 如果是None则报错
     }
 
     pub fn borrow_mut_with<F: FnOnce() -> T>(&mut self, f: F) -> &mut T {
@@ -55,7 +55,6 @@ impl<T> LazyCell<T> {
                 panic!("borrow_mut_with: cell was filled by closure")
             }
         }
-
         self.borrow_mut().unwrap()
     }
 
@@ -86,7 +85,7 @@ impl<T> LazyCell<T> {
     }
 
     pub fn into_inner(self) -> Option<T> {
-        unsafe { self.inner.into_inner() }
+        unsafe { self.inner.into_inner() }  // 去掉UnsafeCell
     }
 }
 
@@ -117,13 +116,10 @@ impl<T> AtomicLazyCell<T> {
         if NONE != self.state.compare_and_swap(NONE, LOCK, Ordering::Acquire) {
             return Err(t);
         }
-
         unsafe { *self.inner.get() = Some(t) };
-
         if LOCK != self.state.compare_and_swap(LOCK, SOME, Ordering::Release) {
             panic!("unable to release lock");
         }
-
         Ok(())
     }
 
