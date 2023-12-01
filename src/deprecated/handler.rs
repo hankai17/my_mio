@@ -1,7 +1,8 @@
 use {Ready, Token};
 use deprecated::{EventLoop};
 
-pub trait Handler: Sized {
+pub trait Handler: Sized {  // trait的Size默认是未知的 即?Sized 因为不知道实现这个trait的结构是什么
+                            // 把unsized的类型放到指针或者Box里面，就变成了sized了
     type Timeout;   // 关联类型 意思是在实现的时候才知道他是什么类型
     type Message;
 
@@ -11,3 +12,5 @@ pub trait Handler: Sized {
     fn interrupted(&mut self, event_loop: &mut EventLoop<Self>) {}
     fn tick(&mut self, event_loop: &mut EventLoop<Self>) {}
 }
+
+// https://laplacedemon.gitbooks.io/-rust/content/sized4e0e3f-sized.html

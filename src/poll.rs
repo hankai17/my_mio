@@ -177,14 +177,14 @@ impl AtomicState {
     }
 }
 
-struct ReadinessNode {
+struct ReadinessNode {  // 三剑客 + next指针
     state: AtomicState,
     token_0: UnsafeCell<Token>,
     token_1: UnsafeCell<Token>,
     token_2: UnsafeCell<Token>,
     next_readiness: AtomicPtr<ReadinessNode>,
     update_lock: AtomicBool,
-    readiness_queue: AtomicPtr<()>,
+    readiness_queue: AtomicPtr<()>,     // hankai 为何ReadinessNode里会有一个queue?
     ref_count: AtomicUsize,
 }
 
@@ -229,7 +229,7 @@ impl ReadinessNode {
             ref_count: AtomicUsize::new(0),
         }
     }
-    fn enqueue_with_wakeup(&self) -> io::Result::<()> {
+    fn enqueue_with_wakeup(&self) -> io::Result::<()> { // node排入 自己的原子队列? // hankai queue从何而来?
         let queue = self.readiness_queue.load(Acquire);
         if queue.is_null() {
             return Ok(())
@@ -238,7 +238,7 @@ impl ReadinessNode {
     }
 }
 
-struct ReadinessQueueInner {
+struct ReadinessQueueInner {    // 无锁队列 三剑客
     awakener: sys::Awakener,
     head_readiness: AtomicPtr<ReadinessNode>,
     tail_readiness: UnsafeCell<*mut ReadinessNode>,
@@ -372,7 +372,7 @@ unsafe fn token(node: &ReadinessNode, pos: usize) -> Token {
 }
 
 impl ReadinessQueue {
-    fn new() -> io::Result<ReadinessQueue> {
+    fn new() -> io::Result<ReadinessQueue> {    // 初始化无锁队列 + 三剑客
         is_send::<Self>();
         is_sync::<Self>();
         let end_marker = Box::new(ReadinessNode::marker());
@@ -380,7 +380,7 @@ impl ReadinessQueue {
         let closed_marker = Box::new(ReadinessNode::marker());
         let ptr = &*end_marker as *const _ as *mut _;
         Ok(ReadinessQueue {
-            inner: Arc::new(ReadinessQueueInner {                          // hankai1
+            inner: Arc::new(ReadinessQueueInner {
                 awakener: sys::Awakener::new()?,
                 head_readiness: AtomicPtr::new(ptr),
                 tail_readiness: UnsafeCell::new(ptr),
@@ -390,14 +390,14 @@ impl ReadinessQueue {
             })
         })
     }
-    fn poll(&self, dst: &mut sys::Events) {
+    fn poll(&self, dst: &mut sys::Events) {     // 从无锁队列弹出一个节点 排入到events中
         let mut until = ptr::null_mut();
         if dst.len() == dst.capacity() {
             self.inner.clear_sleep_marker();
         }
         'outer:
         while dst.len() < dst.capacity() {
-            let ptr = match unsafe { self.inner.dequeue_node(until) } {     // hankai
+            let ptr = match unsafe { self.inner.dequeue_node(until) } {
                 Dequeue::Empty | Dequeue::Inconsistent => break,
                 Dequeue::Data(ptr) => ptr,
             };
@@ -489,7 +489,7 @@ impl Drop for ReadinessQueue {
 
 pub struct Poll {
     selector: sys::Selector,
-    readiness_queue: ReadinessQueue,
+    readiness_queue: ReadinessQueue,    // poller + 无锁队列
     lock_state: AtomicUsize,
     lock: Mutex<()>,
     condvar: Condvar,
@@ -510,7 +510,7 @@ impl Poll {
             selector: sys::Selector::new()?,
             readiness_queue: ReadinessQueue::new()?,
             lock_state: AtomicUsize::new(0),
-            lock: Mutex::new(()),                       // hankai
+            lock: Mutex::new(()),
             condvar: Condvar::new(),
         };
         poll.readiness_queue.inner.awakener.register(&poll, AWAKEN, Ready::readable(), PollOpt::edge())?;
@@ -521,7 +521,8 @@ impl Poll {
     {
         validate_args(token)?;
         log::trace!("register poller");
-        handle.register(self, token, interest, opts)?;
+        handle.register(self, token, interest, opts)?;      // 为何不直接用self.selector 要用参数handle的register?
+                                                            // 依赖反转 只是提供一个接口而已 不同类型的Evented(eg: channel:ReceiverCtl eg: unix/eventedfd Io)有不同的register
         Ok(())
     }
     pub fn reregister<E: ?Sized>(&self, handle: &E, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()>
@@ -747,7 +748,7 @@ impl RegistrationInner {
     fn readiness(&self) -> Ready {
         self.state.load(Relaxed).readiness()
     }
-    fn set_readiness(&self, ready: Ready) -> io::Result<()> {
+    fn set_readiness(&self, ready: Ready) -> io::Result<()> {   // 重置当前节点状态 如果有感兴趣的事件到来则入队
         let mut state = self.state.load(Acquire);
         let mut next;
         loop {
@@ -757,7 +758,7 @@ impl RegistrationInner {
             }
             next.set_readiness(ready);
             if !next.effective_readiness().is_empty() {
-                next.set_queued();
+                next.set_queued(); // 如果next有事件到来  那么会排入队列中 在当poll时传出到event数组中
             }
             let actual = self.state.compare_and_swap(state, next, AcqRel);
             if state == actual {
@@ -773,6 +774,7 @@ impl RegistrationInner {
     fn update(&self, poll: &Poll, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()> {
         let mut queue = self.readiness_queue.load(Relaxed);
         let other: &*mut () = unsafe {
+            //inner: Arc<ReadinessQueueInner>,
             &*(&poll.readiness_queue.inner as *const _ as *const *mut())
         };
         let other = *other;

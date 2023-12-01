@@ -289,6 +289,10 @@ impl<T> Default for Timer<T> {
 
 impl<T> Evented for Timer<T> {
     fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
+        if self.inner.borrow().is_some() {
+            return Err(io::Error::new(io::ErrorKind::Other, "timer alreay registered"));
+        }
+        let (registration, set_readiness) = Registration::new()
         Ok(())
     }
     fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {

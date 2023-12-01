@@ -62,7 +62,7 @@ const TIMER: Token = Token(usize::MAX - 2);
 
 impl<H: Handler> EventLoop<H> {
     fn configured(config: Config) -> io::Result<EventLoop<H>> {
-        let poll = Poll::new()?;
+        let poll = Poll::new()?;                // 分配一个poll
         let timer = timer::Builder::default()
             .tick_duration(config.timer_tick)
             .num_slots(config.timer_wheel_size)
