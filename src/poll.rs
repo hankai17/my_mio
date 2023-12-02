@@ -863,6 +863,7 @@ impl Drop for RegistrationInner {
     }
 }
 
+#[derive(Clone)]
 pub struct SetReadiness {
     inner: RegistrationInner,
 }
