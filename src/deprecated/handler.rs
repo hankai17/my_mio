@@ -10,7 +10,7 @@ pub trait Handler: Sized {  // trait的Size默认是未知的 即?Sized 因为�
     fn notify(&mut self, event_loop: &mut EventLoop<Self>, msg: Self::Message) {} // 值传递Self 所以trait必须是Sized
     fn timeout(&mut self, event_loop: &mut EventLoop<Self>, timeout: Self::Timeout) {}
     fn interrupted(&mut self, event_loop: &mut EventLoop<Self>) {}
-    fn tick(&mut self, event_loop: &mut EventLoop<Self>) {}
+    fn tick(&mut self, event_loop: &mut EventLoop<Self>) {} // 定时器
 }
 
 // https://laplacedemon.gitbooks.io/-rust/content/sized4e0e3f-sized.html

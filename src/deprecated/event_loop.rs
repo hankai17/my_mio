@@ -68,9 +68,9 @@ impl<H: Handler> EventLoop<H> {
             .num_slots(config.timer_wheel_size)
             .capacity(config.timer_capacity)
             .build();
-        let (tx, rx) = channel::sync_channel(config.notify_capacity);
-        poll.register(&rx, NOTIFY, Ready::readable(), PollOpt::edge() | PollOpt::oneshot())?;
-        poll.register(&timer, TIMER, Ready::readable(), PollOpt::edge())?;
+        let (tx, rx) = channel::sync_channel(config.notify_capacity);   // 初始化pipe
+        poll.register(&rx, NOTIFY, Ready::readable(), PollOpt::edge() | PollOpt::oneshot())?;   // 监听pipe
+        poll.register(&timer, TIMER, Ready::readable(), PollOpt::edge())?;  // 初始化timer
         Ok(EventLoop {
             run: true,
             poll,
@@ -95,7 +95,8 @@ impl<H: Handler> EventLoop<H> {
     }
     pub fn shutdown(&mut self) { self.run = false; }
     pub fn is_running(&self) -> bool { self.run }
-    pub fn register<E: ?Sized>(&mut self, io: &E, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()>
+    //pub fn register<E: ?Sized>(&mut self, io: &E, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()>
+    pub fn register<E>(&mut self, io: &E, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()> // 也可以
         where E: Evented {
         self.poll.register(io, token, interest, opt)
     }
@@ -114,7 +115,7 @@ impl<H: Handler> EventLoop<H> {
         handler.ready(self, evt.token(), evt.readiness());
     }
     fn notify(&mut self, handler: &mut H) {
-        for _ in 0..self.config.messages_per_tick {
+        for _ in 0..self.config.messages_per_tick {     // 每个周期尝试从pipe 最多读取256次
             match self.notify_rx.try_recv() {
                 Ok(msg) => handler.notify(self, msg),
                 _ => break,
@@ -155,7 +156,7 @@ impl<H: Handler> EventLoop<H> {
             }
         };
         self.io_process(handler, events);
-        handler.tick(self);
+        handler.tick(self);     // 没有实现也能调?
         Ok(())
     }
     pub fn run(&mut self, handler: &mut H) -> io::Result<()> {
