@@ -177,14 +177,14 @@ impl AtomicState {
     }
 }
 
-struct ReadinessNode {  // 三剑客 + next指针
+struct ReadinessNode {  // 三剑客 + next指针 + queue
     state: AtomicState,
     token_0: UnsafeCell<Token>,
     token_1: UnsafeCell<Token>,
     token_2: UnsafeCell<Token>,
     next_readiness: AtomicPtr<ReadinessNode>,
     update_lock: AtomicBool,
-    readiness_queue: AtomicPtr<()>,     // hankai 为何ReadinessNode里会有一个queue?
+    readiness_queue: AtomicPtr<()>,
     ref_count: AtomicUsize,
 }
 
@@ -229,7 +229,7 @@ impl ReadinessNode {
             ref_count: AtomicUsize::new(0),
         }
     }
-    fn enqueue_with_wakeup(&self) -> io::Result::<()> { // node排入 自己的原子队列? // hankai queue从何而来?
+    fn enqueue_with_wakeup(&self) -> io::Result::<()> { // node排入队列 队列一般是Poll中的
         let queue = self.readiness_queue.load(Acquire);
         if queue.is_null() {
             return Ok(())
@@ -928,8 +928,8 @@ impl Registration {
         is_sync::<Registration>();
         is_send::<SetReadiness>();
         is_sync::<SetReadiness>();
-        let queue = poll.readiness_queue.inner.clone();
-        let queue: *mut () = unsafe { mem::transmute(queue) };
+        let queue = poll.readiness_queue.inner.clone(); // inner: Arc<ReadinessQueueInner> // 引用计数+1
+        let queue: *mut () = unsafe { mem::transmute(queue) };  // Arc<R> -> *mut() 类型  // 此时的queue是 queue本身的裸地址?
         let node = Box::into_raw(Box::new(ReadinessNode::new(queue, token, interest, opt, 3)));
         let registration = Registration {
             inner: RegistrationInner {

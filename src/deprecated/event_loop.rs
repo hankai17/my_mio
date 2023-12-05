@@ -69,7 +69,7 @@ impl<H: Handler> EventLoop<H> {
             .capacity(config.timer_capacity)
             .build();
         let (tx, rx) = channel::sync_channel(config.notify_capacity);   // 初始化pipe
-        poll.register(&rx, NOTIFY, Ready::readable(), PollOpt::edge() | PollOpt::oneshot())?;   // 监听pipe
+        poll.register(&rx, NOTIFY, Ready::readable(), PollOpt::edge() | PollOpt::oneshot())?;   // 初始化receiver中的node
         poll.register(&timer, TIMER, Ready::readable(), PollOpt::edge())?;  // 初始化timer
         Ok(EventLoop {
             run: true,

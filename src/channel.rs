@@ -75,7 +75,7 @@ impl SenderCtl {
 
 impl Clone for SenderCtl {
     fn clone(&self) -> SenderCtl {
-        self.inner.senders.fetch_add(1, Ordering::Relaxed);
+        self.inner.senders.fetch_add(1, Ordering::Relaxed); // 多此一举? 不能读取use_count?
         SenderCtl { inner: self.inner.clone() }
     }
 }
@@ -116,11 +116,11 @@ impl Evented for ReceiverCtl {
         if self.registration.borrow().is_some() {
             return Err(io::Error::new(io::ErrorKind::Other, "receiver already registered"));
         }
-        let (registration, set_readiness) = Registration::new(poll, token, interest, opts);
+        let (registration, set_readiness) = Registration::new(poll, token, interest, opts); // 分配一个node
         if self.inner.pending.load(Ordering::Relaxed) > 0 {
             let _ = set_readiness.set_readiness(Ready::readable());
         }
-        self.registration.fill(registration).expect("unexpected state encountered");
+        self.registration.fill(registration).expect("unexpected state encountered");        // 初始化成私有的node
         self.inner.set_readiness.fill(set_readiness).expect("unexpected state encountered");
         Ok(())
     }
@@ -138,7 +138,7 @@ impl Evented for ReceiverCtl {
     }
 }
 
-pub struct Sender<T> {
+pub struct Sender<T> {      // hankai1 此Sender是 标准Sender + inner指针
     tx: mpsc::Sender<T>,
     ctl: SenderCtl,
 }
@@ -163,7 +163,7 @@ impl<T> Clone for Sender<T> {
     }
 }
 
-pub struct SyncSender<T> {
+pub struct SyncSender<T> {  // hankai1
     tx: mpsc::SyncSender<T>,
     ctl: SenderCtl,
 }
@@ -196,7 +196,7 @@ impl<T> Clone for SyncSender<T> {
     }
 }
 
-pub struct Receiver<T> {
+pub struct Receiver<T> {    // hankai2 此Receiver是 标准Receiver + inner指针 + node指针
     rx: mpsc::Receiver<T>,
     ctl: ReceiverCtl,
 }
@@ -233,7 +233,7 @@ pub fn ctl_pair() -> (SenderCtl, ReceiverCtl) {
     };
     let rx = ReceiverCtl {
         registration: LazyCell::new(),
-        inner,
+        inner,  // 为何不clone?
     };
     (tx, rx)
 }

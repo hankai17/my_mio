@@ -2,7 +2,8 @@ use std::cell::UnsafeCell;
 use std::mem;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-pub struct LazyCell<T> {
+pub struct LazyCell<T> {                // 封装的是 一个编译期大小不能确定的枚举值
+                                        // 目的是为了判断 在编译期这个值有无初始化?
     inner: UnsafeCell<Option<T>>,       // Option包装的是枚举(Some None) 
                                         // UnsafeCell作用是编译期不能决定大小
 }
