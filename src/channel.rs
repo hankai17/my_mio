@@ -116,7 +116,7 @@ impl Evented for ReceiverCtl {
         if self.registration.borrow().is_some() {
             return Err(io::Error::new(io::ErrorKind::Other, "receiver already registered"));
         }
-        let (registration, set_readiness) = Registration::new(poll, token, interest, opts); // 分配一个node
+        let (registration, set_readiness) = Registration::new(poll, token, interest, opts); // 分配一个node 并"引用"poll的queue
         if self.inner.pending.load(Ordering::Relaxed) > 0 {
             let _ = set_readiness.set_readiness(Ready::readable());
         }

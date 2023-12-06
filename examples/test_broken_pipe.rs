@@ -11,8 +11,10 @@ impl Handler for BrokenPipeHandler {
     type Timeout = ();
     type Message = ();
     fn ready(&mut self, _: &mut EventLoop<Self>, token: Token, _: Ready) {
+        println!("BrokenPipeHandler ready");
         if token == Token(1) {
-            panic!("Reveived ready() on a closed pipe.");
+            //panic!("Reveived ready() on a closed pipe.");
+            println!("Reveived ready() on a closed pipe.");
         }
     }
 }
@@ -57,12 +59,35 @@ pub fn sleep_ms(ms: u64) {
 }
 
 pub fn test1() {
+    /*
+    let (reader, _) = unix::pipe().unwrap();
+    println!("-----------------------");
+    // writer写成_ 析构是在该test1函数结束后执行
+    */
+
+    /*
+    let (reader, _) = unix::pipe().unwrap(); // 关闭writer
+    println!("11111111111111");
+    println!("22222222222222");
+    drop(reader); // 关闭reader
+    println!("-----------------------");
+    */
+
+    /*
+    let (reader, writer) = unix::pipe().unwrap();
+    println!("11111111111111");
+    println!("22222222222222");
+    drop(reader); // 此行关闭reader // 函数结尾关闭writer
+    println!("-----------------------");
+    */
+
     let mut event_loop: EventLoop<BrokenPipeHandler> = EventLoop::new().unwrap();
     let (reader, _) = unix::pipe().unwrap();
     event_loop.register(&reader, Token(1), Ready::all(), PollOpt::edge()).unwrap();
     let mut handler = BrokenPipeHandler;
-    drop(reader);
+    drop(reader);       // drop/close后 epoll不会通知
     event_loop.run_once(&mut handler, Some(Duration::from_millis(1000))).unwrap();
+    println!("test1 fun done");
 }
 
 pub fn test2() {
@@ -81,5 +106,6 @@ pub fn test2() {
 
 pub fn main() {
     test1();
-    test2();
+    //println!("test1 fun done1");
+    //test2();
 }

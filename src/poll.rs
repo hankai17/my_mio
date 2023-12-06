@@ -452,7 +452,7 @@ impl ReadinessQueue {
         if tail == sleep_marker {
             return self.inner.head_readiness.load(Acquire) == sleep_marker;
         }
-        if tail == end_marker {
+        if tail != end_marker {
             return false;
         }
         self.inner.sleep_marker.next_readiness.store(ptr::null_mut(), Relaxed);

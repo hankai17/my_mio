@@ -62,7 +62,7 @@ const TIMER: Token = Token(usize::MAX - 2);
 
 impl<H: Handler> EventLoop<H> {
     fn configured(config: Config) -> io::Result<EventLoop<H>> {
-        let poll = Poll::new()?;                // 分配一个poll
+        let poll = Poll::new()?;                // 分配一个poll // 监听无锁队列里pipe的读端
         let timer = timer::Builder::default()
             .tick_duration(config.timer_tick)
             .num_slots(config.timer_wheel_size)
@@ -132,7 +132,7 @@ impl<H: Handler> EventLoop<H> {
         let mut i = 0;
         log::trace!("io_process(..); cnt={}; len={}", cnt, self.events.len());
         while i < cnt {
-            let evt = self.events.get(i).unwrap();
+            let evt = self.events.get(i).unwrap();  // epoll_event 转为 Ready
             log::trace!("event={:?}; idx={:?}", evt, i);
             match evt.token() {
                 NOTIFY => self.notify(handler),

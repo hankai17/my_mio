@@ -32,6 +32,14 @@ impl Io {
     }
 }
 
+/*
+impl Drop for Io {
+    fn drop(&mut self) {
+        println!("Dropping Io!");
+    }
+}
+*/
+
 impl FromRawFd for Io {
     unsafe fn from_raw_fd(fd: RawFd) -> Io {
         Io { fd: File::from_raw_fd(fd) }

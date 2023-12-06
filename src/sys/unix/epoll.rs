@@ -6,7 +6,7 @@ use std::{cmp, i32};
 
 use libc::{self, c_int};
 use libc::{EPOLLERR, EPOLLHUP, EPOLLONESHOT};
-use libc::{EPOLLET, EPOLLOUT, EPOLLIN, EPOLLPRI};
+use libc::{EPOLLET, EPOLLOUT, EPOLLIN, EPOLLPRI}; // define in /usr/include/sys/epoll.h 
 
 use {io, Ready, PollOpt, Token};
 use event_imp::Event;
@@ -162,7 +162,7 @@ impl Events {
             if (epoll & EPOLLHUP) != 0 {
                 kind = kind | UnixReady::hup()
             }
-            let token = self.events[idx].u64;
+            let token = self.events[idx].u64;   // rust对标准的epoll_event进行封装了?
             Event::new(kind, Token(token as usize))
         })
     }
