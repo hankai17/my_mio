@@ -46,7 +46,7 @@ node* mpscq_pop(mpscq_t* self)
 {
 	node* tail = self->tail;
 	node* next = tail->next;
-	if (tail == &self->stub) {
+	if (tail == &self->stub) { // 首次消费
 		if (0 == next)
 		  return 0;
 		self->tail = next;
@@ -57,10 +57,11 @@ node* mpscq_pop(mpscq_t* self)
 		self->tail = next;
 		return tail;
 	}
+                                // next是空的 即tail与head重合了
 	node* head = self->head;
 	if (tail != head)
 	  return 0;
-	mpscq_push(self, &self->stub);	// self->head 指向原始节点
+	mpscq_push(self, &self->stub);	// 排入原始节点
 	next = tail->next;
 	if (next) {
 		self->tail = next;			// tail 指向原始节点

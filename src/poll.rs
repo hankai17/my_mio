@@ -272,10 +272,13 @@ impl ReadinessQueueInner {
         Ok(())
     }
     fn enqueue_node(&self, node: &ReadinessNode) -> bool {
-        let node_ptr = node as * const _ as * mut _;                // 定义一个可写属性的node_ptr
-        node.next_readiness.store(ptr::null_mut(), Relaxed);        // node只读 但可改其子成员
+        let node_ptr = node as * const _ as * mut _;                // 拿到node裸指针
+        node.next_readiness.store(ptr::null_mut(), Relaxed);
         unsafe {
-            let mut prev = self.head_readiness.load(Acquire);
+            //let mut prev: *mut ReadinessNode  = self.head_readiness.load(Acquire); // OK 但是太繁琐了 直接用let自动推导
+            let mut prev = self.head_readiness.load(Acquire);       // pub fn load(&self, order: Ordering) -> *mut T // 返回*mut ReadinessNode类型
+                                                                    // 下面要改变prev 所以加上mut  加上的这个mut跟 *mut ReadinessNode中的mut不是一个意思
+                                                                    // 这里加上mut后 即是mut *mut ReadinessNode
             loop {
                 if prev == self.closed_marker() {
                     debug_assert!(node_ptr != self.closed_marker());
@@ -290,7 +293,7 @@ impl ReadinessQueueInner {
                 if prev == act {
                     break;
                 }
-                prev = act;
+                prev = act; //  cannot assign twice to immutable variable
             }
             debug_assert!((*prev).next_readiness.load(Relaxed).is_null());
             (*prev).next_readiness.store(node_ptr, Release);        // 尾插 头在尾
@@ -315,8 +318,10 @@ impl ReadinessQueueInner {
         }
     }
     unsafe fn dequeue_node(&self, until: *mut ReadinessNode) -> Dequeue {
-        let mut tail = *self.tail_readiness.get();
-        let mut next = (*tail).next_readiness.load(Acquire);
+        let mut tail = *(self.tail_readiness.get());    // pub const fn get(&self) -> *mut T // get得到的类型是*mut (*mut ReadinessNode)
+                                                        // tail是 *mut ReadinessNode类型
+        //let mut next = (tail).next_readiness.load(Acquire); // `(tail)` is a raw pointer; try dereferencing it:
+        let mut next = (*tail).next_readiness.load(Acquire);    // pub fn load(&self, order: Ordering) -> *mut T
         if tail == self.end_marker() || tail == self.sleep_marker() || tail == self.closed_marker() {
             if next.is_null() {
                 self.clear_sleep_marker();
@@ -378,7 +383,7 @@ impl ReadinessQueue {
         let end_marker = Box::new(ReadinessNode::marker());
         let sleep_marker = Box::new(ReadinessNode::marker());
         let closed_marker = Box::new(ReadinessNode::marker());
-        let ptr = &*end_marker as *const _ as *mut _;
+        let ptr = &(*end_marker) as *const _ as *mut _;
         Ok(ReadinessQueue {
             inner: Arc::new(ReadinessQueueInner {
                 awakener: sys::Awakener::new()?,
