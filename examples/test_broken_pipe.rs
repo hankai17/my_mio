@@ -96,6 +96,7 @@ pub fn test2() {
     // registe listener
     // registe client connect
     sleep_ms(250);
+    println!("after sleep 250ms") ;
     let mut handler = TestHandler::new();
     for _ in 0..2 {
         event_loop.run_once(&mut handler, None).unwrap();
@@ -105,7 +106,7 @@ pub fn test2() {
 }
 
 pub fn main() {
-    test1();
+    //test1();
     //println!("test1 fun done1");
-    //test2();
+    test2();
 }

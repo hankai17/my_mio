@@ -377,7 +377,7 @@ unsafe fn token(node: &ReadinessNode, pos: usize) -> Token {
 }
 
 impl ReadinessQueue {
-    fn new() -> io::Result<ReadinessQueue> {    // 初始化无锁队列 + 三剑客
+    fn new() -> io::Result<ReadinessQueue> {    // 初始化无锁队列 + 三marker + poll
         is_send::<Self>();
         is_sync::<Self>();
         let end_marker = Box::new(ReadinessNode::marker());
@@ -636,7 +636,7 @@ impl Poll {
             }
         }
         let ret = self.poll2(events, timeout, interruptible);
-        if 1 != self.lock_state.fetch_add(!1, Release) {
+        if 1 != self.lock_state.fetch_and(!1, Release) {
             let _lock = self.lock.lock().unwrap();
             self.condvar.notify_one();
         }
@@ -777,7 +777,7 @@ impl RegistrationInner {
         Ok(())
     }
     fn update(&self, poll: &Poll, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()> {
-        let mut queue = self.readiness_queue.load(Relaxed);
+        let mut queue = self.readiness_queue.load(Relaxed);     // 奇怪的用法
         let other: &*mut () = unsafe {
             //inner: Arc<ReadinessQueueInner>,
             &*(&poll.readiness_queue.inner as *const _ as *const *mut())
@@ -785,7 +785,7 @@ impl RegistrationInner {
         let other = *other;
         debug_assert!(mem::size_of::<Arc<ReadinessQueueInner>>() == mem::size_of::<*mut ()>());
         if queue.is_null() {
-            let actual = self.readiness_queue.compare_and_swap(queue, other, Release);
+            let actual = self.readiness_queue.compare_and_swap(queue, other, Release);      // node中的queue 指向poll中的queue
             if actual.is_null() {
                 self.ref_count.fetch_add(1, Relaxed);
                 mem::forget(poll.readiness_queue.clone());
@@ -828,7 +828,7 @@ impl RegistrationInner {
             if !next.effective_readiness().is_empty() {
                 next.set_queued();
             }
-            let actual = self.state.compare_and_swap(state, next, Release);
+            let actual = self.state.compare_and_swap(state, next, Release);             // 更新node中state的值
             if actual == state {
                 break;
             }
