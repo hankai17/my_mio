@@ -91,8 +91,8 @@ impl ReadinessState {
         self.0 |= QUEUED_MASK;
     }
     fn set_dequeued(&mut self) {
-        debug_assert!(!self.is_queued());
-        self.0 |= !QUEUED_MASK
+        debug_assert!(self.is_queued());
+        self.0 &= !QUEUED_MASK
     }
     fn token_read_pos(self) -> usize {
         self.get(MASK_2, TOKEN_RD_SHIFT)

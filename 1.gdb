@@ -11,3 +11,5 @@ b test1
 b poll1
 b poll.rs:274
 
+b AtomicState::compare_and_swap
+b AtomicState::flag_as_dropped
