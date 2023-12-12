@@ -113,7 +113,7 @@ fn test3() { // single_thread_poll
             if events.is_empty() {
                 break;
             }
-            for event in &events {
+            for event in &events {          // 迭代器trait
                 ready[event.token().0] = event.readiness();
             }
         }
@@ -149,7 +149,7 @@ fn test4() { // mlti_thread_poll
     let poll = Arc::new(Poll::new().unwrap());
     let mut entries = vec![];
 
-    for i in 0..ENTRIES {
+    for i in 0..ENTRIES {   // 分配10000个node 并初始化为ready
         let (registration, set_readiness) = Registration::new2();
         registration.register(&poll, Token(i), Ready::readable(), PollOpt::edge()).unwrap();
         entries.push(Entry{
@@ -173,13 +173,17 @@ fn test4() { // mlti_thread_poll
             let mut events = Events::with_capacity(128);
             barrier.wait();
             let mut i = th;
-            while i < ENTRIES {
+            while i < ENTRIES {     // 0线程 0 4 8 12 下标的node都排入队列
+                                    // 1线程 1 5 9 13
+                                    // 2线程 2 6 10 14
+                                    // 3线程 3 7 11 15
+                                    // 即4个线程均分了10000个node
                 entries[i].fire();
                 i += THREADS;
             }
             let mut n = 0;
-            while total.load(SeqCst) < NUM {
-                n + poll.poll(&mut events, Some(Duration::from_millis(100))).unwrap();
+            while total.load(SeqCst) < NUM {    // 2500个node 经16次反复排入队列中
+                n += poll.poll(&mut events, Some(Duration::from_millis(100))).unwrap();
                 let mut num_this_tick = 0;
                 for event in &events {
                     let e = &entries[event.token().0];
@@ -311,6 +315,7 @@ fn test6() {
 fn main() {
     //test1();
     //test2();
-    test3();
+    //test3();
+    test4();
 }
 
