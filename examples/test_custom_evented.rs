@@ -167,7 +167,7 @@ fn test4() { // mlti_thread_poll
         let poll = poll.clone();
         let total = total.clone();
         let entries = entries.clone();
-        let barrier = barrier.clone();
+        let barrier = barrier.clone();  // 何作用?
 
         threads.push(thread::spawn(move || {
             let mut events = Events::with_capacity(128);
@@ -240,7 +240,7 @@ fn test5() { // with_small_events_collection
         thread::spawn(move || {
             barrier.wait();
             while !done.load(Acquire) {
-                set_readiness.set_readiness(Ready::readable()).unwrap();
+                set_readiness.set_readiness(Ready::readable()).unwrap();    // 1死循环入队
             }
             set_readiness.set_readiness(Ready::readable()).unwrap();
         });
@@ -249,9 +249,9 @@ fn test5() { // with_small_events_collection
     let mut events = Events::with_capacity(4);
     barrier.wait();
     for _ in 0..ITER {
-        poll.poll(&mut events, None).unwrap();
+        poll.poll(&mut events, None).unwrap();  // 1polling
     }
-    done.store(true, Release);
+    done.store(true, Release);  // 子线程的最后 8个ready node重新已入队
     let mut final_ready = vec![false; N];
 
     for _ in 0..5 {
@@ -279,7 +279,7 @@ fn test6() {
     let mut senders = Vec::with_capacity(THREADS);
     let mut token_index = 0;
     
-    for _ in 0..THREADS {
+    for _ in 0..THREADS { // 起8个线程 每个线程中起一个channel并阻塞读取reader端 线程中拿到node则排入队列
         let (tx, rx) = channel::<(Registration, SetReadiness)>();
         senders.push(tx);
         thread::spawn(move || {
@@ -292,13 +292,13 @@ fn test6() {
     }
 
     let mut index: usize = 0;
-    for _ in 0..ITERS {
+    for _ in 0..ITERS { // 50000个node 平均排入8个channel的writer端
         let (registration, set_readiness) = Registration::new2();
         registration.register(&poll, Token(token_index), Ready::readable(), PollOpt::edge()).unwrap();
         let _ = senders[index].send((registration, set_readiness));
         token_index += 1;
         index += 1;
-        if index == THREADS {
+        if index == THREADS {   // 主线程时不时的分配node排入队列
             index = 0;
             let (registration, set_readiness) = Registration::new2();
             registration.register(&poll, Token(token_index), Ready::readable(), PollOpt::edge()).unwrap();
@@ -316,6 +316,8 @@ fn main() {
     //test1();
     //test2();
     //test3();
-    test4();
+    //test4();
+    //test5();
+    test6();
 }
 

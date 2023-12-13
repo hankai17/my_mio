@@ -12,6 +12,13 @@ pub enum SendError<T> {
     Disconnected(T),
 }
 
+fn format_send_error<T>(e: &SendError<T>, f: &mut fmt::Formatter) -> fmt::Result {
+    match *e {
+        SendError::Io(ref io_err) => write!(f, "{}", io_err),
+        SendError::Disconnected(..) => write!(f, "Disconnected"),
+    }
+}
+
 impl<T> From<mpsc::SendError<T>> for SendError<T> {
     fn from(src: mpsc::SendError<T>) -> SendError<T> {
         SendError::Disconnected(src.0)
@@ -21,6 +28,12 @@ impl<T> From<mpsc::SendError<T>> for SendError<T> {
 impl<T> From<io::Error> for SendError<T> {
     fn from(src: io::Error) -> SendError<T> {
         SendError::Io(src)
+    }
+}
+
+impl<T> fmt::Debug for SendError<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        format_send_error(self, f)
     }
 }
 
@@ -52,7 +65,7 @@ impl<T> From<io::Error> for TrySendError<T> {
 }
 
 struct Inner {
-    pending: AtomicUsize,
+    pending: AtomicUsize,   // 发送成功的次数
     senders: AtomicUsize,
     set_readiness: AtomicLazyCell<SetReadiness>,
 }
@@ -62,7 +75,7 @@ pub struct SenderCtl {
 }
 
 impl SenderCtl {
-    pub fn inc(&self) -> io::Result<()> {
+    pub fn inc(&self) -> io::Result<()> {   // 每send成功一次 调用该函数
         let cnt = self.inner.pending.fetch_add(1, Ordering::Acquire);
         if 0 == cnt {
             if let Some(set_readiness) = self.inner.set_readiness.borrow() {    // Option类型 需用Some来接
@@ -112,15 +125,15 @@ impl ReceiverCtl {
 }
 
 impl Evented for ReceiverCtl {
-    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
+    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {   // 接收端注册: 分配一个node // 如果有pending则立即入队
         if self.registration.borrow().is_some() {
             return Err(io::Error::new(io::ErrorKind::Other, "receiver already registered"));
         }
-        let (registration, set_readiness) = Registration::new(poll, token, interest, opts); // 分配一个node 并"引用"poll的queue
+        let (registration, set_readiness) = Registration::new(poll, token, interest, opts);
         if self.inner.pending.load(Ordering::Relaxed) > 0 {
             let _ = set_readiness.set_readiness(Ready::readable());
         }
-        self.registration.fill(registration).expect("unexpected state encountered");        // 初始化成私有的node
+        self.registration.fill(registration).expect("unexpected state encountered");        // 接收端 保存node
         self.inner.set_readiness.fill(set_readiness).expect("unexpected state encountered");
         Ok(())
     }

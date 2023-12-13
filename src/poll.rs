@@ -585,10 +585,10 @@ impl Poll {
     fn poll1(&self, events: &mut Events, mut timeout: Option<Duration>, interruptible: bool) -> io::Result<(usize)> {
         let zero = Some(Duration::from_millis(0));
         let mut curr = self.lock_state.compare_and_swap(0, 1, SeqCst);
-        if 0 != curr {
+        if 0 != curr {      // 其它线程已对poll上锁 
             let mut lock = self.lock.lock().unwrap();
             let mut inc = false;
-            loop {
+            loop {                          // 这个loop确保polling 顺序执行
                 if curr & 1 == 0 {
                     let mut next = curr | 1;
                     if inc {
@@ -599,9 +599,9 @@ impl Poll {
                         curr = actual;
                         continue;
                     }
-                    break;
+                    break;              // 唯一出路
                 }
-                if timeout == zero {
+                if timeout == zero {    // 是个很紧急的poll 但是拿不到锁 直接返回Ok // 这个设计不合理
                     if inc {
                         self.lock_state.fetch_sub(2, SeqCst);
                     }
@@ -609,7 +609,7 @@ impl Poll {
                 }
                 if !inc {
                     let next = curr.checked_add(2).expect("overflow");
-                    let actual = self.lock_state.compare_and_swap(curr, next, SeqCst);
+                    let actual = self.lock_state.compare_and_swap(curr, next, SeqCst);  // 确保每个线程按序 +2
                     if actual != curr {
                         curr = actual;
                         continue;
@@ -623,20 +623,20 @@ impl Poll {
                         let elapsed = now.elapsed();
                         if elapsed >= to {
                             timeout = zero;
-                        } else {
+                        } else {    // 虚假超时
                             timeout = Some(to - elapsed);
                         }
                         l
                     }
                     None => {
-                        self.condvar.wait(lock).unwrap()
+                        self.condvar.wait(lock).unwrap()    // 4个线程 0线程一直polling 1~3线程wait
                     }
                 };
                 curr = self.lock_state.load(SeqCst);
             }
         }
         let ret = self.poll2(events, timeout, interruptible);
-        if 1 != self.lock_state.fetch_and(!1, Release) {
+        if 1 != self.lock_state.fetch_and(!1, Release) {    // 老值不为1 说明polling有竞争 // lock_stat & fff1110 
             let _lock = self.lock.lock().unwrap();
             self.condvar.notify_one();
         }
