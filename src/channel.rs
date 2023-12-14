@@ -134,7 +134,7 @@ impl Evented for ReceiverCtl {
             let _ = set_readiness.set_readiness(Ready::readable());
         }
         self.registration.fill(registration).expect("unexpected state encountered");        // 接收端 保存node
-        self.inner.set_readiness.fill(set_readiness).expect("unexpected state encountered");
+        self.inner.set_readiness.fill(set_readiness).expect("unexpected state encountered");    // hankai1初始化inner中的set_readiness
         Ok(())
     }
     fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
@@ -151,7 +151,7 @@ impl Evented for ReceiverCtl {
     }
 }
 
-pub struct Sender<T> {      // hankai1 此Sender是 标准Sender + inner指针
+pub struct Sender<T> {
     tx: mpsc::Sender<T>,
     ctl: SenderCtl,
 }
@@ -176,7 +176,7 @@ impl<T> Clone for Sender<T> {
     }
 }
 
-pub struct SyncSender<T> {  // hankai1
+pub struct SyncSender<T> {
     tx: mpsc::SyncSender<T>,
     ctl: SenderCtl,
 }
@@ -209,7 +209,7 @@ impl<T> Clone for SyncSender<T> {
     }
 }
 
-pub struct Receiver<T> {    // hankai2 此Receiver是 标准Receiver + inner指针 + node指针
+pub struct Receiver<T> {
     rx: mpsc::Receiver<T>,
     ctl: ReceiverCtl,
 }
