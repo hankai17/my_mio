@@ -5,7 +5,7 @@ use my_mio::event::Evented;
 use std::time::Duration;
 
 fn main() {
-    for _ in 0..2000 {
+    for _ in 0..1 {
         let poll = Poll::new().unwrap(); 
         let mut events = Events::with_capacity(4);
         let (r, s) = Registration::new2();

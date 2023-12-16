@@ -257,7 +257,7 @@ fn release_node(ptr: *mut ReadinessNode) {
         if queue.is_null() {
             return;
         }
-        let _: Arc<ReadinessQueueInner> = mem::transmute(queue);
+        let _: Arc<ReadinessQueueInner> = mem::transmute(queue);    // 偷着引用计数-1
     }
 }
 
@@ -559,7 +559,7 @@ impl Poll {
         }
         loop {
             let now = Instant::now();
-            let res = self.selector.select(&mut events.inner, AWAKEN, timeout);
+            let res = self.selector.select(&mut events.inner, AWAKEN, timeout);   // inner: sys::Events,
             match res {
                 Ok(true) => {
                     self.readiness_queue.inner.awakener.cleanup();
@@ -777,10 +777,9 @@ impl RegistrationInner {
         Ok(())
     }
     fn update(&self, poll: &Poll, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()> {
-        let mut queue = self.readiness_queue.load(Relaxed);     // 奇怪的用法
+        let mut queue = self.readiness_queue.load(Relaxed);
         let other: &*mut () = unsafe {
-            //inner: Arc<ReadinessQueueInner>,
-            &*(&poll.readiness_queue.inner as *const _ as *const *mut())
+            &*(&poll.readiness_queue.inner as *const _ as *const *mut()) // inner: Arc<ReadinessQueueInner>,
         };
         let other = *other;
         debug_assert!(mem::size_of::<Arc<ReadinessQueueInner>>() == mem::size_of::<*mut ()>());
@@ -788,7 +787,7 @@ impl RegistrationInner {
             let actual = self.readiness_queue.compare_and_swap(queue, other, Release);      // node中的queue 指向poll中的queue
             if actual.is_null() {
                 self.ref_count.fetch_add(1, Relaxed);
-                mem::forget(poll.readiness_queue.clone());
+                mem::forget(poll.readiness_queue.clone());  // 平白无故让引用计数+1 // 为什么不设计一个强引用呢?
             } else {
                 if actual != other {
                     return Err(io::Error::new(io::ErrorKind::Other, "Registration handle associated with another Poll instance"));
@@ -924,7 +923,9 @@ impl Registration {
     pub fn new(poll: &Poll, token: Token, interest: Ready, opt: PollOpt)
             -> (Registration, SetReadiness)
     {
-        Registration::new_priv(poll, token, interest, opt)
+        let (r, s) = Registration::new_priv(poll, token, interest, opt);
+        println!("after clone poll.readiness_queue.inner use_count4: {}", Arc::strong_count(&poll.readiness_queue.inner));
+        (r, s)
     }
     fn new_priv(poll: &Poll, token: Token, interest: Ready, opt: PollOpt)
             -> (Registration, SetReadiness)
@@ -933,9 +934,13 @@ impl Registration {
         is_sync::<Registration>();
         is_send::<SetReadiness>();
         is_sync::<SetReadiness>();
+        //println!("poll.readiness_queue.inner use_count: {}", Arc::strong_count(&poll.readiness_queue.inner));
         let queue = poll.readiness_queue.inner.clone(); // inner: Arc<ReadinessQueueInner> // 引用计数+1
-        let queue: *mut () = unsafe { mem::transmute(queue) };  // Arc<R> -> *mut() 类型  // 此时的queue是 queue本身的裸地址?
-        let node = Box::into_raw(Box::new(ReadinessNode::new(queue, token, interest, opt, 3)));
+        //println!("after clone poll.readiness_queue.inner use_count1: {}", Arc::strong_count(&poll.readiness_queue.inner));
+        let queue1: *mut () = unsafe { mem::transmute(queue) };  // Arc<R> -> *mut() 类型  // 此时的queue是 queue本身的裸地址? // queue被move走了 所以不会析构 所以偷了一个引用计数+1
+        //println!("after clone poll.readiness_queue.inner use_count2: {}", Arc::strong_count(&poll.readiness_queue.inner));
+        let node = Box::into_raw(Box::new(ReadinessNode::new(queue1, token, interest, opt, 3)));
+        //println!("after clone poll.readiness_queue.inner use_count3: {}", Arc::strong_count(&poll.readiness_queue.inner));
         let registration = Registration {
             inner: RegistrationInner {
                 node,

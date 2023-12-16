@@ -13,6 +13,7 @@ set print pretty
 #
 #b AtomicState::compare_and_swap
 #b AtomicState::flag_as_dropped
-b SenderCtl::inc
-b Registration::new2
-b Registration::new
+#b SenderCtl::inc
+#b Registration::new2
+#b Registration::new
+
