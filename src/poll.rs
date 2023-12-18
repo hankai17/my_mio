@@ -924,7 +924,7 @@ impl Registration {
             -> (Registration, SetReadiness)
     {
         let (r, s) = Registration::new_priv(poll, token, interest, opt);
-        println!("after clone poll.readiness_queue.inner use_count4: {}", Arc::strong_count(&poll.readiness_queue.inner));
+        //println!("after clone poll.readiness_queue.inner use_count4: {}", Arc::strong_count(&poll.readiness_queue.inner));
         (r, s)
     }
     fn new_priv(poll: &Poll, token: Token, interest: Ready, opt: PollOpt)

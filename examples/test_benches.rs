@@ -42,7 +42,7 @@ fn main() {
     let poll = Poll::new().unwrap();
     let mut events = Events::with_capacity(1024);
 
-    let (r, s) = Registration::new( &poll, Token(0), Ready::readable(), PollOpt::edge()); // 用 let (_, s) 接 则立即drop
+    let (r, s) = Registration::new( &poll, Token(0), Ready::readable(), PollOpt::edge()); // 用let (_, s)接 则立即析构(drop) 标记为drop并入队 set_readiness入队发现为drop态则不能置位
     s.set_readiness(Ready::readable()).unwrap();
     //println!("after clone poll.readiness_queue.inner use_count2: {}", Arc::strong_count(&poll.readiness_queue.inner));
 
