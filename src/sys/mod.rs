@@ -10,5 +10,8 @@ pub use self::unix::{
     Selector,
     set_nonblock,
     pipe,
+    TcpStream,
+    TcpListener,
+    UdpSocket,
 };
 

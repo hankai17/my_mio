@@ -1,6 +1,8 @@
 extern crate libc;
 extern crate log;
 extern crate slab;
+extern crate net2;
+extern crate iovec;
 
 mod event_imp;
 pub use event_imp:: {
