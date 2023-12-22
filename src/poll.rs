@@ -34,6 +34,35 @@ fn validate_args(token: Token) -> io::Result<()> {
     Ok(())
 }
 
+pub struct SelectorId {
+    id: AtomicUsize,
+}
+
+impl SelectorId {
+    pub fn new() -> SelectorId {
+        SelectorId {
+            id: AtomicUsize::new(0)
+        }
+    }
+    pub fn associate_selector(&self, poll: &Poll) -> io::Result<()> {
+        let selector_id = self.id.load(Ordering::SeqCst);
+        if selector_id != 0 && selector_id != poll.selector.id() {
+            Err(io::Error::new(io::ErrorKind::Other, "Socket already registered"))
+        } else {
+            self.id.store(poll.selector.id(), Ordering::SeqCst);
+            Ok(())
+        }
+    }
+}
+
+impl Clone for SelectorId {
+    fn clone(&self) -> SelectorId {
+        SelectorId {
+            id: AtomicUsize::new(self.id.load(Ordering::SeqCst))
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 struct ReadinessState(usize);   // | queue |  RW  | opt | interest | readiness
                                 // 20      16     12    8          4      <--0

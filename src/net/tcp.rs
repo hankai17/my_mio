@@ -166,7 +166,7 @@ impl Write for TcpStream {
     }
 }
 
-impl<'a> Write for TcpStream {
+impl<'a> Write for &'a TcpStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         (&self.sys).write(buf)
     }
@@ -207,7 +207,7 @@ impl TcpListener {
             selector_id: SelectorId::new(),
         })
     }
-    pub fn from_listener(listener: net::TcpListener, _: &ScoketAddr)
+    pub fn from_listener(listener: net::TcpListener, _: &SocketAddr)
             -> io::Result<TcpListener> {
         TcpListener::from_std(listener)
     }
@@ -266,6 +266,8 @@ impl Evented for TcpListener {
         self.sys.deregister(poll)
     }
 }
+
+use std::os::unix::io::{IntoRawFd, AsRawFd, FromRawFd, RawFd};
 
 impl IntoRawFd for TcpStream {
     fn into_raw_fd(self) -> RawFd {

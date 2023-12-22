@@ -37,6 +37,13 @@ pub mod channel;
 pub mod timer;
 pub mod deprecated;
 
+pub mod net;
+pub use iovec::IoVec;
+pub mod tcp {
+    pub use net::{TcpListener, TcpStream};
+    pub use std::net::Shutdown;
+}
+
 mod convert {
     use std::time::Duration;
     const NANOS_PER_MILLI: u32 = 1_000_000;
