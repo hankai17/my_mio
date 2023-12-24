@@ -29,6 +29,9 @@ impl UnixReady {
     pub fn is_priority(&self) -> bool {
         self.contains(ready_from_usize(PRI))
     }
+    pub fn is_error(&self) -> bool {
+        self.contains(ready_from_usize(ERROR))
+    }
 }
 
 impl From<Ready> for UnixReady {

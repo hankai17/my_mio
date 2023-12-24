@@ -5,7 +5,7 @@ extern crate env_logger;
 
 use my_mio::{Events, Poll, PollOpt, Ready, Token};
 use my_mio::event::Event;
-use my_mio::net::{TcpListener, TcpStream};
+use my_mio::net::{TcpListener, TcpStream, UdpSocket};
 use bytes::SliceBuf;
 use std::time::Duration;
 
@@ -32,6 +32,11 @@ impl<T> MapNonBlock<T> for io::Result<T> {
             }
         }
     }
+}
+
+fn sleep_ms(ms: u64) {
+    use std::thread;
+    thread::sleep(Duration::from_millis(ms));
 }
 
 pub trait TryRead {
@@ -217,36 +222,140 @@ fn test_tcp_register_multiple_event_loops() {
 
     poll1.register(&listener, Token(0), Ready::readable() | Ready::writable(), PollOpt::edge()).unwrap();
     let res = poll2.register(&listener, Token(0), Ready::readable() | Ready::writable(), PollOpt::edge());
-    if res.is_err() {
-        println!("is error");
-    }
-    //assert!(res.is_err());
-    //assert_eq!(res.unwrap_err().kind(), ErrorKind::Other);
+    assert!(res.is_err());
+    assert_eq!(res.unwrap_err().kind(), ErrorKind::Other);
 
     let listener2 = listener.try_clone().unwrap();
     let res = poll2.register(&listener2, Token(0), Ready::readable() | Ready::writable(), PollOpt::edge());
-    if res.is_err() {
-        println!("is error");
-    }
-    //assert!(res.is_err());
-    //assert_eq!(res.unwrap_err().kind(), ErrorKind::Other);
+    assert!(res.is_err());
+    assert_eq!(res.unwrap_err().kind(), ErrorKind::Other);
 
     let stream = TcpStream::connect(&addr).unwrap();
     poll1.register(&stream, Token(1), Ready::readable() | Ready::writable(), PollOpt::edge()).unwrap();
-    let res = poll2.register(&stream, Token(1), Ready::readable() | Ready::writable(), PollOpt::edge()).unwrap();
-    //assert!(res.is_err());
-    //assert_eq!(res.unwrap_err().kind(), ErrorKind::Other);
+    let res = poll2.register(&stream, Token(1), Ready::readable() | Ready::writable(), PollOpt::edge());
+    assert!(res.is_err());
+    assert_eq!(res.unwrap_err().kind(), ErrorKind::Other);
 
     let stream2 = stream.try_clone().unwrap();
-    let res = poll2.register(&stream2, Token(1), Ready::readable() | Ready::writable(), PollOpt::edge()).unwrap();
-    //assert!(res.is_err());
-    //assert_eq!(res.unwrap_err().kind(), ErrorKind::Other);
+    let res = poll2.register(&stream2, Token(1), Ready::readable() | Ready::writable(), PollOpt::edge());
+    assert!(res.is_err());
+    assert_eq!(res.unwrap_err().kind(), ErrorKind::Other);
 
+}
+
+fn test_udp_register_multiple_event_loops() {
+    let addr = localhost();
+    let socket = UdpSocket::bind(&addr).unwrap();
+
+    let poll1 = Poll::new().unwrap();
+    let poll2 = Poll::new().unwrap();
+    poll1.register(&socket, Token(0), Ready::readable() | Ready::writable(), PollOpt::edge()).unwrap();
+
+    let res = poll2.register(&socket, Token(0), Ready::readable() | Ready::writable(), PollOpt::edge());
+    assert!(res.is_err());
+    assert_eq!(res.unwrap_err().kind(), ErrorKind::Other);
+
+    let socket2 = socket.try_clone().unwrap();
+    let res = poll2.register(&socket2, Token(0), Ready::readable() | Ready::writable(), PollOpt::edge());
+    assert!(res.is_err());
+    assert_eq!(res.unwrap_err().kind(), ErrorKind::Other);
+}
+
+const MS: u64 = 1_000;
+
+fn filter(events: &Events, token: Token) -> Vec<Event> {
+    (0..events.len()).map(|i| events.get(i).unwrap())
+        .filter(|e| e.token() == token)
+        .collect()
+}
+
+fn test_tcp_listener_level_triggered() {
+    let poll = Poll::new().unwrap();
+    let mut pevents = Events::with_capacity(1024);
+    let l = TcpListener::bind(&"127.0.0.1:0".parse().unwrap()).unwrap();
+    poll.register(&l, Token(0), Ready::readable(), PollOpt::level()).unwrap();
+    let s1 = TcpStream::connect(&l.local_addr().unwrap()).unwrap();
+    poll.register(&s1, Token(1), Ready::readable(), PollOpt::edge()).unwrap();
+    while filter(&pevents, Token(0)).is_empty() {
+        poll.poll(&mut pevents, Some(Duration::from_millis(MS))).unwrap();
+    }
+    let events = filter(&pevents, Token(0));
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0], Event::new(Ready::readable(), Token(0)));
+
+    let _ = l.accept().unwrap();
+    poll.poll(&mut pevents, Some(Duration::from_millis(MS))).unwrap();
+    let events = filter(&pevents, Token(0));
+    assert!(events.is_empty(), "actual={:?}", events);
+
+    let s3 = TcpStream::connect(&l.local_addr().unwrap()).unwrap();
+    poll.register(&s3, Token(2), Ready::readable(), PollOpt::edge()).unwrap();
+    while filter(&pevents, Token(0)).is_empty() {
+        poll.poll(&mut pevents, Some(Duration::from_millis(MS))).unwrap();
+    }
+    let events = filter(&pevents, Token(0));
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0], Event::new(Ready::readable(), Token(0)));
+
+    drop(l);
+
+    poll.poll(&mut pevents, Some(Duration::from_millis(MS))).unwrap();
+    let events = filter(&pevents, Token(0));
+    assert!(events.is_empty())
+}
+
+fn test_tcp_stream_level_triggered() {
+    //drop(::env_logger()::init());
+    let poll = Poll::new().unwrap();
+    let mut pevents = Events::with_capacity(1024);
+    let l = TcpListener::bind(&"127.0.0.1:0".parse().unwrap()).unwrap();
+    poll.register(&l, Token(0), Ready::readable(), PollOpt::edge()).unwrap();
+    let mut s1 = TcpStream::connect(&l.local_addr().unwrap()).unwrap();
+    poll.register(&s1, Token(1), Ready::readable() | Ready::writable(), PollOpt::level()).unwrap();
+    sleep_ms(250);
+    expect_events(&poll, &mut pevents, 2, vec![
+        Event::new(Ready::readable(), Token(0)),
+        Event::new(Ready::writable(), Token(1)),
+    ]);
+    let (mut s1_tx, _) = l.accept().unwrap();
+    sleep_ms(250);
+    expect_events(&poll, &mut pevents, 2, vec![
+        Event::new(Ready::writable(), Token(1)),
+    ]);
+    /*
+    poll.register(&s1_tx, Token(123), Ready::readable() | Ready::writable(), PollOpt::edge()).unwrap();
+    expect_events(&poll, &mut pevents, 2, vec![
+        Event::new(Ready::writable(), Token(1)),
+        Event::new(Ready::writable(), Token(123)),
+    ]);
+    */
+    poll.register(&s1_tx, Token(123), Ready::readable(), PollOpt::edge()).unwrap();
+    let res = s1_tx.write(b"hello world");
+    assert!(res.unwrap() > 0);
+    sleep_ms(250);
+    expect_events(&poll, &mut pevents, 2, vec![
+        Event::new(Ready::readable(), Token(1))
+    ]);
+    let mut res = vec![];
+    while s1.try_read_buf(&mut res).unwrap().is_some() {
+        
+    }
+    assert_eq!(res, b"hello world");
+    expect_events(&poll, &mut pevents, 1, vec![
+        Event::new(Ready::writable(), Token(1))
+    ]);
+    drop(s1);
+    poll.poll(&mut pevents, Some(Duration::from_millis(MS))).unwrap();
+    let events = filter(&pevents, Token(1));
+    assert!(events.is_empty());
 }
 
 fn main() {
     //test_register_deregister();
     //test_register_empty_interest();
-    test_tcp_register_multiple_event_loops();
+    //test_tcp_register_multiple_event_loops();
+    //test_udp_register_multiple_event_loops();
+    //test_tcp_listener_level_triggered();
+    test_tcp_stream_level_triggered();
 }
 
