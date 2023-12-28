@@ -1,4 +1,5 @@
 extern crate my_mio;
+extern crate net2;
 
 use std::collections::HashMap;
 use std::net::{self, Shutdown};
@@ -131,11 +132,59 @@ fn test_write_shutdown() {
     assert_idle!(poll);
     assert_ok!(socket.shutdown(Shutdown::Write));
     assert_ready!(poll, Token(0), Ready::readable());
-    assert_not_hup_ready!(poll);
+    assert_not_hup_ready!(poll);    // 再次poll不会有hup事件
     let n = assert_ok!(client.read(&mut buf));
     assert_eq!(n, 0);
 }
 
+fn test_graceful_shutdown() {
+    use std::io::prelude::*;
+    let mut poll = TestPoll::new();
+    let mut buf = [0; 1024];
+    let listener = assert_ok!(net::TcpListener::bind("127.0.0.1:0"));
+    let addr = assert_ok!(listener.local_addr());
+    let mut client = assert_ok!(TcpStream::connect(&addr));
+    poll.register(&client, Token(0), Ready::readable() | Ready::writable(), PollOpt::edge());
+    let (mut socket, _) = assert_ok!(listener.accept());
+    assert_ready!(poll, Token(0), Ready::writable());
+    assert_idle!(poll);
+    assert_ok!(client.shutdown(Shutdown::Write));
+    let n = assert_ok!(socket.read(&mut buf));
+    assert_eq!(0, n);
+
+    drop(socket);
+    assert_ready!(poll, Token(0), Ready::readable());
+    assert_hup_ready!(poll);
+
+    let mut buf = [0; 1024];
+    let n = assert_ok!(client.read(&mut buf));
+    assert_eq!(n, 0);
+}
+
+fn test_abrupt_shutdown() {
+    use net2::TcpStreamExt;
+    use std::io::Read;
+    let mut poll = TestPoll::new();
+    let listener = assert_ok!(net::TcpListener::bind("127.0.0.1:0"));
+    let addr = assert_ok!(listener.local_addr());
+    let mut client = assert_ok!(TcpStream::connect(&addr));
+    poll.register(&client, Token(0), Ready::readable() | Ready::writable(), PollOpt::edge());
+    let (socket, _) = assert_ok!(listener.accept());
+    assert_ok!(socket.set_linger(Some(Duration::from_millis(0))));
+    assert_ready!(poll, Token(0), Ready::writable());
+    drop(socket);
+
+    assert_ready!(poll, Token(0), Ready::writable());
+    assert_ready!(poll, Token(0), Ready::readable());
+
+    let mut buf = [0; 1024];
+    let res = client.read(&mut buf);
+    assert!(res.is_err(), "not err = {:?}", res);
+    println!("res: {:?}", res);
+}
+
 fn main() {
-    test_write_shutdown();
+    //test_write_shutdown();
+    //test_graceful_shutdown();
+    test_abrupt_shutdown();
 }
