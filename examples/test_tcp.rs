@@ -1,6 +1,7 @@
 extern crate my_mio;
 extern crate bytes;
 extern crate iovec;
+extern crate net2;
 
 use std::cmp;
 use std::io;
@@ -456,6 +457,173 @@ fn connect_then_close() {
     }
 }
 
+fn listen_then_close() {
+    let poll = Poll::new().unwrap();
+    let l = TcpListener::bind(&"127.0.0.1:0".parse().unwrap()).unwrap();
+    poll.register(&l, Token(1), Ready::readable(), PollOpt::edge()).unwrap();
+    drop(l);
+    let mut events = Events::with_capacity(128);
+    poll.poll(&mut events, Some(Duration::from_millis(100))).unwrap();
+    for event in &events {
+        println!("--------------");
+        if event.token() == Token(1) {
+            panic!("recieved ready() on a closed TcpListener")
+        }
+    }
+}
+
+fn assert_send<T: Send>() {
+}
+fn assert_sync<T: Sync>() {
+}
+
+fn test_tcp_sockets_are_send() {
+    assert_send::<TcpListener>();
+    assert_send::<TcpStream>();
+    assert_sync::<TcpListener>();
+    assert_sync::<TcpStream>();
+}
+
+fn bind_twice_bad() {
+    let l1 = TcpListener::bind(&"127.0.0.1:0".parse().unwrap()).unwrap();
+    let addr = l1.local_addr().unwrap();
+    assert!(TcpListener::bind(&addr).is_err());
+}
+
+fn multiple_writes_imm_success() {
+    const N: usize = 16;
+    let l = net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = l.local_addr().unwrap();
+    let t = thread::spawn(move || {
+        let mut s = l.accept().unwrap().0;
+        let mut b = [0; 1024];
+        let mut amt = 0;
+        while amt < N * 1024 {
+            for byte in b.iter_mut() {
+                *byte = 0;
+            }
+            let n = s.read(&mut b).unwrap();
+            amt += n;
+            for byte in b[..n].iter() {
+                assert_eq!(*byte, 1);
+            }
+        }
+    });
+    let poll = Poll::new().unwrap();
+    let mut s = TcpStream::connect(&addr).unwrap();
+    poll.register(&s, Token(1), Ready::writable(), PollOpt::level()).unwrap();
+    let mut events = Events::with_capacity(16);
+    'outer: loop {
+        poll.poll(&mut events, None).unwrap();
+        for event in events.iter() {
+            if event.token() == Token(1) &&
+                    event.readiness().is_writable() {
+                break 'outer
+            }
+        }
+    }
+    for _ in 0..N {
+        s.write_all(&[1; 1024]).unwrap();
+    }
+    t.join().unwrap();
+}
+
+fn connection_reset_by_peer() {
+    use net2::TcpStreamExt;
+    let poll = Poll::new().unwrap();
+    let mut events = Events::with_capacity(16);
+    let mut buf = [0u8; 16];
+    let l = TcpListener::bind(&"127.0.0.1:0".parse().unwrap()).unwrap();
+    let addr = l.local_addr().unwrap();
+    let client = net2::TcpBuilder::new_v4().unwrap()
+        .to_tcp_stream().unwrap();
+    client.set_linger(Some(Duration::from_millis(0))).unwrap();
+    client.connect(&addr).unwrap();
+    let client = TcpStream::from_stream(client).unwrap();
+    poll.register(&l, Token(0), Ready::readable(), PollOpt::edge()).unwrap();
+    poll.register(&client, Token(1), Ready::readable() | Ready::writable(), PollOpt::edge()).unwrap();
+    let mut server;
+    'outer:
+    loop {
+        poll.poll(&mut events, None).unwrap();
+        for event in &events {
+            if event.token() == Token(0) {
+                match l.accept() {
+                    Ok((sock, _)) => {
+                        server = sock;
+                        break 'outer;
+                    }
+                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
+                    Err(e) => panic!("unexpected err {:?}", e),
+                }
+            }
+        }
+    }
+    drop(client);
+    thread::sleep(Duration::from_millis(100));
+    poll.register(&server, Token(3), Ready::readable(), PollOpt::edge()).unwrap();
+    loop {
+        poll.poll(&mut events, None).unwrap();
+        for event in &events {
+            if event.token() == Token(3) {
+                assert!(event.readiness().is_readable());
+                match server.read(&mut buf) {
+                    Ok(0) |
+                    Err(_) => {},
+                    Ok(x) => panic!("expected empty buffer but read {} bytes", x),
+                }
+                return;
+            }
+        }
+    }
+}
+
+fn write_error() {
+    let poll = Poll::new().unwrap();
+    let mut events = Events::with_capacity(16);
+    let (tx, rx) = channel();
+    let listener = net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let t = thread::spawn(move || {
+        let (conn, _addr) = listener.accept().unwrap();
+        rx.recv().unwrap();
+        drop(conn);
+    });
+
+    let mut s = TcpStream::connect(&addr).unwrap();
+    poll.register(&s, Token(0), Ready::readable() | Ready::writable(), PollOpt::edge()).unwrap();
+    let mut wait_writable = || {
+        'outer:
+        loop {
+            poll.poll(&mut events, None).unwrap();
+            for event in &events {
+                if event.token() == Token(0) &&
+                        event.readiness().is_writable() {
+                    break 'outer
+                }
+            }
+        }
+    };
+    wait_writable();
+
+    tx.send(()).unwrap();
+    t.join().unwrap();
+
+    let buf = [0; 1024];
+    loop {
+        match s.write(&buf) {
+            Ok(_) => {}
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                wait_writable()
+            }
+            Err(e) => {
+                println!("good error: {}", e);
+                break;
+            }
+        }
+    }
+}
+
 fn main() {
     accept();
     connect();
@@ -464,5 +632,11 @@ fn main() {
     write();
     write_bufs();
     connect_then_close();
+    listen_then_close();
+    test_tcp_sockets_are_send();
+    bind_twice_bad();
+    multiple_writes_imm_success();
+    connection_reset_by_peer();
+    write_error();
 }
 
