@@ -12,7 +12,7 @@ use std::io::{Read, Write};
 trait MapNonBlock<T> {
     fn map_non_block(self) -> io::Result<Option<T>>;
 }
-impl<T> MapNonBlock<T> for io::Result<T> {
+impl<T> MapNonBlock<T> for io::Result<T> {  // 给io::Result<T>添加trait
     fn map_non_block(self) -> io::Result<Option<T>> {
         use std::io::ErrorKind::WouldBlock;
         match self {
@@ -29,7 +29,7 @@ impl<T> MapNonBlock<T> for io::Result<T> {
 }
 pub trait TryRead {
     fn try_read_buf<B: MutBuf>(&mut self, buf: &mut B) -> io::Result<Option<usize>> 
-        where Self : Sized {
+            where Self : Sized {
         let res = self.try_read(unsafe { buf.mut_bytes() });
         if let Ok(Some(cnt)) = res {
             unsafe { buf.advance(cnt); }
@@ -179,7 +179,7 @@ impl EchoClient {
         EchoClient {
             sock,
             msg,
-            tx: SliceBuf::wrap(curr.as_bytes()),
+            tx: SliceBuf::wrap(curr.as_bytes()),    // pub const fn as_bytes(&self) -> &[u8]  // pub fn wrap(bytes: &'a [u8]) -> SliceBuf<'a>
             rx: SliceBuf::wrap(curr.as_bytes()),
             mut_buf: Some(ByteBuf::mut_with_capacity(2048)),
             token,
@@ -189,7 +189,7 @@ impl EchoClient {
     }
     fn readable(&mut self, poll: &mut Poll) -> io::Result<()> {
         println!("client socket readable");
-        let mut buf = self.mut_buf.take().unwrap();
+        let mut buf = self.mut_buf.take().unwrap(); // take(&mut self) -> Option<T> // Takes the value out of the option, leaving a None in its place.
         match self.sock.try_read_buf(&mut buf) {
             Ok(None) => {
                 println!("Client spurious read wakeup");
@@ -237,8 +237,7 @@ impl EchoClient {
         if self.interest.is_readable() || self.interest.is_writable() {
             try!(poll.reregister(&self.sock, self.token, self.interest,
                     PollOpt::edge() | PollOpt::oneshot()));
-        }
-        Ok(())
+        } Ok(())
     }
     fn next_msg(&mut self, poll: &mut Poll) -> io::Result<()> {
         if self.msg.is_empty() {
