@@ -140,7 +140,7 @@ impl EchoServer {
     fn accept(&mut self, poll: &mut Poll) -> io::Result<()> {
         println!("Server accepting socket");
         let sock = self.sock.accept().unwrap().0;
-        let conn = EchoConn::new(sock,);
+        let conn = EchoConn::new(sock);
         let tok = self.conns.insert(conn);
         self.conns[tok].token = Some(Token(tok));
         poll.register(&self.conns[tok].sock, Token(tok), Ready::readable(),
@@ -179,7 +179,7 @@ impl EchoClient {
         EchoClient {
             sock,
             msg,
-            tx: SliceBuf::wrap(curr.as_bytes()),    // pub const fn as_bytes(&self) -> &[u8]  // pub fn wrap(bytes: &'a [u8]) -> SliceBuf<'a>
+            tx: SliceBuf::wrap(curr.as_bytes()),    // as_bytes(&self) -> &[u8]  // wrap(bytes: &'a [u8]) -> SliceBuf<'a>
             rx: SliceBuf::wrap(curr.as_bytes()),
             mut_buf: Some(ByteBuf::mut_with_capacity(2048)),
             token,
