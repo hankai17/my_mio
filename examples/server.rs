@@ -141,9 +141,9 @@ impl EchoServer {
         println!("Server accepting socket");
         let sock = self.sock.accept().unwrap().0;
         let conn = EchoConn::new(sock);
-        let tok = self.conns.insert(conn);
-        self.conns[tok].token = Some(Token(tok));
-        poll.register(&self.conns[tok].sock, Token(tok), Ready::readable(),
+        let key = self.conns.insert(conn);
+        self.conns[key].token = Some(Token(key));
+        poll.register(&self.conns[key].sock, Token(key), Ready::readable(),
                 PollOpt::edge() | PollOpt::oneshot())
             .expect("could not register socket with event loop");
         Ok(())
