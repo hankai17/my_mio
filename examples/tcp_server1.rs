@@ -7,7 +7,7 @@ use my_mio::net::{TcpListener, TcpStream};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use slab::Slab;
 use std::io;
-use std::mem::MaybeUninit;
+use my_mio::deprecated::{unix, EventLoop, Handler};
 
 use std::io::{Read, Write};
 trait MapNonBlock<T> {
@@ -68,6 +68,60 @@ impl<T: Write> TryWrite for T {
     }
 }
 
+struct TestHandler {
+    tick: usize,
+    state: usize,
+}
+
+impl TestHandler {
+    fn new() -> TestHandler {
+        TestHandler {
+            tick: 0,
+            state: 0,
+        }
+    }
+}
+
+impl Handler for TestHandler {
+    type Timeout = usize;
+    type Message = String;
+    fn tick(&mut self, _event_loop: &mut EventLoop<TestHandler>) {
+        println!("Handler::tick()");
+        self.tick += 1;
+        assert_eq!(self.state, 1);
+        self.state = 0;
+    }
+    fn ready(&mut self, _event_loop: &mut EventLoop<TestHandler>, token: Token, events: Ready) {
+        println!("Ready: {:?} - {:?}", token, events);
+        if events.is_readable() {
+            println!("Handler::ready() readable event");
+            assert_eq!(token, Token(0));
+            assert_eq!(self.state, 0);
+            self.state = 1;
+        }
+    }
+}
+
+fn sleep_ms(ms: u64) {
+    use std::thread;
+    thread::sleep(Duration::from_millis(ms));
+}
+
+
+fn main() {
+    let mut event_loop = EventLoop::new().expect("Couldn't make event loop");
+    let listener = TcpListener::bind(&"127.0.0.1".parse().unwrap()).unwrap();
+    event_loop.register(&listener, Token(0), Ready::readable(), PollOpt::level()).unwrap();
+
+    let mut handler = TestHandler::new();
+    for _ in 0..2 {
+        event_loop.run_once(&mut handler, None).unwrap();
+    }
+    assert!(handler.tick == 2, "actual={}", handler.tick);
+    assert!(handler.state == 0, "actual={}", handler.state);
+}
+
+/*
 const SERVER: Token = Token(10_000_000);
 const CLIENT: Token = Token(10_000_001);
 
@@ -211,3 +265,4 @@ fn main() {
     }
 
 }
+*/
