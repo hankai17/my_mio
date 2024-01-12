@@ -4,9 +4,10 @@ extern crate bytes;
 
 use my_mio::{Events, Poll, PollOpt, Ready, Token};
 use my_mio::net::{TcpListener, TcpStream};
-use bytes::{Buf, ByteBuf, MutBuf, MutByteBuf, SliceBuf};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
 use slab::Slab;
 use std::io;
+use std::mem::MaybeUninit;
 
 use std::io::{Read, Write};
 trait MapNonBlock<T> {
@@ -28,11 +29,30 @@ impl<T> MapNonBlock<T> for io::Result<T> {  // 给io::Result<T>添加trait
     }
 }
 pub trait TryRead {
-    fn try_read_buf<B: MutBuf>(&mut self, buf: &mut B) -> io::Result<Option<usize>> 
+    fn try_read_buf<B: BufMut>(&mut self, buf: &mut B) -> io::Result<Option<usize>> 
             where Self : Sized {
-        let res = self.try_read(unsafe { buf.mut_bytes() });
+        /*
+        let bytes: &mut [MaybeUninit<u8>] = &mut buf.chunk_mut()[..];
+        for b in &mut bytes[..] {
+            *b.as_mut_ptr() = 0;
+        }
+        let res = self.try_read(unsafe { &mut *(bytes as *mut [MaybeUninit<u8>] as *mut [u8]) });
+        */
+
+        /*
+        let res = self.try_read(unsafe {
+            &mut *(&mut buf.chunk_mut()[..] as 
+                *mut [MaybeUninit<u8>] as
+                *mut [u8])
+        });
+        */
+
+        let res = self.try_read(unsafe { 
+            std::slice::from_raw_parts_mut(buf.chunk_mut().as_mut_ptr(), buf.remaining_mut())
+        });
+
         if let Ok(Some(cnt)) = res {
-            unsafe { buf.advance(cnt); }
+            unsafe { buf.advance_mut(cnt); }    // len增大
         }
         res 
     }
@@ -42,9 +62,9 @@ pub trait TryRead {
 pub trait TryWrite {
     fn try_write_buf<B: Buf>(&mut self, buf: &mut B) -> io::Result<Option<usize>> 
         where Self : Sized {
-        let res = self.try_write(buf.bytes());
+        let res = self.try_write(buf.chunk());  // 从ptr处取len个字串
         if let Ok(Some(cnt)) = res {
-            buf.advance(cnt);
+            buf.advance(cnt);   // ptr右移 len缩小 cap缩小
         }
         res
     }
@@ -66,35 +86,34 @@ impl<T: Write> TryWrite for T {
 const SERVER: Token = Token(10_000_000);
 const CLIENT: Token = Token(10_000_001);
 
-struct EchoConn {
+struct Session {
     sock: TcpStream,
-    buf: Option<ByteBuf>,
-    mut_buf: Option<MutByteBuf>,
+    mut_buf: Option<BytesMut>,
+    // rw mut_buf TODO
     token: Option<Token>,
     interest: Ready
 }
 
-impl EchoConn {
-    fn new(sock: TcpStream) -> EchoConn {
-        EchoConn {
+impl Session {
+    fn new(sock: TcpStream) -> Session {
+        Session {
             sock,
-            buf: None,
-            mut_buf: Some(ByteBuf::mut_with_capacity(2048)),
+            mut_buf: Some(BytesMut::with_capacity(2048)),
             token: None,
             interest: Ready::empty(),
         }
     }
     fn writable(&mut self, poll: &mut Poll) -> io::Result<()> {
-        let mut buf = self.buf.take().unwrap();
+        let mut buf = self.mut_buf.take().unwrap();
         match self.sock.try_write_buf(&mut buf) {
             Ok(None) => {
                 println!("client flushing buf; WouldBlock");
-                self.buf = Some(buf);
+                self.mut_buf = Some(buf);
                 self.interest.insert(Ready::writable());
             }
             Ok(Some(r)) => {
                 println!("Conn: write {} bytes", r);
-                self.mut_buf = Some(buf.flip());
+                self.mut_buf = Some(buf);
                 self.interest.insert(Ready::readable());
                 self.interest.remove(Ready::writable());
             }
@@ -116,7 +135,7 @@ impl EchoConn {
             }
             Ok(Some(r)) => {
                 println!("Conn: read {} bytes", r);
-                self.buf = Some(buf.flip());
+                self.mut_buf = Some(buf);
                 self.interest.remove(Ready::readable());
                 self.interest.insert(Ready::writable());
             }
@@ -131,16 +150,16 @@ impl EchoConn {
     }
 }
 
-struct EchoServer {
+struct TcpServer {
     sock: TcpListener,
-    conns: Slab<EchoConn>
+    conns: Slab<Session>
 }
 
-impl EchoServer {
+impl TcpServer {
     fn accept(&mut self, poll: &mut Poll) -> io::Result<()> {
         println!("Server accepting socket");
         let sock = self.sock.accept().unwrap().0;
-        let conn = EchoConn::new(sock);
+        let conn = Session::new(sock);
         let key = self.conns.insert(conn);
         self.conns[key].token = Some(Token(key));
         poll.register(&self.conns[key].sock, Token(key), Ready::readable(),
@@ -157,116 +176,22 @@ impl EchoServer {
         println!("server conn writable, token: {:?}", token);
         self.conn(token).writable(poll)
     }
-    fn conn(&mut self, token: Token) -> &mut EchoConn {
+    fn conn(&mut self, token: Token) -> &mut Session {
         &mut self.conns[token.into()]
     }
 }
 
-struct EchoClient {
-    sock: TcpStream,
-    msg: Vec<&'static str>,
-    tx: SliceBuf<'static>,
-    rx: SliceBuf<'static>,
-    mut_buf: Option<MutByteBuf>,
-    token: Token,
-    interest: Ready,
-    shutdown: bool,
+struct Test {
+    server: TcpServer,
 }
 
-impl EchoClient {
-    fn new(sock: TcpStream, token: Token, mut msg: Vec<&'static str>) -> EchoClient {
-        let curr = msg.remove(0);
-        EchoClient {
-            sock,
-            msg,
-            tx: SliceBuf::wrap(curr.as_bytes()),    // as_bytes(&self) -> &[u8]  // wrap(bytes: &'a [u8]) -> SliceBuf<'a>
-            rx: SliceBuf::wrap(curr.as_bytes()),
-            mut_buf: Some(ByteBuf::mut_with_capacity(2048)),
-            token,
-            interest: Ready::empty(),
-            shutdown: false,
-        }
-    }
-    fn readable(&mut self, poll: &mut Poll) -> io::Result<()> {
-        println!("client socket readable");
-        let mut buf = self.mut_buf.take().unwrap(); // take(&mut self) -> Option<T> // Takes the value out of the option, leaving a None in its place.
-        match self.sock.try_read_buf(&mut buf) {
-            Ok(None) => {
-                println!("Client spurious read wakeup");
-                self.mut_buf = Some(buf);
-            }
-            Ok(Some(r)) => {
-                println!("Client read {} bytes", r);
-                let mut buf = buf.flip();
-                while buf.has_remaining() {
-                    let actual = buf.read_byte().unwrap();
-                    let expect = self.rx.read_byte().unwrap();
-                    assert!(actual == expect, "actual: {}, expect: {}", actual, expect);
-                }
-                self.mut_buf = Some(buf.flip());
-                self.interest.remove(Ready::readable());
-                if !self.rx.has_remaining() {
-                    self.next_msg(poll).unwrap();
-                }
-            }
-            Err(e) => {
-                panic!("not implemented; client err: {:?}", e);
-            }
-        };
-        if !self.interest.is_empty() {
-            assert!(self.interest.is_readable() || self.interest.is_writable(), 
-                    "actual: {:?}", self.interest);
-            poll.reregister(&self.sock, self.token, self.interest, PollOpt::edge() | PollOpt::oneshot())?;
-        }
-        Ok(())
-    }
-    fn writable(&mut self, poll: &mut Poll) -> io::Result<()> {
-        println!("client socket writable");
-        match self.sock.try_write_buf(&mut self.tx) {
-            Ok(None) => {
-                println!("client flushing buf WouldBlock");
-                self.interest.insert(Ready::writable());
-            }
-            Ok(Some(r)) => {
-                println!("clinet write {} bytes", r);
-                self.interest.insert(Ready::readable());
-                self.interest.remove(Ready::writable());
-            }
-            Err(e) => println!("not implemented; client err: {:?}", e)
-        }
-        if self.interest.is_readable() || self.interest.is_writable() {
-            try!(poll.reregister(&self.sock, self.token, self.interest,
-                    PollOpt::edge() | PollOpt::oneshot()));
-        } Ok(())
-    }
-    fn next_msg(&mut self, poll: &mut Poll) -> io::Result<()> {
-        if self.msg.is_empty() {
-            self.shutdown = true;
-            return Ok(());
-        }
-        let curr = self.msg.remove(0);
-        println!("client prepping next msg");
-        self.tx = SliceBuf::wrap(curr.as_bytes());
-        self.rx = SliceBuf::wrap(curr.as_bytes());
-        self.interest.insert(Ready::writable());
-        poll.reregister(&self.sock, self.token, self.interest,
-                PollOpt::edge() | PollOpt::oneshot())
-    }
-}
-
-struct Echo {
-    server: EchoServer,
-    client: EchoClient,
-}
-
-impl Echo {
-    fn new(srv: TcpListener, client: TcpStream, msg: Vec<&'static str>) -> Echo {
-        Echo {
-            server: EchoServer {
+impl Test {
+    fn new(srv: TcpListener) -> Test {
+        Test {
+            server: TcpServer {
                 sock: srv,
                 conns: Slab::with_capacity(128)
-            },
-            client: EchoClient::new(client, CLIENT, msg)
+            }
         }
     }
 }
@@ -284,22 +209,20 @@ fn main() {
             PollOpt::edge() | PollOpt::oneshot()).unwrap();
     let mut events = Events::with_capacity(1024);
 
-    let mut handler = Echo::new(srv, sock, vec!["foo", "bar"]);
-    while !handler.client.shutdown {
+    let mut handler = Test::new(srv);
+    while true {
         poll.poll(&mut events, None).unwrap();
         for event in &events {
             println!("ready: {:?} {:?}", event.token(), event.readiness());
             if event.readiness().is_readable() {
                 match event.token() {
                     SERVER => handler.server.accept(&mut poll).unwrap(),
-                    CLIENT => handler.client.readable(&mut poll).unwrap(),
                     i => handler.server.conn_readable(&mut poll, i).unwrap()
                 }
             }
             if event.readiness().is_writable() {
                 match event.token() {
                     SERVER => panic!("reveived wirtable for token 0"),
-                    CLIENT => handler.client.writable(&mut poll).unwrap(),
                     i => handler.server.conn_writable(&mut poll, i).unwrap()
                 };
             }
