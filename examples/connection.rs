@@ -4,40 +4,29 @@ use std::fmt;
 use my_mio::{Events, Poll, PollOpt, Ready, Token};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
-struct Acceptor() {
-    poller: Poll,
-    sock: TcpStream,    // 最好是原始socket + opts
-    accept_cb: fn(sock, SockAddr) -> void;
-    listening: bool,
-    // idle fd
+struct Acceptor {
+    acceptor: TcpListener,
+    event_loop: EventLoop,
+    is_listening: bool,
+    accept_cb: fn(TcpStream, SocketAddr)
 }
 
 impl Acceptor {
-    fn new() -> Acceptor {
-    }
-    fn listen() {
-        // register lfd & handle_read
-    }
-    fn listen(&mut self, poll: &mut Poll, sock: TcpStream) -> io::Result<()> {
-    }
-    //fn listen(port, ip, backlog)
-    fn on_accept(&mut self, poll: &mut Poll, event: Events) {
-        while true {
-            if event.readiness().is_readable() {
-                // token check
-                let (s, err) = sock.accept().unwrap();
-                if err {
-                    break;
-                }
-                // set non block and etc
-                // m_on_brefore_accept_cb
-                // m_on_accept_cb
-            }
+    fn new(event_loop: &EventLoop) -> Acceptor {
+        Acceptor {
+            acceptor: TcpListener::new(),
+            event_loop: event_loop,
+            is_listening: true
         }
     }
-    fn set_on_before_accept_cb() {
+    fn set_accept_cb(&mut self, cb: fn(TcpStream, SocketAddr)) {
+        self.accpet_cb = cb;
     }
-    fn set_on_accept_cb() {
+    fn bind(&mut self, ip: str) {
+        let addr = ip.parse().unwrap()?;
+        let srv = self.bind(&addr).unwrap()?;
+        event_loop.register(&srv, SERVER, Ready::readable(), 
+                PollOpt::edge() | PollOpt::oneshot()).unwrap();
     }
 }
 
@@ -46,22 +35,19 @@ impl Handler for Acceptor {
     type Message = String;
     fn ready(&mut self, event_loop: &mut EventLoop<Acceptor>, token: Token, 
             events: Ready) {
-        on_accept();
+        local (stream, addr) = self.accept().unwrap();
+        accept_cb(stream, addr);
     }
     fn notify(&mut self, event_loop: &mut EventLoop<Acceptor>, msg: String) {
     }
 }
 
-struct Connector() {
-    poller: Poll,
-    sock: TcpStream,
+struct Connector {
+    connector: TcpStream,
 }
 
 impl Connector {
-    fn on_connected(&mut self, poll: &mut Poll, sock: TcpStream, // err_cb) {
-    }
-    //fn connect() // register
-    //fn connect_l()
+    fn connect() // register
 }
 
 impl Handler for Connector {
@@ -69,7 +55,6 @@ impl Handler for Connector {
     type Message = String;
     fn ready(&mut self, event_loop: &mut EventLoop<Connector>, token: Token, 
             events: Ready) {
-        on_accept();
     }
     fn notify(&mut self, event_loop: &mut EventLoop<Connector>, msg: String) {
     }
@@ -82,7 +67,7 @@ impl Handler for Connector {
 }
 
 //buffer + CB(epoll_cb + session_cb)
-pub struct Connection {
+pub struct TcpConnection {
     token: Option<Token>,
     interest: Ready
 
@@ -104,9 +89,9 @@ pub struct Connection {
     is_closed: bool
 }
 
-impl Connection {
-    fn new(poll: Poll, sock: TcpStream) -> Connection {
-        Connection {
+impl TcpConnection {
+    fn new(poll: Poll, sock: TcpStream) -> TcpConnection {
+        TcpConnection {
             token: None,
             interest: Ready::empty(),
             poller: poll,
@@ -148,19 +133,19 @@ impl Connection {
     
 }
 
-impl Handler for Connection { // TCP + UDP Connection
+impl Handler for TcpConnection { // TCP + UDP TcpConnection
     type Timeout = usize;
     type Message = String;
-    fn ready(&mut self, event_loop: &mut EventLoop<Connection>, token: Token, 
+    fn ready(&mut self, event_loop: &mut EventLoop<TcpConnection>, token: Token, 
             events: Ready) {
     }
-    fn notify(&mut self, event_loop: &mut EventLoop<Connection>, msg: String) {
+    fn notify(&mut self, event_loop: &mut EventLoop<TcpConnection>, msg: String) {
     }
-    fn timeout(&mut self, event_loop: &mut EventLoop<Connection>, timeout: Self::Timeout) {
+    fn timeout(&mut self, event_loop: &mut EventLoop<TcpConnection>, timeout: Self::Timeout) {
     }
-    fn interrupted(&mut self, event_loop: &mut EventLoop<Connection>) {
+    fn interrupted(&mut self, event_loop: &mut EventLoop<TcpConnection>) {
     }
-    fn tick(&mut self, event_loop: &mut EventLoop<Connection>) {
+    fn tick(&mut self, event_loop: &mut EventLoop<TcpConnection>) {
     }
 }
 
