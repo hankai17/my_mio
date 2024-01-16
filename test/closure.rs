@@ -7,6 +7,21 @@ impl Foo {
     }
 }
 
+//fn t0() -> dyn Fn(i64) {
+//    let foo = Foo;
+//    |val: i64| foo.baz(val)
+//}
+
+//fn t() -> dyn Fn(i64) {
+//    let foo = Box::new(Foo);
+//    |val: i64| foo.baz(val)
+//}
+
+fn t() -> Box<dyn Fn(i64)> {
+    let foo = Foo;
+    Box::new(move |val: i64| foo.baz(val))
+}
+
 fn test1() {
     let foo = Foo;
 
@@ -18,6 +33,9 @@ fn test1() {
 
     let cb1 = |val: i64| { foo.baz(val) };
     cb1(11);
+
+    let cb = t();
+    cb(22);
 }
 
 pub struct MyStruct {
