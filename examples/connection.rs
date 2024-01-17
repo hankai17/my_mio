@@ -1,18 +1,26 @@
+extern crate my_mio;
 extern crate bytes;
 
 use std::fmt;
 use my_mio::{Events, Poll, PollOpt, Ready, Token};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
+use my_mio::deprecated::{unix, EventLoop, Handler, EventLoopBuilder};
+use my_mio::net::{TcpListener, TcpStream};
+use std::net::{self, SocketAddr, SocketAddrV4, SocketAddrV6, Ipv4Addr, Ipv6Addr};
+use std::sync::{Arc, Mutex, Condvar};
+
+const SERVER: Token = Token(10_000_000);
+const CLIENT: Token = Token(10_000_001);
 
 struct Acceptor {
     acceptor: TcpListener,
-    event_loop: EventLoop,
+    event_loop: Box<EventLoop<dyn Handler>>,
     is_listening: bool,
     accept_cb: fn(TcpStream, SocketAddr)
 }
 
 impl Acceptor {
-    fn new(event_loop: &EventLoop) -> Acceptor {
+    fn new(event_loop: &mut Box<EventLoop<Handler>>) -> Acceptor {
         Acceptor {
             acceptor: TcpListener::new(),
             event_loop: event_loop,
@@ -25,7 +33,7 @@ impl Acceptor {
     fn bind(&mut self, ip: str) {
         let addr = ip.parse().unwrap();
         let srv = self.bind(&addr).unwrap();
-        event_loop.register(&srv, SERVER, Ready::readable(), 
+        self.event_loop.register(&srv, SERVER, Ready::readable(), 
                 PollOpt::edge() | PollOpt::oneshot()).unwrap();
     }
 }
@@ -35,13 +43,15 @@ impl Handler for Acceptor {
     type Message = String;
     fn ready(&mut self, event_loop: &mut EventLoop<Acceptor>, token: Token, 
             events: Ready) {
-        local (stream, addr) = self.accept().unwrap();
+        //let (stream, addr) = self.acceptor.accept().unwrap();
+        let (stream, addr) = self.accept().unwrap();
         accept_cb(stream, addr);
     }
     fn notify(&mut self, event_loop: &mut EventLoop<Acceptor>, msg: String) {
     }
 }
 
+/*
 struct Connector {
     addr: str,
     connector: TcpStream,
@@ -181,3 +191,8 @@ impl Handler for TcpConnection {
     }
 }
 
+*/
+
+fn main() {
+
+}
