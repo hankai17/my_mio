@@ -47,21 +47,21 @@ impl<M> Sender<M> {
     }
 }
 
-pub struct EventLoop<H: Handler> {
+pub struct EventLoop {
     run: bool,
     poll: Poll,
     events: Events,
-    timer: Timer<H::Timeout>,
-    notify_tx: channel::SyncSender<H::Message>,
-    notify_rx: channel::Receiver<H::Message>,
+    timer: Timer<i32>,
+    notify_tx: channel::SyncSender<i32>,
+    notify_rx: channel::Receiver<i32>,
     config: Config
 }
 
 const NOTIFY: Token = Token(usize::MAX - 1);
 const TIMER: Token = Token(usize::MAX - 2);
 
-impl<H: Handler> EventLoop<H> {
-    fn configured(config: Config) -> io::Result<EventLoop<H>> {
+impl EventLoop {
+    fn configured(config: Config) -> io::Result<EventLoop> {
         let poll = Poll::new()?;                // 分配一个poll // 监听无锁队列里pipe的读端
         let timer = timer::Builder::default()
             .tick_duration(config.timer_tick)
@@ -81,10 +81,10 @@ impl<H: Handler> EventLoop<H> {
             events: Events::with_capacity(1024),
         })
     }
-    pub fn new() -> io::Result<EventLoop<H>> {
+    pub fn new() -> io::Result<EventLoop> {
         EventLoop::configured(Config::default())
     }
-    pub fn channel(&self) -> Sender<H::Message> {
+    pub fn channel(&self) -> Sender<i32> {
         Sender::new(self.notify_tx.clone())
     }
     pub fn timeout(&mut self, token: H::Timeout, delay: Duration) -> timer::Result<Timeout> {
@@ -128,7 +128,8 @@ impl<H: Handler> EventLoop<H> {
             handler.timeout(self, t);
         }
     }
-    fn io_process(&mut self, handler: &mut H, cnt: usize) {
+    // https://stackoverflow.com/questions/45116984/the-trait-cannot-be-made-into-an-object
+    fn io_process(&mut self, handler: &mut dyn Handler, cnt: usize) {
         let mut i = 0;
         log::trace!("io_process(..); cnt={}; len={}", cnt, self.events.len());
         while i < cnt {
@@ -142,7 +143,7 @@ impl<H: Handler> EventLoop<H> {
             i += 1;
         }
     }
-    pub fn run_once(&mut self, handler: &mut H, timeout: Option<Duration>) -> io::Result<()> {
+    pub fn run_once(&mut self, handler: &mut Handler, timeout: Option<Duration>) -> io::Result<()> {
         log::trace!("event loop tick");
         let events = match self.io_poll(timeout) {
             Ok(e) => e,
@@ -159,7 +160,7 @@ impl<H: Handler> EventLoop<H> {
         handler.tick(self);     // 没有实现也能调?
         Ok(())
     }
-    pub fn run(&mut self, handler: &mut H) -> io::Result<()> {
+    pub fn run(&mut self, handler: &mut Handler) -> io::Result<()> {
         self.run = true;
         while self.run {
             self.run_once(handler, None)?;
@@ -197,7 +198,7 @@ impl EventLoopBuilder {
         self.config.timer_capacity = cap;
         self
     }
-    pub fn build<H: Handler>(self) -> io::Result<EventLoop<H>> {
+    pub fn build(self) -> io::Result<EventLoop> {
         EventLoop::configured(self.config)
     }
 }

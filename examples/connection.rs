@@ -14,13 +14,13 @@ const CLIENT: Token = Token(10_000_001);
 
 struct Acceptor {
     acceptor: TcpListener,
-    event_loop: Box<EventLoop<dyn Handler>>,
+    event_loop: Box<EventLoop>,
     is_listening: bool,
     accept_cb: fn(TcpStream, SocketAddr)
 }
 
 impl Acceptor {
-    fn new(event_loop: &mut Box<EventLoop<Handler>>) -> Acceptor {
+    fn new(event_loop: &mut Box<EventLoop>) -> Acceptor {
         Acceptor {
             acceptor: TcpListener::new(),
             event_loop: event_loop,
