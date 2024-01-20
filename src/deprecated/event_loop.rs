@@ -111,10 +111,12 @@ impl EventLoop {
     fn io_poll(&mut self, timeout: Option<Duration>) -> io::Result<usize> {
         self.poll.poll(&mut self.events, timeout)
     }
-    fn io_event(&mut self, handler: &mut Box<dyn Handler>, evt: Event) {
+    fn io_event<H>(&mut self, handler: &mut H, evt: Event) 
+        where H: Handler {
         handler.ready(self, evt.token(), evt.readiness());
     }
-    fn notify(&mut self, handler: &mut Box<dyn Handler>) {
+    fn notify<H>(&mut self, handler: &mut H) 
+        where H: Handler {
         for _ in 0..self.config.messages_per_tick {     // 每个周期尝试从pipe 最多读取256次
             match self.notify_rx.try_recv() {
                 Ok(msg) => handler.notify(self, msg),
@@ -123,13 +125,15 @@ impl EventLoop {
         }
         let _ = self.poll.reregister(&self.notify_rx, NOTIFY, Ready::readable(), PollOpt::edge() | PollOpt::oneshot());
     }
-    fn timer_process(&mut self, handler: &mut Box<dyn Handler>) {
+    fn timer_process<H>(&mut self, handler: &mut H) 
+        where H: Handler {
         while let Some(t) = self.timer.poll() {
             handler.timeout(self, t);
         }
     }
     // https://stackoverflow.com/questions/45116984/the-trait-cannot-be-made-into-an-object
-    fn io_process(&mut self, handler: &mut Box<dyn Handler>, cnt: usize) {
+    fn io_process<H>(&mut self, handler: &mut H, cnt: usize) 
+        where H: Handler {
         let mut i = 0;
         log::trace!("io_process(..); cnt={}; len={}", cnt, self.events.len());
         while i < cnt {
@@ -143,7 +147,8 @@ impl EventLoop {
             i += 1;
         }
     }
-    pub fn run_once(&mut self, handler: &mut Box<dyn Handler>, timeout: Option<Duration>) -> io::Result<()> {
+    pub fn run_once<H>(&mut self, handler: &mut H, timeout: Option<Duration>) -> io::Result<()> 
+        where H: Handler {
         log::trace!("event loop tick");
         let events = match self.io_poll(timeout) {
             Ok(e) => e,
@@ -160,7 +165,8 @@ impl EventLoop {
         handler.tick(self);     // 没有实现也能调?
         Ok(())
     }
-    pub fn run(&mut self, handler: &mut Box<dyn Handler>) -> io::Result<()> {
+    pub fn run<H>(&mut self, handler: &mut H) -> io::Result<()> 
+        where H: Handler {
         self.run = true;
         while self.run {
             self.run_once(handler, None)?;

@@ -14,21 +14,22 @@ const CLIENT: Token = Token(10_000_001);
 
 struct Acceptor {
     acceptor: TcpListener,
-    event_loop: Box<EventLoop>,
+    event_loop: Arc<EventLoop>,
     is_listening: bool,
     accept_cb: fn(TcpStream, SocketAddr)
 }
 
 impl Acceptor {
-    fn new(event_loop: &mut Box<EventLoop>) -> Acceptor {
+    fn new(event_loop: Arc<EventLoop>) -> Acceptor {
         Acceptor {
-            acceptor: TcpListener::new(),
+            acceptor: TcpListener,
             event_loop: event_loop,
-            is_listening: true
+            is_listening: true,
+            accept_cb: ||{}
         }
     }
     fn set_accept_cb(&mut self, cb: fn(TcpStream, SocketAddr)) {
-        self.accpet_cb = cb;
+        self.accept_cb = cb;
     }
     fn bind(&mut self, ip: str) {
         let addr = ip.parse().unwrap();
@@ -39,15 +40,15 @@ impl Acceptor {
 }
 
 impl Handler for Acceptor {
-    type Timeout = usize;
-    type Message = String;
-    fn ready(&mut self, event_loop: &mut EventLoop<Acceptor>, token: Token, 
+    //type Timeout = usize;
+    //type Message = String;
+    fn ready(&mut self, event_loop: &mut EventLoop, token: Token, 
             events: Ready) {
         //let (stream, addr) = self.acceptor.accept().unwrap();
         let (stream, addr) = self.accept().unwrap();
         accept_cb(stream, addr);
     }
-    fn notify(&mut self, event_loop: &mut EventLoop<Acceptor>, msg: String) {
+    fn notify(&mut self, event_loop: &mut EventLoop, msg: i32) {
     }
 }
 
