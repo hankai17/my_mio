@@ -87,7 +87,7 @@ impl EventLoop {
     pub fn channel(&self) -> Sender<i32> {
         Sender::new(self.notify_tx.clone())
     }
-    pub fn timeout(&mut self, token: H::Timeout, delay: Duration) -> timer::Result<Timeout> {
+    pub fn timeout(&mut self, token: i32, delay: Duration) -> timer::Result<Timeout> {
         self.timer.set_timeout(delay, token)
     }
     pub fn clear_timeout(&mut self, timeout: &Timeout) -> bool {
@@ -111,10 +111,10 @@ impl EventLoop {
     fn io_poll(&mut self, timeout: Option<Duration>) -> io::Result<usize> {
         self.poll.poll(&mut self.events, timeout)
     }
-    fn io_event(&mut self, handler: &mut H, evt: Event) {
+    fn io_event(&mut self, handler: &mut Box<dyn Handler>, evt: Event) {
         handler.ready(self, evt.token(), evt.readiness());
     }
-    fn notify(&mut self, handler: &mut H) {
+    fn notify(&mut self, handler: &mut Box<dyn Handler>) {
         for _ in 0..self.config.messages_per_tick {     // 每个周期尝试从pipe 最多读取256次
             match self.notify_rx.try_recv() {
                 Ok(msg) => handler.notify(self, msg),
@@ -123,13 +123,13 @@ impl EventLoop {
         }
         let _ = self.poll.reregister(&self.notify_rx, NOTIFY, Ready::readable(), PollOpt::edge() | PollOpt::oneshot());
     }
-    fn timer_process(&mut self, handler: &mut H) {
+    fn timer_process(&mut self, handler: &mut Box<dyn Handler>) {
         while let Some(t) = self.timer.poll() {
             handler.timeout(self, t);
         }
     }
     // https://stackoverflow.com/questions/45116984/the-trait-cannot-be-made-into-an-object
-    fn io_process(&mut self, handler: &mut dyn Handler, cnt: usize) {
+    fn io_process(&mut self, handler: &mut Box<dyn Handler>, cnt: usize) {
         let mut i = 0;
         log::trace!("io_process(..); cnt={}; len={}", cnt, self.events.len());
         while i < cnt {
@@ -143,7 +143,7 @@ impl EventLoop {
             i += 1;
         }
     }
-    pub fn run_once(&mut self, handler: &mut Handler, timeout: Option<Duration>) -> io::Result<()> {
+    pub fn run_once(&mut self, handler: &mut Box<dyn Handler>, timeout: Option<Duration>) -> io::Result<()> {
         log::trace!("event loop tick");
         let events = match self.io_poll(timeout) {
             Ok(e) => e,
@@ -160,7 +160,7 @@ impl EventLoop {
         handler.tick(self);     // 没有实现也能调?
         Ok(())
     }
-    pub fn run(&mut self, handler: &mut Handler) -> io::Result<()> {
+    pub fn run(&mut self, handler: &mut Box<dyn Handler>) -> io::Result<()> {
         self.run = true;
         while self.run {
             self.run_once(handler, None)?;
