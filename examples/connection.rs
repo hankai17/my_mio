@@ -1,13 +1,14 @@
 extern crate my_mio;
 extern crate bytes;
 
-use std::fmt;
+use std::{io, fmt};
 use my_mio::{Events, Poll, PollOpt, Ready, Token};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use my_mio::deprecated::{unix, EventLoop, Handler, EventLoopBuilder};
 use my_mio::net::{TcpListener, TcpStream};
 use std::net::{self, SocketAddr, SocketAddrV4, SocketAddrV6, Ipv4Addr, Ipv6Addr};
 use std::sync::{Arc, Mutex, Condvar};
+use std::borrow::Borrow;
 
 const SERVER: Token = Token(10_000_000);
 const CLIENT: Token = Token(10_000_001);
@@ -35,81 +36,68 @@ impl Acceptor {
 }
 
 impl Handler for Acceptor {
-    //type Timeout = usize;
-    //type Message = String;
     fn ready(&mut self, event_loop: &mut EventLoop, token: Token, 
             events: Ready) {
         let (stream, addr) = self.acceptor.accept().unwrap();
-        //let (stream, addr) = self.accept().unwrap();
         (self.accept_cb)(stream, addr);
     }
     fn notify(&mut self, event_loop: &mut EventLoop, msg: i32) {
     }
 }
 
-/*
 struct Connector {
-    addr: str,
+    addr: String,
     connector: TcpStream,
-    event_loop: EventLoop,
+    event_loop: Box<EventLoop>,
     is_connected: bool,
-    connect_cb: fn(TcpStream, io::Result<()>)
+    connect_cb: fn(&TcpStream)
 }
 
 impl Connector {
-    fn new(event_loop: &EventLoop, ip: str) -> Connector {
-        Connector {
-            addr: ip,
-            //connector: TcpStream,
-            event_loop: event_loop,
-            is_connected: false,
-        }
+    fn attach(&mut self, event_loop: Box<EventLoop>) {
+        self.event_loop = event_loop;
+        self.is_connected = false;
     }
-    fn set_connect_cb(&mut self, cb: fn(TcpStream, io::Result<()>)) {
-        connect_cb = cb;
+    fn set_connect_cb(&mut self, cb: fn(&TcpStream)) {
+        self.connect_cb = cb;
     }
-    fn connect(&mut self) {
-        let addr = self.addr.parse().unwrap();
-        let sock = TcpStream::connect(&addr).unwrap();
+    fn connect(&mut self, addr: &String) {
+        let sock = TcpStream::connect(&(addr.parse().unwrap())).unwrap();
         self.connector = sock;
-        event_loop.register(&sock, CLIENT, Ready::writable(),
+        self.event_loop.register(&self.connector, CLIENT, Ready::writable(),
                 PollOpt::edge() | PollOpt::oneshot()).unwrap();
     }
 }
 
 impl Handler for Connector {
-    type Timeout = usize;
-    type Message = String;
-    fn ready(&mut self, event_loop: &mut EventLoop<Connector>, token: Token, 
+    fn ready(&mut self, event_loop: &mut EventLoop, token: Token, 
             events: Ready) {
-        connect_cb(self.connector, Ok(()))
+        (self.connect_cb)(&self.connector);
     }
-    fn notify(&mut self, event_loop: &mut EventLoop<Connector>, msg: String) {
+    fn notify(&mut self, event_loop: &mut EventLoop, msg: i32) {
     }
-    fn timeout(&mut self, event_loop: &mut EventLoop<Connector>, timeout: Self::Timeout) {
+    fn timeout(&mut self, event_loop: &mut EventLoop, timeout: i32) {
     }
-    fn interrupted(&mut self, event_loop: &mut EventLoop<Connector>) {
+    fn interrupted(&mut self, event_loop: &mut EventLoop) {
     }
-    fn tick(&mut self, event_loop: &mut EventLoop<Connector>) {
+    fn tick(&mut self, event_loop: &mut EventLoop) {
     }
 }
 
-// accept_cb connect_cb return => TcpConnection
-
 pub struct TcpConnection {
     token: Option<Token>,
-    interest: Ready
+    interest: Ready,
 
-    poller: Poll,
+    event_loop: Box<EventLoop>,
     sock: TcpStream,
     // timer
     read_buf: Option<BytesMut>,
     write_buf: Option<BytesMut>,
     write_buf_waiting: Option<BytesMut>,
 
-    read_cb: fn(BytesMut, SockAddr) -> void;
-    written_cb: fn() -> bool;
-    err_cb: fn() -> void;
+    read_cb: fn(BytesMut, SocketAddr),
+    written_cb: fn() -> bool,
+    err_cb: fn(),
 
     read_enable: bool,
     write_enable: bool,
@@ -118,17 +106,25 @@ pub struct TcpConnection {
     is_closed: bool
 }
 
+fn default_read_cb(bytes: BytesMut, addr: SocketAddr) {}
+fn default_written_cb() -> bool { false }
+fn default_err_cb() {}
+
 impl TcpConnection {
-    fn new(poll: Poll, sock: TcpStream) -> TcpConnection {
+    fn new(event_loop: Box<EventLoop>, sock: TcpStream) -> TcpConnection {
         TcpConnection {
             token: None,
             interest: Ready::empty(),
-            poller: poll,
+            event_loop: event_loop,
             sock: sock,
 
             read_buf: Some(BytesMut::with_capacity(1024)),
             write_buf: Some(BytesMut::with_capacity(1024)),
             write_buf_waiting: Some(BytesMut::with_capacity(1024)),
+
+            read_cb: default_read_cb,
+            written_cb: default_written_cb,
+            err_cb: default_err_cb,
 
             read_enable: false,
             write_enable: false,
@@ -140,16 +136,21 @@ impl TcpConnection {
 
     fn on_read(&mut self, poll: &mut Poll, sock: TcpStream) -> io::Result<()> {
         // read to buffer
-        read_cb(bytes, sockaddr)
+        //read_cb(bytes, sockaddr)
+        Ok(())
     }
     fn on_written(&mut self, poll: &mut Poll, sock: TcpStream) -> io::Result<()> {
-        written_cb()
+        //written_cb()
+        Ok(())
     }
     fn write_data(&mut self, poll: &mut Poll, sock: TcpStream) -> io::Result<()> {
+        Ok(())
     }
     fn on_write(&mut self, poll: &mut Poll, sock: TcpStream) -> io::Result<()> {
+        Ok(())
     }
-    fn send_l(bytes: ByteMut) -> io::Result<usize> {
+    fn send_l(bytes: BytesMut) -> io::Result<usize> {
+        Ok(0)
     }
     //fn send() 
     fn set_on_read_cb() { // set by upper eg: session
@@ -160,13 +161,10 @@ impl TcpConnection {
     }
     fn clone_stream() {
     }
-    
 }
 
 impl Handler for TcpConnection {
-    type Timeout = usize;
-    type Message = String;
-    fn ready(&mut self, event_loop: &mut EventLoop<TcpConnection>, token: Token, 
+    fn ready(&mut self, event_loop: &mut EventLoop, token: Token, 
             events: Ready) {
         /*
         if read 
@@ -177,18 +175,17 @@ impl Handler for TcpConnection {
             on_err
         */
     }
-    fn notify(&mut self, event_loop: &mut EventLoop<TcpConnection>, msg: String) {
+    fn notify(&mut self, event_loop: &mut EventLoop, msg: i32) {
     }
-    fn timeout(&mut self, event_loop: &mut EventLoop<TcpConnection>, timeout: Self::Timeout) {
+    fn timeout(&mut self, event_loop: &mut EventLoop, timeout: i32) {
     }
-    fn interrupted(&mut self, event_loop: &mut EventLoop<TcpConnection>) {
+    fn interrupted(&mut self, event_loop: &mut EventLoop) {
     }
-    fn tick(&mut self, event_loop: &mut EventLoop<TcpConnection>) {
+    fn tick(&mut self, event_loop: &mut EventLoop) {
     }
 }
-
-*/
 
 fn main() {
 
 }
+
