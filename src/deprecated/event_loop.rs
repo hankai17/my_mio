@@ -95,8 +95,8 @@ impl EventLoop {
     }
     pub fn shutdown(&mut self) { self.run = false; }
     pub fn is_running(&self) -> bool { self.run }
-    //pub fn register<E: ?Sized>(&mut self, io: &E, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()>
-    pub fn register<E>(&mut self, io: &E, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()> // 也可以
+    pub fn register<E: ?Sized>(&mut self, io: &E, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()>
+    //pub fn register<E>(&mut self, io: &E, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()> // 也可以
         where E: Evented {
         self.poll.register(io, token, interest, opt)
     }
