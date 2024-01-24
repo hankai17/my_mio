@@ -8,37 +8,43 @@ use my_mio::deprecated::{unix, EventLoop, Handler, EventLoopBuilder};
 use my_mio::net::{TcpListener, TcpStream};
 use std::net::{self, SocketAddr, SocketAddrV4, SocketAddrV6, Ipv4Addr, Ipv6Addr};
 use std::sync::{Arc, Mutex, Condvar};
-use std::borrow::Borrow;
+use std::time::Duration;
 
 const SERVER: Token = Token(10_000_000);
 const CLIENT: Token = Token(10_000_001);
 
 struct Acceptor {
-    acceptor: TcpListener,
+    tcp_listener: TcpListener,
     event_loop: Box<EventLoop>,
     is_listening: bool,
     accept_cb: fn(TcpStream, SocketAddr)
 }
 
+fn default_accept_cb(stream: TcpStream, addr: SocketAddr) {}
+
 impl Acceptor {
-    fn attach(&mut self, event_loop: Box<EventLoop>) {
-        self.event_loop = event_loop;
-        self.is_listening = true;
+    fn new(event_loop: Box<EventLoop>, addr: &String) -> Acceptor {
+        Acceptor {
+            tcp_listener: TcpListener::new(&(addr.parse().unwrap())),
+            event_loop: event_loop,
+            is_listening: false,
+            accept_cb: default_accept_cb,
+        }
     }
     fn set_accept_cb(&mut self, cb: fn(TcpStream, SocketAddr)) {
         self.accept_cb = cb;
     }
-    fn bind(&mut self, addr: &String) {
-        let srv = TcpListener::bind(&(addr.parse().unwrap())).unwrap();
-        self.event_loop.register(&srv, SERVER, Ready::readable(), 
+    fn bind(&mut self) {
+        self.event_loop.register(&self.tcp_listener, SERVER, Ready::readable(), 
                 PollOpt::edge() | PollOpt::oneshot()).unwrap();
+        self.is_listening = true;
     }
 }
 
 impl Handler for Acceptor {
     fn ready(&mut self, event_loop: &mut EventLoop, token: Token, 
             events: Ready) {
-        let (stream, addr) = self.acceptor.accept().unwrap();
+        let (stream, addr) = self.tcp_listener.accept().unwrap();
         (self.accept_cb)(stream, addr);
     }
     fn notify(&mut self, event_loop: &mut EventLoop, msg: i32) {
@@ -185,7 +191,20 @@ impl Handler for TcpConnection {
     }
 }
 
-fn main() {
+fn sleep_ms(ms: u64) {
+    use std::thread;
+    thread::sleep(Duration::from_millis(ms));
+}
 
+fn main() {
+    let mut b = EventLoopBuilder::new();
+    b.notify_capacity(1_048_576)
+        .messages_per_tick(64)
+        .timer_tick(Duration::from_millis(100))
+        .timer_wheel_size(1024)
+        .timer_capacity(65536);
+    let mut event_loop = Box::new(b.build().unwrap());
+    let acceptor = Acceptor::new(event_loop, &"0.0.0.1:9527".to_string());
+    sleep_ms(1000 * 100);
 }
 

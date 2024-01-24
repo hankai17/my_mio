@@ -200,6 +200,9 @@ pub struct TcpListener {
 }
 
 impl TcpListener {
+    pub fn new(addr: &SocketAddr) -> TcpListener {
+        Self::bind(addr).unwrap()
+    }
     pub fn bind(addr: &SocketAddr) -> io::Result<TcpListener> {
         let sock = match *addr {
             SocketAddr::V4(..) => TcpBuilder::new_v4(),
