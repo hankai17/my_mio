@@ -17,20 +17,19 @@ const CLIENT: Token = Token(10_000_001);
 
 struct Acceptor {
     tcp_listener: TcpListener,
-    event_loop: AtomicPtr<()>,
+    event_loop: Arc<EventLoop>,
     is_listening: bool,
     accept_cb: fn(TcpStream, SocketAddr)
 }
+
 
 fn default_accept_cb(stream: TcpStream, addr: SocketAddr) {}
 
 impl Acceptor {
     fn new(event_loop: Arc<EventLoop>, addr: &String) -> Acceptor {
-        let event_loop = event_loop.clone();
-        let event_loop: *mut () = unsafe { mem::transmute(event_loop) };
         Acceptor {
             tcp_listener: TcpListener::new(&(addr.parse().unwrap())),
-            event_loop: AtomicPtr::new(event_loop),
+            event_loop: event_loop,
             is_listening: false,
             accept_cb: default_accept_cb,
         }
@@ -39,14 +38,7 @@ impl Acceptor {
         self.accept_cb = cb;
     }
     fn bind(&mut self) {
-        let event_loop = self.event_loop.load(Acquire);
-        if event_loop.is_null() {
-            return;
-        }
-        let event_loop: &Arc<EventLoop> = unsafe {
-            &*(&event_loop as * const *mut() as * const Arc<EventLoop>)
-        };
-        event_loop.register(&self.tcp_listener, SERVER, Ready::readable(), 
+        self.event_loop.register(&self.tcp_listener, SERVER, Ready::readable(), 
                 PollOpt::edge() | PollOpt::oneshot());
         self.is_listening = true;
     }
@@ -65,13 +57,13 @@ impl Handler for Acceptor {
 struct Connector {
     addr: String,
     connector: TcpStream,
-    event_loop: Box<EventLoop>,
+    event_loop: Arc<EventLoop>,
     is_connected: bool,
     connect_cb: fn(&TcpStream)
 }
 
 impl Connector {
-    fn attach(&mut self, event_loop: Box<EventLoop>) {
+    fn attach(&mut self, event_loop: Arc<EventLoop>) {
         self.event_loop = event_loop;
         self.is_connected = false;
     }
@@ -105,7 +97,7 @@ pub struct TcpConnection {
     token: Option<Token>,
     interest: Ready,
 
-    event_loop: Box<EventLoop>,
+    event_loop: Arc<EventLoop>,
     sock: TcpStream,
     // timer
     read_buf: Option<BytesMut>,
@@ -128,7 +120,7 @@ fn default_written_cb() -> bool { false }
 fn default_err_cb() {}
 
 impl TcpConnection {
-    fn new(event_loop: Box<EventLoop>, sock: TcpStream) -> TcpConnection {
+    fn new(event_loop: Arc<EventLoop>, sock: TcpStream) -> TcpConnection {
         TcpConnection {
             token: None,
             interest: Ready::empty(),
@@ -215,7 +207,8 @@ fn main() {
         .timer_wheel_size(1024)
         .timer_capacity(65536);
     let mut event_loop = Arc::new(b.build().unwrap());
-    let acceptor = Acceptor::new(event_loop, &"0.0.0.1:9527".to_string());
+    let acceptor = Acceptor::new(event_loop.clone(), &"0.0.0.1:9527".to_string());
+    event_loop.test();
     sleep_ms(1000 * 100);
 }
 
