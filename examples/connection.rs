@@ -17,7 +17,7 @@ const CLIENT: Token = Token(10_000_001);
 
 struct Acceptor {
     tcp_listener: TcpListener,
-    event_loop: Arc<EventLoop>,
+    event_loop: Arc<EventLoop>, // unsafeCell
     is_listening: bool,
     accept_cb: fn(TcpStream, SocketAddr)
 }
