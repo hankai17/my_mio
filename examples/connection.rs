@@ -17,11 +17,10 @@ const CLIENT: Token = Token(10_000_001);
 
 struct Acceptor {
     tcp_listener: TcpListener,
-    event_loop: Arc<EventLoop>, // unsafeCell
+    event_loop: Arc<EventLoop>,
     is_listening: bool,
     accept_cb: fn(TcpStream, SocketAddr)
 }
-
 
 fn default_accept_cb(stream: TcpStream, addr: SocketAddr) {}
 
@@ -207,8 +206,9 @@ fn main() {
         .timer_wheel_size(1024)
         .timer_capacity(65536);
     let mut event_loop = Arc::new(b.build().unwrap());
-    let acceptor = Acceptor::new(event_loop.clone(), &"0.0.0.1:9527".to_string());
+    let mut acceptor = Acceptor::new(event_loop.clone(), &"0.0.0.1:9527".to_string());
     event_loop.test();
     sleep_ms(1000 * 100);
+    event_loop.run(&mut acceptor);
 }
 

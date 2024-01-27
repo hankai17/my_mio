@@ -47,7 +47,7 @@ impl<M> Sender<M> {
     }
 }
 
-pub struct EventLoop {
+pub struct EventLoop { // 改造成ReadinessQueueInner 并提供get()->*mut
     run: bool,
     poll: Poll,
     events: Events,

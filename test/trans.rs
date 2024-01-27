@@ -1,7 +1,20 @@
+/*
+if you have a &T, then there is no &mut T to the same instance,
+if you have a &mut T, then there is no &T or &mut T to the same instance.
+*/
+fn test() {
+    let mut i = 32;
+    let mut_ref = &mut i;   // &mut i32 指向同一实例
+    let x: &i32 = mut_ref; // &i32  指向同一实例
+    //*mut_ref = 2;           // &mut T 与 &T是可以指向同一实例的 // &mut T会被降级为&T
+    println!("{}", x);
+}
+// 更多案例参考test/rust/day01/type.rs 
 
-fn main1() {
+fn main() {
     let x = 5;
-    let raw = &x as *const i32;
+    let raw = &x as *const i32 as *mut _;
+    unsafe { *raw = 2; }
     
     let mut y = 10;
     let raw_mut = &mut y as *mut i32;
@@ -31,7 +44,7 @@ pub struct Test {
     pub t: usize,
 }
 
-fn main() {
+fn main3() {
     let a : Test = Test { t: 99 };
     //println!("{:?}, addr {}", a, &a);
 
