@@ -90,29 +90,57 @@ impl EventLoop {
     pub fn channel(&self) -> Sender<i32> {
         Sender::new(self.notify_tx.clone())
     }
-    pub fn timeout(&mut self, token: i32, delay: Duration) -> timer::Result<Timeout> {
-        self.timer.set_timeout(delay, token)
+    fn timer(&self) -> *mut Timer<i32> {
+        &self.timer as * const Timer<i32> as *mut Timer<i32>
     }
-    pub fn clear_timeout(&mut self, timeout: &Timeout) -> bool {
-        self.timer.cancel_timeout(&timeout).is_some()
+    pub fn timeout(&self, token: i32, delay: Duration) -> timer::Result<Timeout> {
+        let timer = self.timer();
+        unsafe {
+            timer.as_mut().unwrap().set_timeout(delay, token)
+        }
     }
-    pub fn shutdown(&mut self) { self.run = false; }
+    pub fn clear_timeout(&self, timeout: &Timeout) -> bool {
+        let timer = self.timer();
+        unsafe {
+            timer.as_mut().unwrap().cancel_timeout(&timeout).is_some()
+        }
+    }
+    fn running(&self) -> *mut bool {
+        &self.run as * const bool as *mut bool
+    }
+    pub fn shutdown(&mut self) { 
+        let run = self.running();
+        unsafe {
+            *run.as_mut().unwrap() = false;
+        }
+    }
     pub fn is_running(&self) -> bool { self.run }
     //pub fn register<E: ?Sized>(&mut self, io: &E, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()>
     pub fn register<E>(&self, io: &E, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()> // 也可以
         where E: Evented {
         self.poll.register(io, token, interest, opt)
     }
-    pub fn reregister<E: ?Sized>(&mut self, io: &E, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()>
+    pub fn reregister<E: ?Sized>(&self, io: &E, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()>
         where E: Evented {
         self.poll.reregister(io, token, interest, opt)
     }
-    pub fn deregister<E: ?Sized>(&mut self, io: &E) -> io::Result<()>
+    pub fn deregister<E: ?Sized>(&self, io: &E) -> io::Result<()>
         where E: Evented {
         self.poll.deregister(io)
     }
-    fn io_poll(&mut self, timeout: Option<Duration>) -> io::Result<usize> {
-        self.poll.poll(&mut self.events, timeout)
+    fn poller(&self) -> *mut Poll {
+        &self.poll as * const Poll as *mut Poll
+    }
+    fn events(&self) -> *mut Events {
+        &self.events as * const Events as *mut Events
+    }
+
+    fn io_poll(&self, timeout: Option<Duration>) -> io::Result<usize> {
+        let poll = self.poller();
+        let events = self.events();
+        unsafe {
+            poll.as_mut().unwrap().poll(events.as_mut().unwrap(), timeout)
+        }
     }
     fn io_event<H>(&mut self, handler: &mut H, evt: Event) 
         where H: Handler {
