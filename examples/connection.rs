@@ -44,12 +44,12 @@ impl Acceptor {
 }
 
 impl Handler for Acceptor {
-    fn ready(&mut self, event_loop: &mut EventLoop, token: Token, 
+    fn ready(&mut self, event_loop: &EventLoop, token: Token, 
             events: Ready) {
         let (stream, addr) = self.tcp_listener.accept().unwrap();
         (self.accept_cb)(stream, addr);
     }
-    fn notify(&mut self, event_loop: &mut EventLoop, msg: i32) {
+    fn notify(&mut self, event_loop: &EventLoop, msg: i32) {
     }
 }
 
@@ -78,17 +78,17 @@ impl Connector {
 }
 
 impl Handler for Connector {
-    fn ready(&mut self, event_loop: &mut EventLoop, token: Token, 
+    fn ready(&mut self, event_loop: &EventLoop, token: Token, 
             events: Ready) {
         (self.connect_cb)(&self.connector);
     }
-    fn notify(&mut self, event_loop: &mut EventLoop, msg: i32) {
+    fn notify(&mut self, event_loop: &EventLoop, msg: i32) {
     }
-    fn timeout(&mut self, event_loop: &mut EventLoop, timeout: i32) {
+    fn timeout(&mut self, event_loop: &EventLoop, timeout: i32) {
     }
-    fn interrupted(&mut self, event_loop: &mut EventLoop) {
+    fn interrupted(&mut self, event_loop: &EventLoop) {
     }
-    fn tick(&mut self, event_loop: &mut EventLoop) {
+    fn tick(&mut self, event_loop: &EventLoop) {
     }
 }
 
@@ -172,7 +172,7 @@ impl TcpConnection {
 }
 
 impl Handler for TcpConnection {
-    fn ready(&mut self, event_loop: &mut EventLoop, token: Token, 
+    fn ready(&mut self, event_loop: &EventLoop, token: Token, 
             events: Ready) {
         /*
         if read 
@@ -183,19 +183,23 @@ impl Handler for TcpConnection {
             on_err
         */
     }
-    fn notify(&mut self, event_loop: &mut EventLoop, msg: i32) {
+    fn notify(&mut self, event_loop: &EventLoop, msg: i32) {
     }
-    fn timeout(&mut self, event_loop: &mut EventLoop, timeout: i32) {
+    fn timeout(&mut self, event_loop: &EventLoop, timeout: i32) {
     }
-    fn interrupted(&mut self, event_loop: &mut EventLoop) {
+    fn interrupted(&mut self, event_loop: &EventLoop) {
     }
-    fn tick(&mut self, event_loop: &mut EventLoop) {
+    fn tick(&mut self, event_loop: &EventLoop) {
     }
 }
 
 fn sleep_ms(ms: u64) {
     use std::thread;
     thread::sleep(Duration::from_millis(ms));
+}
+
+fn accept_cb(stream: TcpStream, addr: SocketAddr) {
+    println!("stream: {:?}, addr: {:?}", stream, addr);
 }
 
 fn main() {
@@ -206,9 +210,13 @@ fn main() {
         .timer_wheel_size(1024)
         .timer_capacity(65536);
     let mut event_loop = Arc::new(b.build().unwrap());
-    let mut acceptor = Acceptor::new(event_loop.clone(), &"0.0.0.1:9527".to_string());
+    let mut acceptor = Acceptor::new(event_loop.clone(), &"0.0.0.0:9527".to_string());
+    acceptor.bind();
+    acceptor.set_accept_cb(accept_cb);
     event_loop.test();
-    sleep_ms(1000 * 100);
+    //sleep_ms(1000 * 100);
+    println!("-------------------------");
     event_loop.run(&mut acceptor);
+    println!("-------------------------");
 }
 

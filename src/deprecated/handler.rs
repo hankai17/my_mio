@@ -6,11 +6,11 @@ pub trait Handler: Sized {  // trait的Size默认是未知的 即?Sized 因为�
     //type Timeout;   // 关联类型 意思是在实现的时候才知道他是什么类型
     //type Message;
 
-    fn ready(&mut self, event_loop: &mut EventLoop, token: Token, events: Ready) {}
-    fn notify(&mut self, event_loop: &mut EventLoop, msg: i32) {} // 值传递Self 所以trait必须是Sized
-    fn timeout(&mut self, event_loop: &mut EventLoop, timeout: i32) {}
-    fn interrupted(&mut self, event_loop: &mut EventLoop) {}
-    fn tick(&mut self, event_loop: &mut EventLoop) {} // 定时器
+    fn ready(&mut self, event_loop: &EventLoop, token: Token, events: Ready) {}
+    fn notify(&mut self, event_loop: &EventLoop, msg: i32) {} // 值传递Self 所以trait必须是Sized
+    fn timeout(&mut self, event_loop: &EventLoop, timeout: i32) {}
+    fn interrupted(&mut self, event_loop: &EventLoop) {}
+    fn tick(&mut self, event_loop: &EventLoop) {} // 定时器
 }
 
 // https://laplacedemon.gitbooks.io/-rust/content/sized4e0e3f-sized.html

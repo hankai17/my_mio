@@ -142,11 +142,11 @@ impl EventLoop {
             poll.as_mut().unwrap().poll(events.as_mut().unwrap(), timeout)
         }
     }
-    fn io_event<H>(&mut self, handler: &mut H, evt: Event) 
+    fn io_event<H>(&self, handler: &mut H, evt: Event) 
         where H: Handler {
         handler.ready(self, evt.token(), evt.readiness());
     }
-    fn notify<H>(&mut self, handler: &mut H) 
+    fn notify<H>(&self, handler: &mut H) 
         where H: Handler {
         for _ in 0..self.config.messages_per_tick {     // 每个周期尝试从pipe 最多读取256次
             match self.notify_rx.try_recv() {
@@ -156,14 +156,16 @@ impl EventLoop {
         }
         let _ = self.poll.reregister(&self.notify_rx, NOTIFY, Ready::readable(), PollOpt::edge() | PollOpt::oneshot());
     }
-    fn timer_process<H>(&mut self, handler: &mut H) 
+    fn timer_process<H>(&self, handler: &mut H) 
         where H: Handler {
+        /*
         while let Some(t) = self.timer.poll() {
             handler.timeout(self, t);
         }
+        */
     }
     // https://stackoverflow.com/questions/45116984/the-trait-cannot-be-made-into-an-object
-    fn io_process<H>(&mut self, handler: &mut H, cnt: usize) 
+    fn io_process<H>(&self, handler: &mut H, cnt: usize) 
         where H: Handler {
         let mut i = 0;
         log::trace!("io_process(..); cnt={}; len={}", cnt, self.events.len());
@@ -178,7 +180,7 @@ impl EventLoop {
             i += 1;
         }
     }
-    pub fn run_once<H>(&mut self, handler: &mut H, timeout: Option<Duration>) -> io::Result<()> 
+    pub fn run_once<H>(&self, handler: &mut H, timeout: Option<Duration>) -> io::Result<()> 
         where H: Handler {
         log::trace!("event loop tick");
         let events = match self.io_poll(timeout) {
@@ -196,9 +198,12 @@ impl EventLoop {
         handler.tick(self);     // 没有实现也能调?
         Ok(())
     }
-    pub fn run<H>(&mut self, handler: &mut H) -> io::Result<()> 
+    pub fn run<H>(&self, handler: &mut H) -> io::Result<()> 
         where H: Handler {
-        self.run = true;
+        let run = self.running();
+        unsafe {
+            *run.as_mut().unwrap() = true;
+        }
         while self.run {
             self.run_once(handler, None)?;
         }
