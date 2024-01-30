@@ -38,7 +38,7 @@ impl Acceptor {
     }
     fn bind(&mut self) {
         self.event_loop.register(&self.tcp_listener, SERVER, Ready::readable(), 
-                PollOpt::edge()); // ONESHOT的作用是每次事件触发后，就从红黑树中删除监听这个socket
+                PollOpt::edge());
         self.is_listening = true;
     }
 }
@@ -47,7 +47,10 @@ impl Handler for Acceptor {
     fn ready(&mut self, event_loop: &EventLoop, token: Token, 
             events: Ready) {
         let (stream, addr) = self.tcp_listener.accept().unwrap();
-        (self.accept_cb)(stream, addr);
+        //(self.accept_cb)(stream, addr);
+        let mut connection = TcpConnection::new(self.event_loop.clone(), stream);
+        self.event_loop.run(&mut connection);
+        // 怎样注册事件?
     }
     fn notify(&mut self, event_loop: &EventLoop, msg: i32) {
     }
@@ -198,8 +201,10 @@ fn sleep_ms(ms: u64) {
     thread::sleep(Duration::from_millis(ms));
 }
 
+// TcpServer::new_connection->
 fn accept_cb(stream: TcpStream, addr: SocketAddr) {
     println!("stream: {:?}, addr: {:?}", stream, addr);
+    //let mut connection = TcpConnection::new(, stream);
 }
 
 fn main() {
@@ -214,9 +219,6 @@ fn main() {
     acceptor.bind();
     acceptor.set_accept_cb(accept_cb);
     event_loop.test();
-    //sleep_ms(1000 * 100);
-    println!("-------------------------");
     event_loop.run(&mut acceptor);
-    println!("-------------------------");
 }
 
