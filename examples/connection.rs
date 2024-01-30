@@ -38,7 +38,7 @@ impl Acceptor {
     }
     fn bind(&mut self) {
         self.event_loop.register(&self.tcp_listener, SERVER, Ready::readable(), 
-                PollOpt::edge() | PollOpt::oneshot());
+                PollOpt::edge());
         self.is_listening = true;
     }
 }
