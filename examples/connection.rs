@@ -38,7 +38,7 @@ impl Acceptor {
     }
     fn bind(&mut self) {
         self.event_loop.register(&self.tcp_listener, SERVER, Ready::readable(), 
-                PollOpt::edge());
+                PollOpt::edge()); // ONESHOT的作用是每次事件触发后，就从红黑树中删除监听这个socket
         self.is_listening = true;
     }
 }
