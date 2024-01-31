@@ -44,6 +44,7 @@ pub struct MyStruct {
 impl MyStruct {
     pub fn struct_function(&mut self, val: i64) {
         self.x += val;
+        println!("self.x: {}", self.x)
     }
 }
 
@@ -77,8 +78,16 @@ fn test3() {
     do_something_with_a_function1(&mut instance_function);
 }
 
+fn test4() -> Box<dyn FnMut(i64)> {
+    let mut instance = MyStruct{x: 0};
+    Box::new(move |val: i64| {instance.struct_function(val)})
+}
+
 fn main() {
     test1();
     test2();
     test3();
+    let mut cb = test4();
+    cb(44);
+    cb(44); // 用这种方式重构?
 }

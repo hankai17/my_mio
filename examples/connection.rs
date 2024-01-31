@@ -50,7 +50,7 @@ impl Handler for Acceptor {
         //(self.accept_cb)(stream, addr);
         let mut connection = TcpConnection::new(self.event_loop.clone(), stream);
         self.event_loop.run(&mut connection);
-        // 怎样注册事件?
+        // 怎样注册事件? // 模拟server1.rs ?
     }
     fn notify(&mut self, event_loop: &EventLoop, msg: i32) {
     }

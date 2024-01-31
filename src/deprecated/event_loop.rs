@@ -198,7 +198,8 @@ impl EventLoop {
         handler.tick(self);     // 没有实现也能调?
         Ok(())
     }
-    pub fn run<H>(&self, handler: &mut H) -> io::Result<()> 
+    pub fn run<H>(&self, handler: &mut H) -> io::Result<()>  // 为什么这里的handler没有那种 基类指针指向子类对象那种多态
+                                                            // 这里没有做到 所谓的"acceptor调用自己的handler connection调用自己的handler" // 这里的handler是写死的
         where H: Handler {
         let run = self.running();
         unsafe {
