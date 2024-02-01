@@ -206,7 +206,8 @@ impl EventLoop {
             *run.as_mut().unwrap() = true;
         }
         while self.run {
-            self.run_once(handler, None)?;
+            self.run_once(handler, None)?; // 改成cb_obj 并让epoll的ptr指向之 只有这样才能抽象任何对象
+                                            // 要么就是 server1那种 一个大handler里面用token区分acceptor或者conn
         }
         Ok(())
     }

@@ -78,6 +78,7 @@ fn test3() {
     do_something_with_a_function1(&mut instance_function);
 }
 
+use std::sync::Arc;
 fn test4() -> Box<dyn FnMut(i64)> {
     let mut instance = MyStruct{x: 0};
     Box::new(move |val: i64| {instance.struct_function(val)})
