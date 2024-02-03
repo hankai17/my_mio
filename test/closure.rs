@@ -90,5 +90,5 @@ fn main() {
     test3();
     let mut cb = test4();
     cb(44);
-    cb(44); // 用这种方式重构?
+    cb(44); // 用这种方式重构? // 参考rust线程池
 }
