@@ -164,6 +164,37 @@ impl EventLoop {
         }
         */
     }
+    fn io_process1(&self, cnt: usize) {
+        let mut i = 0;
+        log::trace!("io_process(..); cnt={}; len={}", cnt, self.events.len());
+        while i < cnt {
+            let evt = self.events.get(i).unwrap();
+            log::trace!("event={:?}; idx={:?}", evt, i);
+            match evt.token() {
+                //NOTIFY => self.notify(handler),
+                //TIMER => self.timer_process(handler),
+                _ => self.io_event1(evt)
+            }
+            i += 1;
+        }
+    }
+    pub fn run_once1(&self, timeout: Option<Duration>) -> io::Result<()> {
+        log::trace!("event loop tick1");
+        let cnt = match self.io_poll(timeout) {
+            Ok(e) => e,
+            Err(err) => {
+                if err.kind() == io::ErrorKind::Interrupted {
+                    handler.interrupted(self);
+                    0
+                } else {
+                    return Err(err);
+                }
+            }
+        };
+        self.io_process1(cnt);
+        handler.tick(self);
+        Ok(())
+    }
     // https://stackoverflow.com/questions/45116984/the-trait-cannot-be-made-into-an-object
     fn io_process<H>(&self, handler: &mut H, cnt: usize) 
         where H: Handler {
@@ -183,7 +214,7 @@ impl EventLoop {
     pub fn run_once<H>(&self, handler: &mut H, timeout: Option<Duration>) -> io::Result<()> 
         where H: Handler {
         log::trace!("event loop tick");
-        let events = match self.io_poll(timeout) {
+        let cnt = match self.io_poll(timeout) {
             Ok(e) => e,
             Err(err) => {
                 if err.kind() == io::ErrorKind::Interrupted {
@@ -194,7 +225,7 @@ impl EventLoop {
                 }
             }
         };
-        self.io_process(handler, events);
+        self.io_process(handler, cnt);
         handler.tick(self);     // 没有实现也能调?
         Ok(())
     }

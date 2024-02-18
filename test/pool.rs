@@ -2,7 +2,8 @@ use std::thread::{self, JoinHandle};
 use std::sync::{Arc, mpsc, Mutex};
 
 
-type Job = Box<dyn FnOnce() + 'static + Send>;
+type Job = Box<dyn FnOnce(i64) + 'static + Send>;
+
 enum Message {
     ByeBye,
     NewJob(Job),
@@ -23,7 +24,7 @@ impl Worker
                 match message {
                     Message::NewJob(job) => {
                         println!("do job from worker[{}]", id);
-                        job();
+                        job(123);
                     },
                     Message::ByeBye => {
                         println!("ByeBye from worker[{}]", id);
@@ -51,18 +52,18 @@ impl Pool where {
         if max_workers == 0 {
             panic!("max_workers must be greater than zero!")
         }
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = mpsc::channel(); // 多发送 单接受
 
         let mut workers = Vec::with_capacity(max_workers);
         let receiver = Arc::new(Mutex::new(rx));
         for i in 0..max_workers {
-            workers.push(Worker::new(i, Arc::clone(&receiver)));
+            workers.push(Worker::new(i, Arc::clone(&receiver)));    // 接收端互斥
         }
 
         Pool { workers: workers, max_workers: max_workers, sender: tx }
     }
     
-    pub fn execute<F>(&self, f:F) where F: FnOnce() + 'static + Send
+    pub fn execute<F>(&self, f:F) where F: FnOnce(i64) + 'static + Send
     {
 
         let job = Message::NewJob(Box::new(f));
@@ -83,26 +84,42 @@ impl Drop for Pool {
     }
 }
 
+pub struct MyStruct {
+    x: i64
+}
 
-/*
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn it_works() {
-        let p = Pool::new(4);
-        p.execute(|| println!("do new job1"));
-        p.execute(|| println!("do new job2"));
-        p.execute(|| println!("do new job3"));
-        p.execute(|| println!("do new job4"));
+impl MyStruct {
+    pub fn struct_function(&mut self, val: i64) {
+        self.x += val;
+        println!("self.x: {}", self.x)
     }
 }
-*/
+
+fn test1() {
+    use std::collections::HashMap;
+    let mut events_map: HashMap<i32, Job> = HashMap::new();
+    let mut instance = MyStruct{x: 2000};
+    let job = Box::new(move |val: i64| {instance.struct_function(val)});
+    events_map.insert(123, job);
+
+    let cb = events_map.remove(&123);
+    let c = cb.unwrap();
+    c(123);
+}
+
+fn test2() {
+    let p = Pool::new(4);
+    //p.execute(|| println!("do new job1"));
+    //p.execute(|| println!("do new job2"));
+    //p.execute(|| println!("do new job3"));
+    p.execute(|val: i64| println!("do new job4"));
+
+    let mut instance = MyStruct{x: 1000};
+    //p.execute(|val: i64| {instance.struct_function(val)});
+    p.execute(move |val: i64| {instance.struct_function(val)});
+}
 
 fn main() {
-    let p = Pool::new(4);
-    p.execute(|| println!("do new job1"));
-    p.execute(|| println!("do new job2"));
-    p.execute(|| println!("do new job3"));
-    p.execute(|| println!("do new job4"));
+    test1();
+    //test2();
 }
