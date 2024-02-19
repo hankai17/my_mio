@@ -2,7 +2,7 @@ use std::thread::{self, JoinHandle};
 use std::sync::{Arc, mpsc, Mutex};
 
 
-type Job = Box<dyn FnOnce(i64) + 'static + Send>;
+type Job = Box<dyn FnOnce(i64) + 'static + Send + Sync>;
 
 enum Message {
     ByeBye,
@@ -63,7 +63,7 @@ impl Pool where {
         Pool { workers: workers, max_workers: max_workers, sender: tx }
     }
     
-    pub fn execute<F>(&self, f:F) where F: FnOnce(i64) + 'static + Send
+    pub fn execute<F>(&self, f:F) where F: FnOnce(i64) + 'static + Send + Sync
     {
 
         let job = Message::NewJob(Box::new(f));

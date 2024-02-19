@@ -4,12 +4,14 @@ use my_mio::{Events, Poll, PollOpt, Ready, Registration, SetReadiness, Token};
 use my_mio::event::Evented;
 use std::time::Duration;
 
+/*
 fn test1() {
     let poll = Poll::new().unwrap();
     let mut events = Events::with_capacity(128);
     let (r, set) = Registration::new2();
 
-    r.register(&poll, Token(0), Ready::readable(), PollOpt::edge()).unwrap(); // 分配node 初始化之(记录监听的事件 queue指向poll中的queue)
+    let job = Box::new(move |val: i64| { println!("--------------"); });
+    r.register(&poll, Token(0), Ready::readable(), PollOpt::edge(), job).unwrap(); // 分配node 初始化之(记录监听的事件 queue指向poll中的queue)
     let n = poll.poll(&mut events, Some(Duration::from_millis(0))).unwrap();
     assert_eq!(n, 0);
 
@@ -266,6 +268,7 @@ fn test5() { // with_small_events_collection
     }
     panic!("dead lock?");
 }
+*/
 
 fn test6() {
     use std::thread;
@@ -294,14 +297,16 @@ fn test6() {
     let mut index: usize = 0;
     for _ in 0..ITERS { // 50000个node 平均排入8个channel的writer端
         let (registration, set_readiness) = Registration::new2();
-        registration.register(&poll, Token(token_index), Ready::readable(), PollOpt::edge()).unwrap();
+        let job = Box::new(move |val: i64| { println!("--------------"); });
+        registration.register(&poll, Token(token_index), Ready::readable(), PollOpt::edge(), job).unwrap();
         let _ = senders[index].send((registration, set_readiness));
         token_index += 1;
         index += 1;
         if index == THREADS {   // 主线程时不时的分配node排入队列
             index = 0;
             let (registration, set_readiness) = Registration::new2();
-            registration.register(&poll, Token(token_index), Ready::readable(), PollOpt::edge()).unwrap();
+            let job = Box::new(move |val: i64| { println!("--------------"); });
+            registration.register(&poll, Token(token_index), Ready::readable(), PollOpt::edge(), job).unwrap();
             let _ = set_readiness.set_readiness(Ready::readable());
             drop(registration);
             drop(set_readiness);

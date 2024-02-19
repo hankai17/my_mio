@@ -6,7 +6,7 @@ pub struct EventedFd<'a>(pub &'a RawFd); // RawFd的声明周期 跟struct一样
 
 impl <'a> Evented for EventedFd<'a> {
     fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
-        poll::selector(poll).register(*self.0, token, interest, opts)
+        poll::selector(poll).register(*self.0, token, interest, opts, job)
     }
     fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
         poll::selector(poll).reregister(*self.0, token, interest, opts)

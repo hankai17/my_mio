@@ -8,7 +8,7 @@ use libc::{self, c_int};
 use libc::{EPOLLERR, EPOLLHUP, EPOLLONESHOT};
 use libc::{EPOLLET, EPOLLOUT, EPOLLIN, EPOLLPRI}; // define in /usr/include/sys/epoll.h 
 
-use {io, Ready, PollOpt, Token};
+use {io, Ready, PollOpt, Token, Job};
 use event_imp::Event;
 use sys::unix::{cvt, UnixReady};
 use sys::unix::io::set_cloexec;
@@ -19,7 +19,7 @@ static NEXT_ID: AtomicUsize = ATOMIC_USIZE_INIT;
 pub struct Selector {
     id: usize,
     epfd: RawFd,
-    //events_map: HashMap<i32, Job>,
+    events_map: HashMap<i32, Job>,
 }
 
 impl Selector {
@@ -41,7 +41,7 @@ impl Selector {
         Ok(Selector {
             id: id,
             epfd: epfd,
-            //events_map: HashMap::new(),
+            events_map: HashMap::new(),
         })
     }
     pub fn id(&self) -> usize { self.id }
@@ -49,6 +49,7 @@ impl Selector {
         let timeout_ms = timeout
                 .map(|to| cmp::min(millis(to), i32::MAX as u64) as i32)
                 .unwrap_or(-1);
+        let events_map = self.events_map();
         evts.clear();
         unsafe {
             let cnt = cvt(libc::epoll_wait(self.epfd,
@@ -62,18 +63,25 @@ impl Selector {
                     evts.events.remove(i);
                     return Ok(true);
                 }
+                let token = evts.events[i].u64 as usize as i32;
+                let cb = events_map.as_mut().unwrap().remove(&token);
+                let c = cb.unwrap();
+                c(123);
             }
         }
         Ok(false)
     }
-    //pub fn register_cb(&self, fd: RawFd, ) { // std::function<void(int event)>;
-    //}
-    pub fn register(&self, fd: RawFd, token: Token, interests: Ready, opts: PollOpt) -> io::Result<()> {
+    pub fn events_map(&self) -> *mut HashMap<i32, Job> {
+        &self.events_map as *const HashMap<i32, Job>  as *mut HashMap<i32, Job>
+    }
+    pub fn register(&self, fd: RawFd, token: Token, interests: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
         let mut info = libc::epoll_event {
             events: ioevent_to_epoll(interests, opts),
             u64: usize::from(token) as u64
         };
+        let events_map = self.events_map();
         unsafe {
+            events_map.as_mut().unwrap().insert(usize::from(token) as u64 as i32, job);
             cvt(libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_ADD, fd, &mut info))?;
             Ok(())
         }
