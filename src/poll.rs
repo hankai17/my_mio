@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex, Condvar};
 use std::sync::atomic::Ordering::{self, Acquire, Release, AcqRel, Relaxed, SeqCst};
 use std::time::{Duration, Instant};
 
-use event_imp::{self as event, Ready, Event, Evented, PollOpt};
+use event_imp::{self as event, Ready, Event, Evented, PollOpt, Job};
 use {Token, sys};
 
 const READINESS_SHIFT: usize = 0;
@@ -547,15 +547,16 @@ impl Poll {
             lock: Mutex::new(()),
             condvar: Condvar::new(),
         };
-        poll.readiness_queue.inner.awakener.register(&poll, AWAKEN, Ready::readable(), PollOpt::edge())?;
+        let job = Box::new(move |val: i64| {});
+        poll.readiness_queue.inner.awakener.register(&poll, AWAKEN, Ready::readable(), PollOpt::edge(), job)?;
         Ok(poll)
     }
-    pub fn register<E: ?Sized>(&self, handle: &E, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()>
+    pub fn register<E: ?Sized>(&self, handle: &E, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()>
         where E: Evented
     {
         validate_args(token)?;
         log::trace!("register poller");
-        handle.register(self, token, interest, opts)?;      // 为何不直接用self.selector 要用参数handle的register?
+        handle.register(self, token, interest, opts, job)?;      // 为何不直接用self.selector 要用参数handle的register?
                                                             // 依赖反转 只是提供一个接口而已 不同类型的Evented(eg: channel:ReceiverCtl eg: unix/eventedfd Io)有不同的register
         Ok(())
     }
@@ -991,7 +992,7 @@ impl Registration {
 }
 
 impl Evented for Registration {
-    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
+    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
         self.inner.update(poll, token, interest, opts)
     }
     fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {

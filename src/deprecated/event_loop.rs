@@ -1,7 +1,7 @@
 use {channel, Poll, Events, Token};
 use event::Evented;
 use deprecated::{Handler, NotifyError};
-use event_imp::{Event, Ready, PollOpt};
+use event_imp::{Event, Ready, PollOpt, Job};
 use timer::{self, Timer, Timeout};
 use std::{io, usize};
 use std::default::Default;
@@ -69,8 +69,10 @@ impl EventLoop {
             .capacity(config.timer_capacity)
             .build();
         let (tx, rx) = channel::sync_channel(config.notify_capacity);   // 初始化pipe
-        poll.register(&rx, NOTIFY, Ready::readable(), PollOpt::edge() | PollOpt::oneshot())?;   // 初始化receiver中的node
-        poll.register(&timer, TIMER, Ready::readable(), PollOpt::edge())?;  // 初始化timer
+        let job1 = Box::new(move |val: i64| {});
+        let job2 = Box::new(move |val: i64| {});
+        poll.register(&rx, NOTIFY, Ready::readable(), PollOpt::edge() | PollOpt::oneshot(), job1)?;   // 初始化receiver中的node
+        poll.register(&timer, TIMER, Ready::readable(), PollOpt::edge(), job2)?;  // 初始化timer
         Ok(EventLoop {
             run: true,
             poll,
@@ -116,9 +118,9 @@ impl EventLoop {
     }
     pub fn is_running(&self) -> bool { self.run }
     //pub fn register<E: ?Sized>(&mut self, io: &E, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()>
-    pub fn register<E>(&self, io: &E, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()> // 也可以
+    pub fn register<E>(&self, io: &E, token: Token, interest: Ready, opt: PollOpt, job: Job) -> io::Result<()> // 也可以
         where E: Evented {
-        self.poll.register(io, token, interest, opt)
+        self.poll.register(io, token, interest, opt, job)
     }
     pub fn reregister<E: ?Sized>(&self, io: &E, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()>
         where E: Evented {
@@ -163,37 +165,6 @@ impl EventLoop {
             handler.timeout(self, t);
         }
         */
-    }
-    fn io_process1(&self, cnt: usize) {
-        let mut i = 0;
-        log::trace!("io_process(..); cnt={}; len={}", cnt, self.events.len());
-        while i < cnt {
-            let evt = self.events.get(i).unwrap();
-            log::trace!("event={:?}; idx={:?}", evt, i);
-            match evt.token() {
-                //NOTIFY => self.notify(handler),
-                //TIMER => self.timer_process(handler),
-                _ => self.io_event1(evt)
-            }
-            i += 1;
-        }
-    }
-    pub fn run_once1(&self, timeout: Option<Duration>) -> io::Result<()> {
-        log::trace!("event loop tick1");
-        let cnt = match self.io_poll(timeout) {
-            Ok(e) => e,
-            Err(err) => {
-                if err.kind() == io::ErrorKind::Interrupted {
-                    handler.interrupted(self);
-                    0
-                } else {
-                    return Err(err);
-                }
-            }
-        };
-        self.io_process1(cnt);
-        handler.tick(self);
-        Ok(())
     }
     // https://stackoverflow.com/questions/45116984/the-trait-cannot-be-made-into-an-object
     fn io_process<H>(&self, handler: &mut H, cnt: usize) 

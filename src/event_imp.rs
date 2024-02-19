@@ -233,15 +233,17 @@ impl Event {
     pub fn token(&self) -> Token { self.token }
 }
 
+pub type Job = Box<dyn FnOnce(i64) + 'static + Send>;
+
 pub trait Evented {
-    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()>;
+    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()>;
     fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()>;
     fn deregister(&self, poll: &Poll) -> io::Result<()>;
 }
 
 impl Evented for Box<Evented> {
-    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
-        self.as_ref().register(poll, token, interest, opts)
+    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
+        self.as_ref().register(poll, token, interest, opts, job)
     }
     fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
         self.as_ref().reregister(poll, token, interest, opts)
@@ -252,8 +254,8 @@ impl Evented for Box<Evented> {
 }
 
 impl <T: Evented> Evented for Box<T> {
-    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
-        self.as_ref().register(poll, token, interest, opts)
+    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
+        self.as_ref().register(poll, token, interest, opts, job)
     }
     fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
         self.as_ref().reregister(poll, token, interest, opts)
@@ -264,8 +266,8 @@ impl <T: Evented> Evented for Box<T> {
 }
 
 impl <T: Evented> Evented for ::std::sync::Arc<T> {
-    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
-        self.as_ref().register(poll, token, interest, opts)
+    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
+        self.as_ref().register(poll, token, interest, opts, job)
     }
     fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
         self.as_ref().reregister(poll, token, interest, opts)

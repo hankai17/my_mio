@@ -8,6 +8,7 @@ mod event_imp;
 pub use event_imp:: {
     PollOpt,
     Ready,
+    Job,
 };
 
 mod io;

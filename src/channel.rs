@@ -1,4 +1,4 @@
-use {io, Ready, Poll, PollOpt, Registration, SetReadiness, Token};
+use {io, Ready, Poll, PollOpt, Registration, SetReadiness, Token, Job};
 use event::Evented;
 use std::any::Any;
 use std::fmt;
@@ -125,7 +125,7 @@ impl ReceiverCtl {
 }
 
 impl Evented for ReceiverCtl {
-    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {   // 接收端注册: 分配一个node // 如果有pending则立即入队
+    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {   // 接收端注册: 分配一个node // 如果有pending则立即入队
         if self.registration.borrow().is_some() {
             return Err(io::Error::new(io::ErrorKind::Other, "receiver already registered"));
         }
@@ -224,8 +224,8 @@ impl<T> Receiver<T> {
 }
 
 impl<T> Evented for Receiver<T> {
-    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
-        self.ctl.register(poll, token, interest, opts)
+    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
+        self.ctl.register(poll, token, interest, opts, job)
     }
     fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
         self.ctl.reregister(poll, token, interest, opts)

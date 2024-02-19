@@ -1,4 +1,4 @@
-use {io, sys, Ready, Poll, PollOpt, Token};
+use {io, sys, Ready, Poll, PollOpt, Token, Job};
 use event::Evented;
 use std::io::{Read, Write};
 use std::process;
@@ -38,8 +38,8 @@ impl<'a> Read for &'a PipeReader {
 }
 
 impl Evented for PipeReader {
-    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
-        self.io.register(poll, token, interest, opts)
+    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
+        self.io.register(poll, token, interest, opts, job)
     }
     fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
         self.io.reregister(poll, token, interest, opts)
@@ -105,8 +105,8 @@ impl<'a> Write for &'a PipeWriter {
 }
 
 impl Evented for PipeWriter {
-    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
-        self.io.register(poll, token, interest, opts)
+    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
+        self.io.register(poll, token, interest, opts, job)
     }
     fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
         self.io.reregister(poll, token, interest, opts)

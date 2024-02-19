@@ -1,4 +1,4 @@
-use {io, sys, Ready, Poll, PollOpt, Token};
+use {io, sys, Ready, Poll, PollOpt, Token, Job};
 use event::Evented;
 use poll::SelectorId;
 use std::fmt;
@@ -105,9 +105,9 @@ impl UdpSocket {
 }
 
 impl Evented for UdpSocket {
-    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
+    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
         self.selector_id.associate_selector(poll)?;
-        self.sys.register(poll, token, interest, opts)
+        self.sys.register(poll, token, interest, opts, job)
     }
     fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
         self.sys.reregister(poll, token, interest, opts)

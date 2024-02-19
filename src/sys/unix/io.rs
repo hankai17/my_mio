@@ -3,7 +3,7 @@ use std::io::{Read, Write};
 use std::os::unix::io::{IntoRawFd, AsRawFd, FromRawFd, RawFd};
 
 use libc;
-use {io, Ready, Poll, PollOpt, Token};
+use {io, Ready, Poll, PollOpt, Token, Job};
 use event::Evented;
 use unix::EventedFd;
 use sys::unix::cvt;
@@ -59,8 +59,8 @@ impl AsRawFd for Io {
 }
 
 impl Evented for Io {
-    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
-        EventedFd(&self.as_raw_fd()).register(poll, token, interest, opts)
+    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
+        EventedFd(&self.as_raw_fd()).register(poll, token, interest, opts, job)
     }
     fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
         EventedFd(&self.as_raw_fd()).reregister(poll, token, interest, opts)

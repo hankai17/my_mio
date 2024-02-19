@@ -16,12 +16,10 @@ use std::collections::HashMap;
 
 static NEXT_ID: AtomicUsize = ATOMIC_USIZE_INIT;
 
-type Job = Box<dyn FnOnce(i64) + 'static + Send>;
-
 pub struct Selector {
     id: usize,
     epfd: RawFd,
-    events_map: HashMap<i32, Job>,
+    //events_map: HashMap<i32, Job>,
 }
 
 impl Selector {
@@ -43,7 +41,7 @@ impl Selector {
         Ok(Selector {
             id: id,
             epfd: epfd,
-            events_map: HashMap::new(),
+            //events_map: HashMap::new(),
         })
     }
     pub fn id(&self) -> usize { self.id }
@@ -68,8 +66,8 @@ impl Selector {
         }
         Ok(false)
     }
-    pub fn register_cb(&self, fd: RawFd, ) { // std::function<void(int event)>;
-    }
+    //pub fn register_cb(&self, fd: RawFd, ) { // std::function<void(int event)>;
+    //}
     pub fn register(&self, fd: RawFd, token: Token, interests: Ready, opts: PollOpt) -> io::Result<()> {
         let mut info = libc::epoll_event {
             events: ioevent_to_epoll(interests, opts),

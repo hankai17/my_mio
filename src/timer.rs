@@ -1,4 +1,4 @@
-use {convert, io, Ready, Poll, PollOpt, Token, Registration, SetReadiness};
+use {convert, io, Ready, Poll, PollOpt, Token, Registration, SetReadiness, Job};
 use lazycell::LazyCell;
 use slab::Slab;
 use std::{cmp, error, fmt, u64, usize, iter, thread};
@@ -338,7 +338,7 @@ fn spawn_wakeup_thread(state: WakeupState, set_readiness: SetReadiness, start: I
 }
 
 impl<T> Evented for Timer<T> {
-    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
+    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
         if self.inner.borrow().is_some() {
             return Err(io::Error::new(io::ErrorKind::Other, "timer alreay registered"));
         }
