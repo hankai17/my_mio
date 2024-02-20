@@ -183,7 +183,6 @@ fn connect() {
     t.join().unwrap();
 }
 
-/*
 fn read() {
     const N: usize = 16 * 1024 * 1024;
     struct H {
@@ -203,7 +202,8 @@ fn read() {
     });
     let poll = Poll::new().unwrap();
     let s = TcpStream::connect(&addr).unwrap();
-    poll.register(&s, Token(1), Ready::readable(), PollOpt::edge()).unwrap();
+    let job = Box::new(move |val: i64| { println!("--------------"); });
+    poll.register(&s, Token(1), Ready::readable(), PollOpt::edge(), job).unwrap();
     let mut events = Events::with_capacity(128);
     let mut h = H {
         amt: 0,
@@ -250,7 +250,8 @@ fn peek() {
     });
     let poll = Poll::new().unwrap();
     let s = TcpStream::connect(&addr).unwrap();
-    poll.register(&s, Token(1), Ready::readable(), PollOpt::edge()).unwrap();
+    let job = Box::new(move |val: i64| { println!("--------------"); });
+    poll.register(&s, Token(1), Ready::readable(), PollOpt::edge(), job).unwrap();
     let mut events = Events::with_capacity(128);
     let mut h = H {
         amt: 0,
@@ -300,7 +301,8 @@ fn read_bufs() {
     let poll = Poll::new().unwrap();
     let mut events = Events::with_capacity(128);
     let s = TcpStream::connect(&addr).unwrap();
-    poll.register(&s, Token(1), Ready::readable(), PollOpt::level()).unwrap();
+    let job = Box::new(move |val: i64| { println!("--------------"); });
+    poll.register(&s, Token(1), Ready::readable(), PollOpt::level(), job).unwrap();
     let b1 = &mut [0; 10][..];
     let b2 = &mut [0; 383][..];
     let b3 = &mut [0; 28][..];
@@ -346,6 +348,7 @@ fn read_bufs() {
     t.join().unwrap();
 }
 
+/*
 fn write() {
     const N: usize = 16 * 1024 * 1024;
     struct H {
@@ -682,7 +685,7 @@ fn write_then_drop() {
 
 fn main() {
     accept();
-    connect();
+    //connect();
     //read();
     //read_bufs();
     //write();

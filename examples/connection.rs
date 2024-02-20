@@ -36,9 +36,18 @@ impl Acceptor {
     fn set_accept_cb(&mut self, cb: fn(TcpStream, SocketAddr)) {
         self.accept_cb = cb;
     }
+    //fn ready1(&mut self, token: Token, events: Ready) {
+    pub fn ready1(&mut self, val: i64) {
+        println!("-----------------");
+        //let (stream, addr) = self.tcp_listener.accept().unwrap();
+        //let mut connection = TcpConnection::new(self.event_loop.clone(), stream);
+        //self.event_loop.run(&mut connection);
+    }
     fn bind(&mut self) {
+        //let job = Box::new(move |val: i64| { println!("--------------"); });
+        let job = Box::new(|val: i64| {self.ready1(val)});
         self.event_loop.register(&self.tcp_listener, SERVER, Ready::readable(), 
-                PollOpt::edge());
+                PollOpt::edge(), job);
         self.is_listening = true;
     }
 }
@@ -75,8 +84,9 @@ impl Connector {
     fn connect(&mut self, addr: &String) {
         let sock = TcpStream::connect(&(addr.parse().unwrap())).unwrap();
         self.connector = sock;
+        let job = Box::new(move |val: i64| { println!("--------------"); });
         self.event_loop.register(&self.connector, CLIENT, Ready::writable(),
-                PollOpt::edge() | PollOpt::oneshot()).unwrap();
+                PollOpt::edge() | PollOpt::oneshot(), job).unwrap();
     }
 }
 

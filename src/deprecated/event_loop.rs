@@ -148,6 +148,8 @@ impl EventLoop {
         where H: Handler {
         handler.ready(self, evt.token(), evt.readiness());
     }
+    // 1 handler没必要在这个文件里  逻辑全放到selector的cb里
+    // 2 cb是传出来运行 还是即时运行 可以参考ats/ngx等设计
     fn notify<H>(&self, handler: &mut H) 
         where H: Handler {
         for _ in 0..self.config.messages_per_tick {     // 每个周期尝试从pipe 最多读取256次
