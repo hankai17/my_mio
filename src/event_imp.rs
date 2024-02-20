@@ -233,7 +233,8 @@ impl Event {
     pub fn token(&self) -> Token { self.token }
 }
 
-pub type Job = Box<dyn FnOnce(i64) + 'static + Send + Sync>;
+use std::sync::{Arc, Mutex, Condvar};
+pub type Job = Box<dyn FnMut(i64) + 'static + Send + Sync>;
 
 pub trait Evented {
     fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()>;

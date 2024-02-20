@@ -64,7 +64,7 @@ impl Selector {
                     return Ok(true);
                 }
                 let token = evts.events[i].u64 as usize as i32;
-                let cb = events_map.as_mut().unwrap().remove(&token);
+                let cb = events_map.as_mut().unwrap().get_mut(&token);
                 let c = cb.unwrap();
                 c(123);
             }

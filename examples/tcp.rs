@@ -121,7 +121,6 @@ fn accept() {
     t.join().unwrap();
 }
 
-/*
 fn connect() {
     struct H {
         hit: u32,
@@ -140,7 +139,8 @@ fn connect() {
 
     let poll = Poll::new().unwrap();
     let s = TcpStream::connect(&addr).unwrap(); // 1
-    poll.register(&s, Token(1), Ready::readable() | Ready::writable(), PollOpt::edge()).unwrap();
+    let job = Box::new(move |val: i64| { println!("--------------"); });
+    poll.register(&s, Token(1), Ready::readable() | Ready::writable(), PollOpt::edge(), job).unwrap();
     let mut events = Events::with_capacity(128);
 
     let mut h = H {
@@ -183,6 +183,7 @@ fn connect() {
     t.join().unwrap();
 }
 
+/*
 fn read() {
     const N: usize = 16 * 1024 * 1024;
     struct H {
@@ -681,7 +682,7 @@ fn write_then_drop() {
 
 fn main() {
     accept();
-    //connect();
+    connect();
     //read();
     //read_bufs();
     //write();
