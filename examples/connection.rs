@@ -2,7 +2,7 @@ extern crate my_mio;
 extern crate bytes;
 
 use std::{io, mem, fmt};
-use my_mio::{Events, Poll, PollOpt, Ready, Token};
+use my_mio::{Events, Poll, PollOpt, Ready, Token, Job};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use my_mio::deprecated::{unix, EventLoop, Handler, EventLoopBuilder};
 use my_mio::net::{TcpListener, TcpStream};
@@ -15,6 +15,8 @@ use std::sync::atomic::Ordering::{self, Acquire, Release, AcqRel, Relaxed, SeqCs
 const SERVER: Token = Token(10_000_000);
 const CLIENT: Token = Token(10_000_001);
 
+unsafe impl Send for Acceptor {}
+unsafe impl Sync for Acceptor {}
 struct Acceptor {
     tcp_listener: TcpListener,
     event_loop: Arc<EventLoop>,
@@ -36,19 +38,27 @@ impl Acceptor {
     fn set_accept_cb(&mut self, cb: fn(TcpStream, SocketAddr)) {
         self.accept_cb = cb;
     }
+    fn test(&self) {
+        println!("---test--------------");
+    }
     //fn ready1(&mut self, token: Token, events: Ready) {
-    pub fn ready1(&mut self, val: i64) {
-        println!("-----------------");
+    pub fn ready1(&self, val: i64) {
+        println!("---hello world--------------");
         //let (stream, addr) = self.tcp_listener.accept().unwrap();
         //let mut connection = TcpConnection::new(self.event_loop.clone(), stream);
         //self.event_loop.run(&mut connection);
     }
-    fn bind(&mut self) {
-        //let job = Box::new(move |val: i64| { println!("--------------"); });
-        let job = Box::new(|val: i64| {self.ready1(val)});
+    fn bind(&self) {
+        let job = Box::new(move |val: i64| { println!("--------------"); });
+        //let job = Box::new(|val: i64| {self.ready1(val)});
         self.event_loop.register(&self.tcp_listener, SERVER, Ready::readable(), 
                 PollOpt::edge(), job);
-        self.is_listening = true;
+        //self.is_listening = true;
+    }
+    fn bind1(&self, job: Job) {
+        self.event_loop.register(&self.tcp_listener, SERVER, Ready::readable(), 
+                PollOpt::edge(), job);
+        //self.is_listening = true;
     }
 }
 
@@ -225,10 +235,20 @@ fn main() {
         .timer_wheel_size(1024)
         .timer_capacity(65536);
     let mut event_loop = Arc::new(b.build().unwrap());
-    let mut acceptor = Acceptor::new(event_loop.clone(), &"0.0.0.0:9527".to_string());
-    acceptor.bind();
-    acceptor.set_accept_cb(accept_cb);
+    let mut acceptor = Arc::new(Acceptor::new(event_loop.clone(), &"0.0.0.0:9527".to_string()));
+
+    //acceptor.bind();
+    let clone = acceptor.clone();
+    let job = Box::new(move |val: i64| { clone.ready1(val); });
+    acceptor.bind1(job);
+
+    //acceptor.set_accept_cb(accept_cb);
+    acceptor.test();
     event_loop.test();
-    event_loop.run(&mut acceptor);
+    unsafe {
+        let acceptor1 = Arc::as_ptr(&acceptor) as * mut Acceptor;
+        //acceptor.test();
+        event_loop.run(acceptor1.as_mut().unwrap());
+    }
 }
 
