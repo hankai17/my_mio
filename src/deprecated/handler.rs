@@ -13,4 +13,13 @@ pub trait Handler: Sized {  // trait的Size默认是未知的 即?Sized 因为�
     fn tick(&mut self, event_loop: &EventLoop) {} // 定时器
 }
 
+/*
+pub trait Session {
+    fn onRecv(&mut self, buffer) {}
+    fn onWritten(&mut self) {}
+    fn onError(&mut self) {}
+    fn onManager(&mut self) {}
+}
+*/
+
 // https://laplacedemon.gitbooks.io/-rust/content/sized4e0e3f-sized.html

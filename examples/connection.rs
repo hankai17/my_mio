@@ -38,38 +38,26 @@ impl Acceptor {
     fn set_accept_cb(&mut self, cb: fn(TcpStream, SocketAddr)) {
         self.accept_cb = cb;
     }
-    fn test(&self) {
-        println!("---test--------------");
-    }
-    //fn ready1(&mut self, token: Token, events: Ready) {
-    pub fn ready1(&self, val: i64) {
-        println!("---hello world--------------");
-        //let (stream, addr) = self.tcp_listener.accept().unwrap();
+    pub fn handleRead(&self, val: i64) {
+        println!("---hello world-------------- {}", val);
+        let (stream, addr) = self.tcp_listener.accept().unwrap();
+        //(self.accept_cb)(stream, addr);
+        println!("---hello world-------------- {}", val);
+
         //let mut connection = TcpConnection::new(self.event_loop.clone(), stream);
         //self.event_loop.run(&mut connection);
+        // 怎样注册事件? // 模拟server1.rs ?
     }
-    fn bind(&self) {
-        let job = Box::new(move |val: i64| { println!("--------------"); });
-        //let job = Box::new(|val: i64| {self.ready1(val)});
-        self.event_loop.register(&self.tcp_listener, SERVER, Ready::readable(), 
-                PollOpt::edge(), job);
-        //self.is_listening = true;
-    }
-    fn bind1(&self, job: Job) {
+    fn bind(&self, job: Job) {
         self.event_loop.register(&self.tcp_listener, SERVER, Ready::readable(), 
                 PollOpt::edge(), job);
         //self.is_listening = true;
     }
 }
 
-impl Handler for Acceptor {
+impl Handler for Acceptor { // 可以撤掉event_loop中的handler了 因为handleRead的回调cover了这个功能 而且更灵活
     fn ready(&mut self, event_loop: &EventLoop, token: Token, 
             events: Ready) {
-        let (stream, addr) = self.tcp_listener.accept().unwrap();
-        //(self.accept_cb)(stream, addr);
-        let mut connection = TcpConnection::new(self.event_loop.clone(), stream);
-        self.event_loop.run(&mut connection);
-        // 怎样注册事件? // 模拟server1.rs ?
     }
     fn notify(&mut self, event_loop: &EventLoop, msg: i32) {
     }
@@ -237,17 +225,14 @@ fn main() {
     let mut event_loop = Arc::new(b.build().unwrap());
     let mut acceptor = Arc::new(Acceptor::new(event_loop.clone(), &"0.0.0.0:9527".to_string()));
 
-    //acceptor.bind();
     let clone = acceptor.clone();
-    let job = Box::new(move |val: i64| { clone.ready1(val); });
-    acceptor.bind1(job);
+    let job = Box::new(move |val: i64| { clone.handleRead(val); });
+    acceptor.bind(job);
 
     //acceptor.set_accept_cb(accept_cb);
-    acceptor.test();
     event_loop.test();
     unsafe {
         let acceptor1 = Arc::as_ptr(&acceptor) as * mut Acceptor;
-        //acceptor.test();
         event_loop.run(acceptor1.as_mut().unwrap());
     }
 }
