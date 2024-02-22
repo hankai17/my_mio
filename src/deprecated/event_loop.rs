@@ -144,24 +144,19 @@ impl EventLoop {
             poll.as_mut().unwrap().poll(events.as_mut().unwrap(), timeout)
         }
     }
-    fn io_event<H>(&self, handler: &mut H, evt: Event) 
-        where H: Handler {
-        handler.ready(self, evt.token(), evt.readiness());
+    fn io_event(&self, evt: Event) {
+        //handler.ready(self, evt.token(), evt.readiness());
     }
-    // 1 handler没必要在这个文件里  逻辑全放到selector的cb里
-    // 2 cb是传出来运行 还是即时运行 可以参考ats/ngx等设计
-    fn notify<H>(&self, handler: &mut H) 
-        where H: Handler {
+    fn notify(&self) {
         for _ in 0..self.config.messages_per_tick {     // 每个周期尝试从pipe 最多读取256次
             match self.notify_rx.try_recv() {
-                Ok(msg) => handler.notify(self, msg),
+                //Ok(msg) => handler.notify(self, msg),
                 _ => break,
             }
         }
         let _ = self.poll.reregister(&self.notify_rx, NOTIFY, Ready::readable(), PollOpt::edge() | PollOpt::oneshot());
     }
-    fn timer_process<H>(&self, handler: &mut H) 
-        where H: Handler {
+    fn timer_process(&self) {
         /*
         while let Some(t) = self.timer.poll() {
             handler.timeout(self, t);
@@ -169,49 +164,44 @@ impl EventLoop {
         */
     }
     // https://stackoverflow.com/questions/45116984/the-trait-cannot-be-made-into-an-object
-    fn io_process<H>(&self, handler: &mut H, cnt: usize) 
-        where H: Handler {
+    fn io_process(&self, cnt: usize) {
         let mut i = 0;
         log::trace!("io_process(..); cnt={}; len={}", cnt, self.events.len());
         while i < cnt {
             let evt = self.events.get(i).unwrap();  // epoll_event 转为 Ready
             log::trace!("event={:?}; idx={:?}", evt, i);
             match evt.token() {
-                NOTIFY => self.notify(handler),
-                TIMER => self.timer_process(handler),
-                _ => self.io_event(handler, evt)
+                NOTIFY => self.notify(),
+                TIMER => self.timer_process(),
+                _ => self.io_event(evt)
             }
             i += 1;
         }
     }
-    pub fn run_once<H>(&self, handler: &mut H, timeout: Option<Duration>) -> io::Result<()> 
-        where H: Handler {
+    pub fn run_once(&self, timeout: Option<Duration>) -> io::Result<()> {
         log::trace!("event loop tick");
         let cnt = match self.io_poll(timeout) {
             Ok(e) => e,
             Err(err) => {
                 if err.kind() == io::ErrorKind::Interrupted {
-                    handler.interrupted(self);
+                    //handler.interrupted(self);
                     0
                 } else {
                     return Err(err);
                 }
             }
         };
-        self.io_process(handler, cnt);
-        handler.tick(self);     // 没有实现也能调?
+        self.io_process(cnt);
+        //handler.tick(self);     // 没有实现也能调?
         Ok(())
     }
-    pub fn run<H>(&self, handler: &mut H) -> io::Result<()>  // 为什么这里的handler没有那种 基类指针指向子类对象那种多态
-                                                            // 这里没有做到 所谓的"acceptor调用自己的handler connection调用自己的handler" // 这里的handler是写死的
-        where H: Handler {
+    pub fn run(&self) -> io::Result<()> {
         let run = self.running();
         unsafe {
             *run.as_mut().unwrap() = true;
         }
         while self.run {
-            self.run_once(handler, None)?; // 改成cb_obj 并让epoll的ptr指向之 只有这样才能抽象任何对象
-                                            // 要么就是 server1那种 一个大handler里面用token区分acceptor或者conn
+            self.run_once(None)?;
         }
         Ok(())
     }

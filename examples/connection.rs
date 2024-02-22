@@ -4,7 +4,7 @@ extern crate bytes;
 use std::{io, mem, fmt};
 use my_mio::{Events, Poll, PollOpt, Ready, Token, Job};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use my_mio::deprecated::{unix, EventLoop, Handler, EventLoopBuilder};
+use my_mio::deprecated::{unix, EventLoop, EventLoopBuilder};
 use my_mio::net::{TcpListener, TcpStream};
 use std::net::{self, SocketAddr, SocketAddrV4, SocketAddrV6, Ipv4Addr, Ipv6Addr};
 use std::sync::{Arc, Mutex, Condvar};
@@ -55,14 +55,6 @@ impl Acceptor {
     }
 }
 
-impl Handler for Acceptor { // 可以撤掉event_loop中的handler了 因为handleRead的回调cover了这个功能 而且更灵活
-    fn ready(&mut self, event_loop: &EventLoop, token: Token, 
-            events: Ready) {
-    }
-    fn notify(&mut self, event_loop: &EventLoop, msg: i32) {
-    }
-}
-
 struct Connector {
     addr: String,
     connector: TcpStream,
@@ -85,21 +77,6 @@ impl Connector {
         let job = Box::new(move |val: i64| { println!("--------------"); });
         self.event_loop.register(&self.connector, CLIENT, Ready::writable(),
                 PollOpt::edge() | PollOpt::oneshot(), job).unwrap();
-    }
-}
-
-impl Handler for Connector {
-    fn ready(&mut self, event_loop: &EventLoop, token: Token, 
-            events: Ready) {
-        (self.connect_cb)(&self.connector);
-    }
-    fn notify(&mut self, event_loop: &EventLoop, msg: i32) {
-    }
-    fn timeout(&mut self, event_loop: &EventLoop, timeout: i32) {
-    }
-    fn interrupted(&mut self, event_loop: &EventLoop) {
-    }
-    fn tick(&mut self, event_loop: &EventLoop) {
     }
 }
 
@@ -182,28 +159,6 @@ impl TcpConnection {
     }
 }
 
-impl Handler for TcpConnection {
-    fn ready(&mut self, event_loop: &EventLoop, token: Token, 
-            events: Ready) {
-        /*
-        if read 
-            on_read
-        if write 
-            on_write
-        if error 
-            on_err
-        */
-    }
-    fn notify(&mut self, event_loop: &EventLoop, msg: i32) {
-    }
-    fn timeout(&mut self, event_loop: &EventLoop, timeout: i32) {
-    }
-    fn interrupted(&mut self, event_loop: &EventLoop) {
-    }
-    fn tick(&mut self, event_loop: &EventLoop) {
-    }
-}
-
 fn sleep_ms(ms: u64) {
     use std::thread;
     thread::sleep(Duration::from_millis(ms));
@@ -232,8 +187,9 @@ fn main() {
     //acceptor.set_accept_cb(accept_cb);
     event_loop.test();
     unsafe {
-        let acceptor1 = Arc::as_ptr(&acceptor) as * mut Acceptor;
-        event_loop.run(acceptor1.as_mut().unwrap());
+        //let acceptor1 = Arc::as_ptr(&acceptor) as * mut Acceptor;
+        //event_loop.run(acceptor1.as_mut().unwrap());
+        event_loop.run();
     }
 }
 
