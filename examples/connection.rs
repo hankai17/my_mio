@@ -15,7 +15,7 @@ use std::sync::atomic::Ordering::{self, Acquire, Release, AcqRel, Relaxed, SeqCs
 const SERVER: Token = Token(10_000_000);
 const CLIENT: Token = Token(10_000_001);
 
-unsafe impl Send for Acceptor {}
+unsafe impl Send for Acceptor {} // `std::sync::mpsc::Receiver<i32>` cannot be shared between threads safely
 unsafe impl Sync for Acceptor {}
 struct Acceptor {
     tcp_listener: TcpListener,
@@ -43,7 +43,6 @@ impl Acceptor {
         let (stream, addr) = self.tcp_listener.accept().unwrap();
         //(self.accept_cb)(stream, addr);
         println!("---hello world-------------- {}", val);
-
         //let mut connection = TcpConnection::new(self.event_loop.clone(), stream);
         //self.event_loop.run(&mut connection);
         // 怎样注册事件? // 模拟server1.rs ?
@@ -130,16 +129,74 @@ impl TcpConnection {
         }
     }
 
-    fn on_read(&mut self, poll: &mut Poll, sock: TcpStream) -> io::Result<()> {
+	fn getReadBuffers(&mut bytes: BytesMut) -> &mut IoVec {
+	    let bytes = bytes.chunk_mut(); 
+	    let mut b = std::slice::from_raw_parts_mut(bytes.as_mut_ptr(), bytes.len());
+        //let mut iov: [&mut IoVec; 1] = [
+        //    b.into(),    
+        //];
+        return &mut b.into();
+    }
+
+    fn handleRead(&mut self, poll: &mut Poll, sock: TcpStream) -> io::Result<()> {
         // read to buffer
         //read_cb(bytes, sockaddr)
+    	//pub fn read_bufs(&self, bufs: &mut [&mut IoVec]) -> io::Result<usize> {
+
+        let iov = getReadBuffers(self.read_buf);
+        sock.read_buf(iov);
+
+        while (m_read_enable) {
+            do {
+                std::vector<iovec> iovs = m_read_buffer->writeBuffers(32 * 1024);
+                nread = recvFrom(fd, &iovs[0], iovs.size(), &addr, len);
+            } while (-1 == nread && UV_EINTR == get_uv_error(true));
+            if (nread <= 0) {
+                setReadTriggered(false);
+                if (nread < 0) {
+                    auto err = get_uv_error(true);
+                    if (err != UV_EAGAIN) {
+                        if (!is_udp) {
+                            emitErr(toSocketException(err));
+                        } else {
+                            HAMMER_LOG_WARN(g_logger) << "Recv err on udp socket: " << fd << uv_strerror(err);
+                        }
+                    }
+                    return ret;
+                }
+                if (nread == 0) {
+                    if (!is_udp) {
+                        emitErr(SocketException(ERRCode::EEOF, "end of file..."));
+                    } else {
+                        HAMMER_LOG_WARN(g_logger) << "Recv eof on udp socket: " << fd;
+                    }
+                    return ret;
+                }
+            }
+
+            ret += nread;
+            m_read_buffer->product(nread);
+            LOCK_GUARD(m_event_cb_mutex);
+            try {
+                m_on_read_cb(m_read_buffer, (struct sockaddr*)&addr, len);
+                // assert upper consume over TODO
+            } catch (std::exception &e) {
+                HAMMER_LOG_WARN(g_logger) << "Exception occurred when emit on_read_cb: " << e.what();
+            }
+        }
         Ok(())
     }
-    fn on_written(&mut self, poll: &mut Poll, sock: TcpStream) -> io::Result<()> {
+    fn handleWrite(&mut self, poll: &mut Poll, sock: TcpStream) -> io::Result<()> {
         //written_cb()
         Ok(())
     }
-    fn write_data(&mut self, poll: &mut Poll, sock: TcpStream) -> io::Result<()> {
+    fn handleClose(&mut self, pool: &mut Poll, sock: TcpStream) -> io::Result<()> {
+        Ok(())
+    }
+    fn handleError(&mut self, pool: &mut Poll, sock: TcpStream) -> io::Result<()> {
+        Ok(())
+    }
+    fn writeData(&mut self, poll: &mut Poll, sock: TcpStream) -> io::Result<()> {
         Ok(())
     }
     fn on_write(&mut self, poll: &mut Poll, sock: TcpStream) -> io::Result<()> {
@@ -183,13 +240,7 @@ fn main() {
     let clone = acceptor.clone();
     let job = Box::new(move |val: i64| { clone.handleRead(val); });
     acceptor.bind(job);
-
     //acceptor.set_accept_cb(accept_cb);
-    event_loop.test();
-    unsafe {
-        //let acceptor1 = Arc::as_ptr(&acceptor) as * mut Acceptor;
-        //event_loop.run(acceptor1.as_mut().unwrap());
-        event_loop.run();
-    }
+    event_loop.run();
 }
 

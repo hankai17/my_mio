@@ -287,7 +287,7 @@ fn peek() {
 }
 
 fn read_bufs() {
-    const N: usize = 16 * 1024 * 1024;
+    const N: usize = 16 * 1024;
     let l = net::TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = l.local_addr().unwrap();
     let t = thread::spawn(move || {
@@ -684,10 +684,10 @@ fn write_then_drop() {
 */
 
 fn main() {
-    accept();
+    //accept();
     //connect();
     //read();
-    //read_bufs();
+    read_bufs();
     //write();
     //write_bufs();
     //connect_then_close();
