@@ -106,10 +106,10 @@ impl Acceptor {
         //self.event_loop.run(&mut connection);
         // 怎样注册事件? // 模拟server1.rs ?
 
-        let mut conn = Arc::new(TcpConnection::new(self.event_loop.clone(), stream));
+        let mut conn = Arc::new(Mutex::new(TcpConnection::new(self.event_loop.clone(), stream)));
         let clone = conn.clone();
-        let job = Box::new(move |val: i64| { clone.handleRead(val); });
-        self.event_loop.register(&conn.sock, SERVER, Ready::readable(), 
+        let job = Box::new(move |val: i64| { clone.lock().unwrap().handleRead(val); });
+        self.event_loop.register(&conn.lock().unwrap().sock, SERVER, Ready::readable(), 
                 PollOpt::edge(), job);
     }
     fn bind(&self, job: Job) {
