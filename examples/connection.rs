@@ -12,6 +12,65 @@ use std::time::Duration;
 use std::sync::atomic::{AtomicUsize, AtomicPtr, AtomicBool};
 use std::sync::atomic::Ordering::{self, Acquire, Release, AcqRel, Relaxed, SeqCst};
 
+use std::io::{Read, Write};
+trait MapNonBlock<T> {
+    fn map_non_block(self) -> io::Result<Option<T>>;
+}
+impl<T> MapNonBlock<T> for io::Result<T> {
+    fn map_non_block(self) -> io::Result<Option<T>> {
+        use std::io::ErrorKind::WouldBlock;
+        match self {
+            Ok(value) => Ok(Some(value)),
+            Err(err) => {
+                if let WouldBlock = err.kind() {
+                    Ok(None) 
+                } else {
+                    Err(err)
+                }
+            }
+        }
+    }
+}
+pub trait TryRead {
+    fn try_read_buf<B: BufMut>(&mut self, buf: &mut B) -> io::Result<Option<usize>> 
+            where Self : Sized {
+        let bytes = buf.chunk_mut();
+        let res = self.try_read(unsafe { 
+            std::slice::from_raw_parts_mut(bytes.as_mut_ptr(), bytes.len())
+        });
+
+        if let Ok(Some(cnt)) = res {
+            unsafe { buf.advance_mut(cnt); }
+        }
+        res 
+    }
+    fn try_read(&mut self, buf: &mut [u8]) -> io::Result<Option<usize>>;
+}
+
+pub trait TryWrite {
+    fn try_write_buf<B: Buf>(&mut self, buf: &mut B) -> io::Result<Option<usize>> 
+        where Self : Sized {
+        let res = self.try_write(buf.chunk());
+        if let Ok(Some(cnt)) = res {
+            buf.advance(cnt);
+        }
+        res
+    }
+    fn try_write(&mut self, buf: &[u8]) -> io::Result<Option<usize>>;
+}
+
+impl<T: Read> TryRead for T {
+    fn try_read(&mut self, dst: &mut [u8]) -> io::Result<Option<usize>> {
+        self.read(dst).map_non_block()
+    }
+}
+
+impl<T: Write> TryWrite for T {
+    fn try_write(&mut self, src: &[u8]) -> io::Result<Option<usize>> {
+        self.write(src).map_non_block()
+    }
+}
+
 const SERVER: Token = Token(10_000_000);
 const CLIENT: Token = Token(10_000_001);
 
@@ -46,6 +105,12 @@ impl Acceptor {
         //let mut connection = TcpConnection::new(self.event_loop.clone(), stream);
         //self.event_loop.run(&mut connection);
         // 怎样注册事件? // 模拟server1.rs ?
+
+        let mut conn = Arc::new(TcpConnection::new(self.event_loop.clone(), stream));
+        let clone = conn.clone();
+        let job = Box::new(move |val: i64| { clone.handleRead(val); });
+        self.event_loop.register(&conn.sock, SERVER, Ready::readable(), 
+                PollOpt::edge(), job);
     }
     fn bind(&self, job: Job) {
         self.event_loop.register(&self.tcp_listener, SERVER, Ready::readable(), 
@@ -79,6 +144,8 @@ impl Connector {
     }
 }
 
+unsafe impl Send for TcpConnection {}
+unsafe impl Sync for TcpConnection {}
 pub struct TcpConnection {
     token: Option<Token>,
     interest: Ready,
@@ -90,7 +157,7 @@ pub struct TcpConnection {
     write_buf: Option<BytesMut>,
     write_buf_waiting: Option<BytesMut>,
 
-    read_cb: fn(BytesMut, SocketAddr),
+    read_cb: fn(&mut BytesMut),
     written_cb: fn() -> bool,
     err_cb: fn(),
 
@@ -101,7 +168,7 @@ pub struct TcpConnection {
     is_closed: bool
 }
 
-fn default_read_cb(bytes: BytesMut, addr: SocketAddr) {}
+fn default_read_cb(bytes: &mut BytesMut) {}
 fn default_written_cb() -> bool { false }
 fn default_err_cb() {}
 
@@ -129,6 +196,7 @@ impl TcpConnection {
         }
     }
 
+    /*
 	fn getReadBuffers(&mut bytes: BytesMut) -> &mut IoVec {
 	    let bytes = bytes.chunk_mut(); 
 	    let mut b = std::slice::from_raw_parts_mut(bytes.as_mut_ptr(), bytes.len());
@@ -137,57 +205,52 @@ impl TcpConnection {
         //];
         return &mut b.into();
     }
+    */
 
-    fn handleRead(&mut self, poll: &mut Poll, sock: TcpStream) -> io::Result<()> {
-        // read to buffer
-        //read_cb(bytes, sockaddr)
-    	//pub fn read_bufs(&self, bufs: &mut [&mut IoVec]) -> io::Result<usize> {
-
-        let iov = getReadBuffers(self.read_buf);
-        sock.read_buf(iov);
-
-        while (m_read_enable) {
-            do {
-                std::vector<iovec> iovs = m_read_buffer->writeBuffers(32 * 1024);
-                nread = recvFrom(fd, &iovs[0], iovs.size(), &addr, len);
-            } while (-1 == nread && UV_EINTR == get_uv_error(true));
-            if (nread <= 0) {
-                setReadTriggered(false);
-                if (nread < 0) {
-                    auto err = get_uv_error(true);
-                    if (err != UV_EAGAIN) {
-                        if (!is_udp) {
-                            emitErr(toSocketException(err));
-                        } else {
-                            HAMMER_LOG_WARN(g_logger) << "Recv err on udp socket: " << fd << uv_strerror(err);
-                        }
-                    }
-                    return ret;
-                }
-                if (nread == 0) {
-                    if (!is_udp) {
-                        emitErr(SocketException(ERRCode::EEOF, "end of file..."));
-                    } else {
-                        HAMMER_LOG_WARN(g_logger) << "Recv eof on udp socket: " << fd;
-                    }
-                    return ret;
-                }
+    fn handleRead(&mut self, event: i64) -> io::Result<()> {
+        let mut buf = self.read_buf.take().unwrap();
+        match self.sock.try_read_buf(&mut buf) {
+            Ok(None) => {
+                println!("Conn: spurious read wakeup");
+                //self.read_buf = Some(buf);
             }
-
-            ret += nread;
-            m_read_buffer->product(nread);
-            LOCK_GUARD(m_event_cb_mutex);
-            try {
-                m_on_read_cb(m_read_buffer, (struct sockaddr*)&addr, len);
-                // assert upper consume over TODO
-            } catch (std::exception &e) {
-                HAMMER_LOG_WARN(g_logger) << "Exception occurred when emit on_read_cb: " << e.what();
+            Ok(Some(r)) => {
+                println!("Conn: read {} bytes, {:?}", r, buf);
+                //self.read_buf = Some(buf);
+                (self.read_cb)(&mut buf);
+                //self.interest.remove(Ready::readable());
+                //self.interest.insert(Ready::writable());
             }
-        }
+            Err(e) => {
+                println!("not implemented client err: {:?}", e);
+                //self.interest.remove(Ready::readable());
+            }
+        };
         Ok(())
     }
-    fn handleWrite(&mut self, poll: &mut Poll, sock: TcpStream) -> io::Result<()> {
-        //written_cb()
+    fn handleWrite(&mut self, event: i64) -> io::Result<()> {
+        let mut buf = self.write_buf.take().unwrap();
+        match self.sock.try_write_buf(&mut buf) {
+            Ok(None) => {
+                println!("client flushing buf; WouldBlock");
+                self.write_buf = Some(buf);
+                //self.interest.insert(Ready::writable());
+            }
+            Ok(Some(r)) => {
+                println!("Conn: write {} bytes", r);
+                //self.write_buf = Some(buf);
+                (self.written_cb)();
+                //self.interest.insert(Ready::readable());
+                //self.interest.remove(Ready::writable());
+            }
+            Err(e) => {
+                println!("not implemented; client err: {:?}", e);
+            }
+        }
+        //assert!(self.interest.is_readable() || self.interest.is_writable(),
+        //        "actual: {:?}", self.interest);
+        //poll.reregister(&self.sock, self.token.unwrap(), self.interest, 
+        //        PollOpt::edge() | PollOpt::oneshot())
         Ok(())
     }
     fn handleClose(&mut self, pool: &mut Poll, sock: TcpStream) -> io::Result<()> {

@@ -147,8 +147,9 @@ impl TcpServer {
         let conn = Session::new(sock);
         let key = self.conns.insert(conn);
         self.conns[key].token = Some(Token(key));
+        let job = Box::new(move |val: i64| { println!("--------------"); });
         poll.register(&self.conns[key].sock, Token(key), Ready::readable(),
-                PollOpt::edge() | PollOpt::oneshot())
+                PollOpt::edge() | PollOpt::oneshot(), job)
             .expect("could not register socket with event loop");
         Ok(())
     }
@@ -186,8 +187,9 @@ fn main() {
     //let addr = localhost();
     let addr = "127.0.0.1:9527".parse().unwrap();
     let srv = TcpListener::bind(&addr).unwrap();
+    let job = Box::new(move |val: i64| { println!("--------------"); });
     poll.register(&srv, SERVER, Ready::readable(),
-            PollOpt::edge() | PollOpt::oneshot()).unwrap();
+            PollOpt::edge() | PollOpt::oneshot(), job).unwrap();
     let mut events = Events::with_capacity(1024);
 
     let mut handler = Test::new(srv);
