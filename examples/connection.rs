@@ -98,10 +98,10 @@ impl Acceptor {
         self.accept_cb = cb;
     }
     pub fn handleRead(&self, val: i64) {
-        println!("---hello world-------------- {}", val);
         let (stream, addr) = self.tcp_listener.accept().unwrap();
+        println!("accept {}", addr);
         //(self.accept_cb)(stream, addr);
-        println!("---hello world-------------- {}", val);
+        //println!("---hello world-------------- {}", val);
         //let mut connection = TcpConnection::new(self.event_loop.clone(), stream);
         //self.event_loop.run(&mut connection);
         // 怎样注册事件? // 模拟server1.rs ?
@@ -207,17 +207,18 @@ impl TcpConnection {
     }
     */
 
+    // 设计token events_map 生命周期管理
     fn handleRead(&mut self, event: i64) -> io::Result<()> {
         let mut buf = self.read_buf.take().unwrap();
         match self.sock.try_read_buf(&mut buf) {
             Ok(None) => {
                 println!("Conn: spurious read wakeup");
-                //self.read_buf = Some(buf);
+                self.read_buf = Some(buf);
             }
             Ok(Some(r)) => {
                 println!("Conn: read {} bytes, {:?}", r, buf);
-                //self.read_buf = Some(buf);
                 (self.read_cb)(&mut buf);
+                self.read_buf = Some(buf);
                 //self.interest.remove(Ready::readable());
                 //self.interest.insert(Ready::writable());
             }
