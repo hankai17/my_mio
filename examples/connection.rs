@@ -221,6 +221,9 @@ impl TcpConnection {
                 self.read_buf = Some(buf);
                 //self.interest.remove(Ready::readable());
                 //self.interest.insert(Ready::writable());
+                if r == 0 {
+                    self.event_loop.deregister(&self.sock);
+                }
             }
             Err(e) => {
                 println!("not implemented client err: {:?}", e);
@@ -277,6 +280,13 @@ impl TcpConnection {
     fn set_on_error_cb() {
     }
     fn clone_stream() {
+    }
+}
+
+impl Drop for TcpConnection {
+    fn drop(&mut self) {
+        self.event_loop.deregister(&self.sock);
+        println!("---------------------drop for tcpconnection")
     }
 }
 

@@ -77,11 +77,12 @@ impl Selector {
     pub fn register(&self, fd: RawFd, token: Token, interests: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
         let mut info = libc::epoll_event {
             events: ioevent_to_epoll(interests, opts),
-            u64: usize::from(token) as u64
+            //u64: usize::from(token) as u64
+            u64: fd as u64
         };
         let events_map = self.events_map();
         unsafe {
-            events_map.as_mut().unwrap().insert(usize::from(token) as u64 as i32, job);
+            events_map.as_mut().unwrap().insert(fd as i32, job);
             cvt(libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_ADD, fd, &mut info))?;
             Ok(())
         }
@@ -101,8 +102,10 @@ impl Selector {
             events: 0,
             u64: 0,
         };
+        let events_map = self.events_map();
         unsafe {
             cvt(libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_DEL, fd, &mut info))?;
+            events_map.as_mut().unwrap().remove(&fd as &i32);
             Ok(())
         }
     }
