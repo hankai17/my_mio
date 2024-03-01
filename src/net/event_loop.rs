@@ -1,11 +1,71 @@
 use {channel, Poll, Events, Token};
 use event::Evented;
-use deprecated::{Handler, NotifyError};
 use event_imp::{Event, Ready, PollOpt, Job};
 use timer::{self, Timer, Timeout};
 use std::{io, usize};
 use std::default::Default;
 use std::time::Duration;
+use std::{fmt, error, any};
+
+pub enum NotifyError<T> {
+    Io(io::Error),
+    Full(T),
+    Closed(Option<T>),
+}
+
+impl<M: any::Any> error::Error for NotifyError<M> {
+    fn description(&self) -> &str {
+        match *self {
+            NotifyError::Io(ref err) => err.description(),
+            NotifyError::Closed(..) => "The receiving end has hung up",
+            NotifyError::Full(..) => "Queue is full"
+        }
+    }
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            NotifyError::Io(ref err) => Some(err),
+            _ => None
+        }
+    }
+}
+
+impl<M> From<channel::TrySendError<M>> for NotifyError<M> {
+    fn from(src: channel::TrySendError<M>) -> NotifyError<M> {
+        match src {
+            channel::TrySendError::Io(e) => NotifyError::Io(e),
+            channel::TrySendError::Full(v) => NotifyError::Full(v),
+            channel::TrySendError::Disconnected(v) => NotifyError::Closed(Some(v)),
+        }
+    }
+}
+
+impl<M> fmt::Debug for NotifyError<M> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            NotifyError::Io(ref e) => {
+                write!(fmt, "NotifyError::IO({:?})", e)
+            }
+            NotifyError::Full(..) => {
+                write!(fmt, "NotifyError::Full(..)")
+            }
+            NotifyError::Closed(..) => {
+                write!(fmt, "NotifyError::Closed(..)")
+            }
+        }
+    }
+}
+
+impl<M> fmt::Display for NotifyError<M> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            NotifyError::Io(ref e) => {
+                write!(fmt, "IO error: {}", e)
+            }
+            NotifyError::Full(..) => write!(fmt, "Full"),
+            NotifyError::Closed(..) => write!(fmt, "Closed"),
+        }
+    }
+}
 
 struct Config {
     notify_capacity: usize,
@@ -82,9 +142,6 @@ impl EventLoop {
             config,
             events: Events::with_capacity(1024),
         })
-    }
-    pub fn test(&self) -> io::Result<()> {
-        Ok(())
     }
     pub fn new() -> io::Result<EventLoop> {
         EventLoop::configured(Config::default())

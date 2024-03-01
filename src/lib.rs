@@ -36,7 +36,6 @@ mod lazycell;
 
 pub mod channel;
 pub mod timer;
-pub mod deprecated;
 
 pub mod net;
 pub use iovec::IoVec;
