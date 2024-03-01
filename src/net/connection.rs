@@ -18,7 +18,7 @@ pub struct TcpConnection {
     token: Option<Token>,
     interest: Ready,
 
-    event_loop: Arc<EventLoop>,
+    event_loop: Arc<Mutex<EventLoop>>,
     sock: TcpStream,
     // timer
     read_buf: Option<BytesMut>,
@@ -41,7 +41,7 @@ fn default_written_cb() -> bool { false }
 fn default_err_cb() {}
 
 impl TcpConnection {
-    pub fn new(event_loop: Arc<EventLoop>, sock: TcpStream) -> TcpConnection {
+    pub fn new(event_loop: Arc<Mutex<EventLoop>>, sock: TcpStream) -> TcpConnection {
         TcpConnection {
             token: None,
             interest: Ready::empty(),
@@ -74,7 +74,7 @@ impl TcpConnection {
             Ok(Some(r)) => {
                 println!("Conn: read {} bytes, {:?}", r, buf);
                 if r == 0 {
-                    self.event_loop.deregister(&self.sock);
+                    self.event_loop.lock().unwrap().deregister(&self.sock);
                 }
                 // buf toto
                 (self.read_cb)(&mut buf);
@@ -152,7 +152,7 @@ impl TcpConnection {
 
 impl Drop for TcpConnection {
     fn drop(&mut self) {
-        self.event_loop.deregister(&self.sock);
+        self.event_loop.lock().unwrap().deregister(&self.sock);
         println!("---------------------drop for tcpconnection")
     }
 }
