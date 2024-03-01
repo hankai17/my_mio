@@ -1,83 +1,19 @@
-extern crate my_mio;
-extern crate bytes;
-
 use std::{io, mem, fmt};
-use my_mio::{Events, Poll, PollOpt, Ready, Token, Job};
+use net::{TryRead, TryWrite};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use my_mio::deprecated::{unix, EventLoop, EventLoopBuilder};
-use my_mio::net::{TcpListener, TcpStream};
+use {Events, Poll, PollOpt, Ready, Token, Job};
+use net::{EventLoop, TcpStream};
 use std::net::{self, SocketAddr, SocketAddrV4, SocketAddrV6, Ipv4Addr, Ipv6Addr};
 use std::sync::{Arc, Mutex, Condvar};
 use std::time::Duration;
 use std::sync::atomic::{AtomicUsize, AtomicPtr, AtomicBool};
 use std::sync::atomic::Ordering::{self, Acquire, Release, AcqRel, Relaxed, SeqCst};
 
-use std::io::{Read, Write};
-trait MapNonBlock<T> {
-    fn map_non_block(self) -> io::Result<Option<T>>;
-}
-impl<T> MapNonBlock<T> for io::Result<T> {
-    fn map_non_block(self) -> io::Result<Option<T>> {
-        use std::io::ErrorKind::WouldBlock;
-        match self {
-            Ok(value) => Ok(Some(value)),
-            Err(err) => {
-                if let WouldBlock = err.kind() {
-                    Ok(None) 
-                } else {
-                    Err(err)
-                }
-            }
-        }
-    }
-}
-pub trait TryRead {
-    fn try_read_buf<B: BufMut>(&mut self, buf: &mut B) -> io::Result<Option<usize>> 
-            where Self : Sized {
-        let bytes = buf.chunk_mut();
-        let res = self.try_read(unsafe { 
-            std::slice::from_raw_parts_mut(bytes.as_mut_ptr(), bytes.len())
-        });
-
-        if let Ok(Some(cnt)) = res {
-            unsafe { buf.advance_mut(cnt); }
-        }
-        res 
-    }
-    fn try_read(&mut self, buf: &mut [u8]) -> io::Result<Option<usize>>;
-}
-
-pub trait TryWrite {
-    fn try_write_buf<B: Buf>(&mut self, buf: &mut B) -> io::Result<Option<usize>> 
-        where Self : Sized {
-        let res = self.try_write(buf.chunk());
-        if let Ok(Some(cnt)) = res {
-            buf.advance(cnt);
-        }
-        res
-    }
-    fn try_write(&mut self, buf: &[u8]) -> io::Result<Option<usize>>;
-}
-
-impl<T: Read> TryRead for T {
-    fn try_read(&mut self, dst: &mut [u8]) -> io::Result<Option<usize>> {
-        self.read(dst).map_non_block()
-    }
-}
-
-impl<T: Write> TryWrite for T {
-    fn try_write(&mut self, src: &[u8]) -> io::Result<Option<usize>> {
-        self.write(src).map_non_block()
-    }
-}
-
-const SERVER: Token = Token(10_000_000);
-const CLIENT: Token = Token(10_000_001);
-
-
+// token incr TODO
 
 unsafe impl Send for TcpConnection {}
 unsafe impl Sync for TcpConnection {}
+
 pub struct TcpConnection {
     token: Option<Token>,
     interest: Ready,
@@ -105,7 +41,7 @@ fn default_written_cb() -> bool { false }
 fn default_err_cb() {}
 
 impl TcpConnection {
-    fn new(event_loop: Arc<EventLoop>, sock: TcpStream) -> TcpConnection {
+    pub fn new(event_loop: Arc<EventLoop>, sock: TcpStream) -> TcpConnection {
         TcpConnection {
             token: None,
             interest: Ready::empty(),
@@ -127,17 +63,6 @@ impl TcpConnection {
             is_closed: false
         }
     }
-
-    /*
-	fn getReadBuffers(&mut bytes: BytesMut) -> &mut IoVec {
-	    let bytes = bytes.chunk_mut(); 
-	    let mut b = std::slice::from_raw_parts_mut(bytes.as_mut_ptr(), bytes.len());
-        //let mut iov: [&mut IoVec; 1] = [
-        //    b.into(),    
-        //];
-        return &mut b.into();
-    }
-    */
 
     fn handleRead(&mut self) -> io::Result<()> {
         let mut buf = self.read_buf.take().unwrap();
@@ -200,7 +125,7 @@ impl TcpConnection {
         Ok(())
     }
 
-    fn handleEvent(&mut self, event: i64) -> io::Result<()> {
+    pub fn handleEvent(&mut self, event: i64) -> io::Result<()> {
         // check closed
         // if read
         //      handleRead()
@@ -208,19 +133,20 @@ impl TcpConnection {
         //      handleWrite()
         // if err
         //      handleError()
+        Ok(())
     }
 
-    fn attachEvent(&mut self) {
+    pub fn attachEvent(&mut self) {
         // self.event_loop.register(&self, SERVER, r|w|e, self.handleEvent) 
     }
 
-    fn set_on_read_cb() { // set by upper eg: session
+    pub fn set_on_read_cb() { // set by upper eg: session
     }
-    fn set_on_written_cb() {
+    pub fn set_on_written_cb() {
     }
-    fn set_on_error_cb() {
+    pub fn set_on_error_cb() {
     }
-    fn clone_stream() {
+    pub fn clone_stream() {
     }
 }
 
@@ -229,33 +155,5 @@ impl Drop for TcpConnection {
         self.event_loop.deregister(&self.sock);
         println!("---------------------drop for tcpconnection")
     }
-}
-
-fn sleep_ms(ms: u64) {
-    use std::thread;
-    thread::sleep(Duration::from_millis(ms));
-}
-
-// TcpServer::new_connection->
-fn accept_cb(stream: TcpStream, addr: SocketAddr) {
-    println!("stream: {:?}, addr: {:?}", stream, addr);
-    //let mut connection = TcpConnection::new(, stream);
-}
-
-fn main() {
-    let mut b = EventLoopBuilder::new();
-    b.notify_capacity(1_048_576)
-        .messages_per_tick(64)
-        .timer_tick(Duration::from_millis(100))
-        .timer_wheel_size(1024)
-        .timer_capacity(65536);
-    let mut event_loop = Arc::new(b.build().unwrap());
-    let mut acceptor = Arc::new(Acceptor::new(event_loop.clone(), &"0.0.0.0:9527".to_string()));
-
-    let clone = acceptor.clone();
-    let job = Box::new(move |val: i64| { clone.handleRead(val); });
-    acceptor.bind(job);
-    //acceptor.set_accept_cb(accept_cb);
-    event_loop.run();
 }
 

@@ -107,6 +107,9 @@ impl<M> Sender<M> {
     }
 }
 
+unsafe impl Send for EventLoop {}
+unsafe impl Sync for EventLoop {}
+
 pub struct EventLoop { // 改造成ReadinessQueueInner 并提供get()->*mut
     run: bool,
     poll: Poll,
@@ -149,29 +152,14 @@ impl EventLoop {
     pub fn channel(&self) -> Sender<i32> {
         Sender::new(self.notify_tx.clone())
     }
-    fn timer(&self) -> *mut Timer<i32> {
-        &self.timer as * const Timer<i32> as *mut Timer<i32>
+    pub fn timeout(&mut self, token: i32, delay: Duration) -> timer::Result<Timeout> {
+        self.timer.set_timeout(delay, token)
     }
-    pub fn timeout(&self, token: i32, delay: Duration) -> timer::Result<Timeout> {
-        let timer = self.timer();
-        unsafe {
-            timer.as_mut().unwrap().set_timeout(delay, token)
-        }
-    }
-    pub fn clear_timeout(&self, timeout: &Timeout) -> bool {
-        let timer = self.timer();
-        unsafe {
-            timer.as_mut().unwrap().cancel_timeout(&timeout).is_some()
-        }
-    }
-    fn running(&self) -> *mut bool {
-        &self.run as * const bool as *mut bool
+    pub fn clear_timeout(&mut self, timeout: &Timeout) -> bool {
+        self.timer.cancel_timeout(&timeout).is_some()
     }
     pub fn shutdown(&mut self) { 
-        let run = self.running();
-        unsafe {
-            *run.as_mut().unwrap() = false;
-        }
+        self.run = false;
     }
     pub fn is_running(&self) -> bool { self.run }
     //pub fn register<E: ?Sized>(&mut self, io: &E, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()>
@@ -187,24 +175,13 @@ impl EventLoop {
         where E: Evented {
         self.poll.deregister(io)
     }
-    fn poller(&self) -> *mut Poll {
-        &self.poll as * const Poll as *mut Poll
+    fn io_poll(&mut self, timeout: Option<Duration>) -> io::Result<usize> {
+        self.poll.poll(&mut self.events, timeout)
     }
-    fn events(&self) -> *mut Events {
-        &self.events as * const Events as *mut Events
-    }
-
-    fn io_poll(&self, timeout: Option<Duration>) -> io::Result<usize> {
-        let poll = self.poller();
-        let events = self.events();
-        unsafe {
-            poll.as_mut().unwrap().poll(events.as_mut().unwrap(), timeout)
-        }
-    }
-    fn io_event(&self, evt: Event) {
+    fn io_event(&mut self, evt: Event) {
         //handler.ready(self, evt.token(), evt.readiness());
     }
-    fn notify(&self) {
+    fn notify(&mut self) {
         for _ in 0..self.config.messages_per_tick {     // 每个周期尝试从pipe 最多读取256次
             match self.notify_rx.try_recv() {
                 //Ok(msg) => handler.notify(self, msg),
@@ -221,7 +198,7 @@ impl EventLoop {
         */
     }
     // https://stackoverflow.com/questions/45116984/the-trait-cannot-be-made-into-an-object
-    fn io_process(&self, cnt: usize) {
+    fn io_process(&mut self, cnt: usize) {
         let mut i = 0;
         log::trace!("io_process(..); cnt={}; len={}", cnt, self.events.len());
         while i < cnt {
@@ -235,7 +212,7 @@ impl EventLoop {
             i += 1;
         }
     }
-    pub fn run_once(&self, timeout: Option<Duration>) -> io::Result<()> {
+    pub fn run_once(&mut self, timeout: Option<Duration>) -> io::Result<()> {
         log::trace!("event loop tick");
         let cnt = match self.io_poll(timeout) {
             Ok(e) => e,
@@ -252,11 +229,8 @@ impl EventLoop {
         //handler.tick(self);     // 没有实现也能调?
         Ok(())
     }
-    pub fn run(&self) -> io::Result<()> {
-        let run = self.running();
-        unsafe {
-            *run.as_mut().unwrap() = true;
-        }
+    pub fn run(&mut self) -> io::Result<()> {
+        self.run = true;
         while self.run {
             self.run_once(None)?;
         }
