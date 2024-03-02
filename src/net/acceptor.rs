@@ -42,7 +42,7 @@ impl Acceptor {
                 PollOpt::edge(), job);
         */
     }
-    pub fn bind(&self, job: Job) {
+    pub fn bind(&mut self, job: Job) {
         self.event_loop.lock().unwrap().register(&self.tcp_listener, SERVER, Ready::readable(), 
                 PollOpt::edge(), job);
         //self.is_listening = true;
