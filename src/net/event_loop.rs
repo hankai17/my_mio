@@ -6,6 +6,8 @@ use std::{io, usize};
 use std::default::Default;
 use std::time::Duration;
 use std::{fmt, error, any};
+use std::sync::{Arc, Mutex, Condvar};
+use std::thread_local;
 
 pub enum NotifyError<T> {
     Io(io::Error),
@@ -243,6 +245,12 @@ pub struct EventLoopBuilder {
     config: Config,
 }
 
+use std::cell::Cell;
+use std::cell::RefCell;
+thread_local! {
+    pub static current_loop: RefCell<Arc<Mutex<EventLoop>>> = panic!("!"); //Arc::new(Mutex::new(EventLoop));
+}
+
 impl EventLoopBuilder {
     pub fn new() -> EventLoopBuilder {
         EventLoopBuilder::default()
@@ -267,8 +275,33 @@ impl EventLoopBuilder {
         self.config.timer_capacity = cap;
         self
     }
-    pub fn build(self) -> io::Result<EventLoop> {
+	pub fn build(self) -> io::Result<EventLoop> {
         EventLoop::configured(self.config)
+    }
+    pub fn get_build(self) -> io::Result<Arc<Mutex<EventLoop>>> {
+        /*
+        if current_loop.try_with() == panic!("!") {
+            println!("slkdfjlskdfjl");
+        }
+        */
+        let event_loop = Arc::new(Mutex::new(self.build().unwrap()));
+        let clone = event_loop.clone();
+        current_loop.set(clone);
+        Ok(event_loop)
+    }
+    pub fn get_current_loop(self) -> Arc<Mutex<EventLoop>> {
+        //current_loop.with(|poll| -> Arc<Mutex<EventLoop>> {return poll.into_inner()})
+        //current_loop.with(|poll| -> &'static mut Arc<Mutex<EventLoop>> {return poll.get_mut()})
+        let ptr = current_loop.with(|poll| -> *mut Arc<Mutex<EventLoop>> {return poll.as_ptr()});
+        unsafe {
+            let clone = (*ptr).clone();
+            clone
+        }
+        /*
+        let event_loop = current_loop.with(|poll| -> &mut Arc<Mutex<EventLoop>> {return poll.get_mut()});
+        let clone = event_loop.clone();
+        return clone;
+        */
     }
 }
 

@@ -16,12 +16,17 @@ fn sleep_ms(ms: u64) {
     thread::sleep(Duration::from_millis(ms));
 }
 
-    // https://stackoverflow.com/questions/54971024/accessing-a-method-of-self-inside-a-thread-in-rust
-    pub fn bind1(this: Arc<Mutex<Acceptor>>) {
-        let job = Box::new(move |val: i64| { this.lock().unwrap().handleRead(val); });
-        //this.event_loop.lock().unwrap().register(&self.tcp_listener, SERVER, Ready::readable(), 
-        //        PollOpt::edge(), job);
-    }
+fn default_accept_cb(stream: TcpStream, addr: SocketAddr) {
+    println!("--------------");
+    println!("accept {}", addr);
+    /*
+    let mut conn = Arc::new(Mutex::new(TcpConnection::new(self.event_loop.clone(), stream)));
+    let clone = conn.clone();
+    let job = Box::new(move |val: i64| { clone.lock().unwrap().handleRead(val); });
+    self.event_loop.register(&conn.lock().unwrap().sock, SERVER, Ready::readable(), 
+            PollOpt::edge(), job);
+            */
+}
 
 fn main() {
     let mut b = EventLoopBuilder::new();
@@ -30,7 +35,7 @@ fn main() {
         .timer_tick(Duration::from_millis(100))
         .timer_wheel_size(1024)
         .timer_capacity(65536);
-    let mut event_loop = Arc::new(Mutex::new(b.build().unwrap()));
+    let mut event_loop = b.get_build().unwrap();
     let mut acceptor = Arc::new (
         Mutex::new (
             Acceptor::new(event_loop.clone(), &"0.0.0.0:9527".to_string())
@@ -38,11 +43,9 @@ fn main() {
     );
 
     let clone = acceptor.clone();
-    //let job = Box::new(move |val: i64| { clone.lock().unwrap().handleRead(val); });
-    //acceptor.lock().unwrap().bind(job);
-    //acceptor.lock().unwrap()::bind1();
-    //Arc <Acceptor <Mutex > >::bind1();
-    bind1(acceptor);
+    let job = Box::new(move |val: i64| { clone.lock().unwrap().handleRead(val); });
+    acceptor.lock().unwrap().bind(job);
+    acceptor.lock().unwrap().set_accept_cb(default_accept_cb);
     event_loop.lock().unwrap().run();
 }
 
