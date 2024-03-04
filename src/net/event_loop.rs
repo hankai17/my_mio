@@ -289,7 +289,7 @@ impl EventLoopBuilder {
         current_loop.set(clone);
         Ok(event_loop)
     }
-    pub fn get_current_loop(self) -> Arc<Mutex<EventLoop>> {
+    pub fn get_current_loop() -> Arc<Mutex<EventLoop>> {
         //current_loop.with(|poll| -> Arc<Mutex<EventLoop>> {return poll.into_inner()})
         //current_loop.with(|poll| -> &'static mut Arc<Mutex<EventLoop>> {return poll.get_mut()})
         let ptr = current_loop.with(|poll| -> *mut Arc<Mutex<EventLoop>> {return poll.as_ptr()});

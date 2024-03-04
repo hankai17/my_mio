@@ -339,6 +339,7 @@ fn spawn_wakeup_thread(state: WakeupState, set_readiness: SetReadiness, start: I
 
 impl<T> Evented for Timer<T> {
     fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
+        /*
         if self.inner.borrow().is_some() {
             return Err(io::Error::new(io::ErrorKind::Other, "timer alreay registered"));
         }
@@ -359,6 +360,7 @@ impl<T> Evented for Timer<T> {
         if let Some(next_tick) = self.next_tick() {
             self.schedule_readiness(next_tick);
         }
+        */
         Ok(())
     }
     fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {

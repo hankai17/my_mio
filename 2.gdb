@@ -6,7 +6,10 @@ set print pretty
 #b promotable_to_vec
 #b shallow_clone_vec
 
-b connection.rs:109
-b connection.rs:211
+#b connection.rs:109
+#b connection.rs:211
+
+b default_accept_cb
+b epoll.rs:78
 
 

@@ -2,6 +2,7 @@ use std::{io, mem, fmt};
 use net::{TryRead, TryWrite};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use {Events, Poll, PollOpt, Ready, Token, Job};
+use event_imp::{ready_from_usize, ready_as_usize};
 use net::{EventLoop, TcpStream};
 use std::net::{self, SocketAddr, SocketAddrV4, SocketAddrV6, Ipv4Addr, Ipv6Addr};
 use std::sync::{Arc, Mutex, Condvar};
@@ -14,12 +15,21 @@ use std::sync::atomic::Ordering::{self, Acquire, Release, AcqRel, Relaxed, SeqCs
 unsafe impl Send for TcpConnection {}
 unsafe impl Sync for TcpConnection {}
 
+macro_rules! pub_struct {
+    ($name:ident {$($field:ident: $t:ty,)*}) => {
+        #[derive(Debug, Clone, PartialEq)]
+        pub struct $name {
+            $(pub $field: $t),*
+        }
+    }
+}
+
 pub struct TcpConnection {
     token: Option<Token>,
     interest: Ready,
 
     event_loop: Arc<Mutex<EventLoop>>,
-    sock: TcpStream,
+    pub sock: TcpStream,
     // timer
     read_buf: Option<BytesMut>,
     write_buf: Option<BytesMut>,
@@ -121,23 +131,29 @@ impl TcpConnection {
         Ok(())
     }
 
-    fn handleError(&mut self, pool: &mut Poll, sock: TcpStream) -> io::Result<()> {
+    fn handleError(&mut self) -> io::Result<()> {
         Ok(())
     }
 
     pub fn handleEvent(&mut self, event: i64) -> io::Result<()> {
         // check closed
-        // if read
-        //      handleRead()
-        // if write
-        //      handleWrite()
-        // if err
-        //      handleError()
+        let ready = ready_from_usize(event as usize);
+        println!("ready: {:?}", ready);
+        if (ready.is_readable()) {
+            self.handleRead();
+        }
+        if (ready.is_writable()) {
+            self.handleWrite();
+        }
+        if (ready.is_error() || 
+                ready.is_hup()) {
+            self.handleError();
+        }
         Ok(())
     }
 
     pub fn attachEvent(&mut self) {
-        // self.event_loop.register(&self, SERVER, r|w|e, self.handleEvent) 
+        //self.event_loop.register(&self, SERVER, r|w|e, self.handleEvent) 
     }
 
     pub fn set_on_read_cb() { // set by upper eg: session

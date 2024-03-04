@@ -16,16 +16,16 @@ fn sleep_ms(ms: u64) {
     thread::sleep(Duration::from_millis(ms));
 }
 
+const CLIENT: Token = Token(10_000_000);
+
 fn default_accept_cb(stream: TcpStream, addr: SocketAddr) {
-    println!("--------------");
     println!("accept {}", addr);
-    /*
-    let mut conn = Arc::new(Mutex::new(TcpConnection::new(self.event_loop.clone(), stream)));
+    let event_loop = EventLoopBuilder::get_current_loop();
+    let mut conn = Arc::new(Mutex::new(TcpConnection::new(event_loop.clone(), stream)));
     let clone = conn.clone();
-    let job = Box::new(move |val: i64| { clone.lock().unwrap().handleRead(val); });
-    self.event_loop.register(&conn.lock().unwrap().sock, SERVER, Ready::readable(), 
+    let job = Box::new(move |val: i64| { clone.lock().unwrap().handleEvent(val); });
+    event_loop.lock().unwrap().register(&conn.lock().unwrap().sock, CLIENT, Ready::readable(), 
             PollOpt::edge(), job);
-            */
 }
 
 fn main() {

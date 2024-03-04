@@ -9,7 +9,7 @@ use libc::{EPOLLERR, EPOLLHUP, EPOLLONESHOT};
 use libc::{EPOLLET, EPOLLOUT, EPOLLIN, EPOLLPRI}; // define in /usr/include/sys/epoll.h 
 
 use {io, Ready, PollOpt, Token, Job};
-use event_imp::Event;
+use event_imp::{Event, ready_as_usize};
 use sys::unix::{cvt, UnixReady};
 use sys::unix::io::set_cloexec;
 use std::collections::HashMap;
@@ -66,7 +66,8 @@ impl Selector {
                 let token = evts.events[i].u64 as usize as i32;
                 let cb = events_map.as_mut().unwrap().get_mut(&token);
                 let c = cb.unwrap();
-                c(123);
+                let ready = epoll_to_ioevent(evts.events[i].events as u32);
+                c(ready_as_usize(ready) as i64);
             }
         }
         Ok(false)
@@ -132,6 +133,27 @@ fn ioevent_to_epoll(interest: Ready, opts: PollOpt) -> u32 {
         kind |= EPOLLONESHOT;
     }
     kind as u32
+}
+
+fn epoll_to_ioevent(event: u32) -> Ready {
+    let epoll = event as c_int;
+    let mut kind = Ready::empty();
+    if (epoll & EPOLLIN) != 0 {
+        kind = kind | Ready::readable();
+    }
+    if (epoll & EPOLLOUT) != 0 {
+        kind = kind | Ready::writable();
+    }
+    if (epoll & EPOLLPRI) != 0 {
+        kind = kind | Ready::readable() | UnixReady::priority();
+    }
+    if (epoll & EPOLLERR) != 0 {
+        kind = kind | UnixReady::error();
+    }
+    if (epoll & EPOLLHUP) != 0 {
+        kind = kind | UnixReady::hup();
+    }
+    kind
 }
 
 impl AsRawFd for Selector {
