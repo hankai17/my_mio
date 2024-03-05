@@ -77,15 +77,48 @@ fn get_current_user() -> Arc<Mutex<User>> {
     }
 }
 
+// Arc<User> -> Arc<Mutex<User>>
 fn test2() {
+    /*
     let u1 = User {id: 4};
-    let mut user = Arc::new(Mutex::new(u1));
-    current_user.set(user.clone());
-    user.lock().unwrap().run();
+    let mut arc_user = Arc::new(u1);
+
+    // 怎样转为Arc<Mutex<User>> 而又不影响Arc<User>的使用?
+    unsafe {
+        let mut mtx_user = Arc::new(Mutex::new(*(Arc::as_ptr(&arc_user)))); // cannot move out of a raw pointer
+                                                                            // move occurs because value has type `User`, which does not implement the `Copy` trait
+    }
+    // 根本没有办法 将Arc<User> -> Arc<Mutex<User>>
+    arc_user.run();
+    */
+}
+
+#[derive(Debug, Clone)]
+struct UserImp {
+    pub inner: Arc<Mutex<User>>
+}
+
+// Arc<UserImp> -> Arc<Mutex<UserImp>>
+fn test3() {
+    // 封装一层inner 可以clone 可以转换
+    let u1 = User {id: 4};
+    let mut mtx_user = Arc::new(Mutex::new(u1));
+    let mut ui = UserImp {inner: mtx_user};
+
+    let mut mtx_ui = Arc::new(Mutex::new(ui.clone()));
+
+    ui.inner.lock().unwrap().set_id(999);
+    println!("id: use ori: {}", ui.inner.lock().unwrap().get_id());
+    println!("id: use mtx: {}", mtx_ui.lock().unwrap().inner.lock().unwrap().get_id());
+    // 从而mtx_ui  ui指向同一底层对象
+
+    // 但是用的时候 仍然是死锁
+    // 只要调用run函数 一定是带arc<mutex>的(因为要修改arc里的属性) 所以一旦lock了 就无法解锁
 }
 
 fn main() {
     //test0();
     //test1();
-    test2();
+    //test2();
+    test3();
 }
