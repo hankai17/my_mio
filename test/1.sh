@@ -4,3 +4,6 @@ source "$HOME/.cargo/env"
 rustc --version
 cargo --version
 
+#rustup install nightly
+#rustup default nightly
+#cargo +nightly build

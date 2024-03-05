@@ -25,6 +25,7 @@ fn default_accept_cb(stream: TcpStream, addr: SocketAddr) {
     let mut conn = Arc::new(Mutex::new(TcpConnection::new(event_loop.clone(), stream)));
     let clone = conn.clone();
     let job = Box::new(move |val: i64| { clone.lock().unwrap().handleEvent(val); });
+    println!("event_loop.lock: {}", event_loop.is_poisoned());
     event_loop.lock().unwrap().register(&conn.lock().unwrap().sock, CLIENT, Ready::readable(), 
             PollOpt::edge(), job);
 }
