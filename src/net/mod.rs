@@ -1,3 +1,5 @@
+#![feature(mutex_unpoison)]
+
 mod tcp;
 pub use self::tcp::{TcpListener, TcpStream};
 

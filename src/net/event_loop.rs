@@ -232,6 +232,9 @@ impl EventLoop {
         Ok(())
     }
     pub fn run(&mut self) -> io::Result<()> {
+        let mut event_loop = EventLoopBuilder::get_current_loop();
+        event_loop.clear_poison();
+
         self.run = true;
         while self.run {
             self.run_once(None)?;
@@ -303,5 +306,10 @@ impl EventLoopBuilder {
         return clone;
         */
     }
+}
+
+#[derive(Clone)]
+struct EventLoopImp {
+    inner: Arc<Mutex<EventLoop>>,
 }
 

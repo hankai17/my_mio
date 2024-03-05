@@ -7,12 +7,13 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use my_mio::net::{TcpListener, TcpStream, EventLoop, EventLoopBuilder, Acceptor, TcpConnection};
 use std::net::{self, SocketAddr, SocketAddrV4, SocketAddrV6, Ipv4Addr, Ipv6Addr};
 use std::sync::{Arc, Mutex, Condvar};
-use std::time::Duration;
 use std::sync::atomic::{AtomicUsize, AtomicPtr, AtomicBool};
 use std::sync::atomic::Ordering::{self, Acquire, Release, AcqRel, Relaxed, SeqCst};
+use std::time::Duration;
 
 fn sleep_ms(ms: u64) {
     use std::thread;
+    use std::time::Duration;
     thread::sleep(Duration::from_millis(ms));
 }
 
@@ -46,6 +47,7 @@ fn main() {
     let job = Box::new(move |val: i64| { clone.lock().unwrap().handleRead(val); });
     acceptor.lock().unwrap().bind(job);
     acceptor.lock().unwrap().set_accept_cb(default_accept_cb);
+
     event_loop.lock().unwrap().run();
 }
 
