@@ -49,6 +49,9 @@ fn main() {
     acceptor.lock().unwrap().bind(job);
     acceptor.lock().unwrap().set_accept_cb(default_accept_cb);
 
-    event_loop.lock().unwrap().run();
+    let ptr: *mut Mutex<EventLoop> = Arc::as_ptr(&mut event_loop) as *mut _;
+    unsafe {
+        (*ptr).get_mut().unwrap().run();
+    }
 }
 
