@@ -32,12 +32,12 @@ pub struct TcpConnection {
     pub sock: TcpStream,
     // timer
     read_buf: Option<BytesMut>,
-    write_buf: Option<BytesMut>,
+    write_buf_sending: Option<BytesMut>,
     write_buf_waiting: Option<BytesMut>,
 
     read_cb: fn(&mut BytesMut),
-    written_cb: fn() -> bool,
-    err_cb: fn(),
+    write_cb: fn() -> bool,
+    error_cb: fn(),
 
     read_enable: bool,
     write_enable: bool,
@@ -59,12 +59,12 @@ impl TcpConnection {
             sock: sock,
 
             read_buf: Some(BytesMut::with_capacity(1024)),
-            write_buf: Some(BytesMut::with_capacity(1024)),
+            write_buf_sending: Some(BytesMut::with_capacity(1024)),
             write_buf_waiting: Some(BytesMut::with_capacity(1024)),
 
             read_cb: default_read_cb,
-            written_cb: default_written_cb,
-            err_cb: default_err_cb,
+            write_cb: default_written_cb,
+            error_cb: default_err_cb,
 
             read_enable: false,
             write_enable: false,
@@ -72,6 +72,18 @@ impl TcpConnection {
             write_triggered: true,
             is_closed: false
         }
+    }
+
+    pub fn set_read_cb(&mut self, cb: fn(bytes: &mut BytesMut)) {
+        self.read_cb = cb;
+    }
+
+    pub fn set_write_cb(&mut self, cb: fn() -> bool) {
+        self.write_cb = cb;
+    }
+
+    pub fn set_error_cb(&mut self, cb: fn()) {
+        self.error_cb = cb;
     }
 
     fn handleRead(&mut self) -> io::Result<()> {
@@ -82,7 +94,7 @@ impl TcpConnection {
                 self.read_buf = Some(buf);
             }
             Ok(Some(r)) => {
-                println!("Conn: read {} bytes, {:?}", r, buf);
+                //println!("Conn: read {} bytes, {:?}", r, buf);
                 if r == 0 {
                     self.event_loop.lock().unwrap().deregister(&self.sock);
                 }
@@ -100,35 +112,65 @@ impl TcpConnection {
         Ok(())
     }
 
-    fn writeData(&mut self, poll: &mut Poll, sock: TcpStream) -> io::Result<()> {
-        // re-construct
-        Ok(())
-    }
-    fn send(bytes: BytesMut) -> io::Result<usize> {
-        // re-construct
-        Ok(0)
-    }
-    fn handleWrite(&mut self) -> io::Result<()> {
-        // re-construct
-        let mut buf = self.write_buf.take().unwrap();
+    fn writeData(&mut self) -> io::Result<()> {
+        let mut buf_tmp = Some(BytesMut::with_capacity(1024)).unwrap();
+        let mut buf_snd = self.write_buf_sending.take().unwrap();
+        if buf_snd.len() > 0 {
+            buf_tmp = buf_snd.split();
+        }
+        if buf_tmp.len() == 0 {
+            loop {
+                let mut buf = self.write_buf_waiting.take().unwrap();
+                if buf.len() > 0 {
+                    buf_tmp = buf.split();
+                    break;
+                }
+                // onWritten() // all data consumed done
+                return Ok(())
+            }
+        }
+
+        let mut buf = buf_tmp.take().unwrap();
         match self.sock.try_write_buf(&mut buf) {
             Ok(None) => {
                 println!("client flushing buf; WouldBlock");
-                self.write_buf = Some(buf);
-                //self.interest.insert(Ready::writable());
+                self.write_buf_sending = Some(buf.split());
             }
             Ok(Some(r)) => {
                 println!("Conn: write {} bytes", r);
-                //self.write_buf = Some(buf);
-                (self.written_cb)();
-                //self.interest.insert(Ready::readable());
-                //self.interest.remove(Ready::writable());
+                buf.advance(r);
+                if buf.len() > 0 {
+                    self.write_buf_sending = Some(buf.split());
+                    return Ok(());
+                }
+                (self.write_cb)();
             }
             Err(e) => {
                 println!("not implemented; client err: {:?}", e);
             }
         }
+
         Ok(())
+    }
+
+    pub fn send(bytes: BytesMut) -> io::Result<usize> {
+        if bytes.len() == 0 {
+            return Ok(0);
+        }
+        self.write_buffer_waiting.put(bytes);
+        self.writeData();
+        return Ok(bytes.len());
+    }
+
+    fn handleWrite(&mut self) -> io::Result<()> {
+        bool empty_waiting = self.write_buffer_waiting.len() == 0;
+        bool empty_sending = self.write_buffer_sending.len() == 0;
+        if empty_waiting && empty_sending {
+            // disable write
+        } else {
+            self.writeData()
+        }
+        return Ok(())
     }
 
     fn handleError(&mut self) -> io::Result<()> {
@@ -138,7 +180,7 @@ impl TcpConnection {
     pub fn handleEvent(&mut self, event: i64) -> io::Result<()> {
         // check closed
         let ready = ready_from_usize(event as usize);
-        println!("ready: {:?}", ready);
+        //println!("ready: {:?}", ready);
         if (ready.is_readable()) {
             self.handleRead();
         }

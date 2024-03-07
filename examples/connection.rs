@@ -19,13 +19,18 @@ fn sleep_ms(ms: u64) {
 
 const CLIENT: Token = Token(10_000_000);
 
+fn default_read_cb(bytes: &mut BytesMut) {
+    println!("bytes len: {}, {:?}", bytes.len(), bytes);
+    bytes.advance(bytes.len());
+}
+
 fn default_accept_cb(stream: TcpStream, addr: SocketAddr) {
     println!("accept {}", addr);
     let event_loop = EventLoopBuilder::get_current_loop();
     let mut conn = Arc::new(Mutex::new(TcpConnection::new(event_loop.clone(), stream)));
     let clone = conn.clone();
     let job = Box::new(move |val: i64| { clone.lock().unwrap().handleEvent(val); });
-    println!("event_loop.lock: {}", event_loop.is_poisoned());
+    conn.lock().unwrap().set_read_cb(default_read_cb);
     event_loop.lock().unwrap().register(&conn.lock().unwrap().sock, CLIENT, Ready::readable(), 
             PollOpt::edge(), job);
 }
