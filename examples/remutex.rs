@@ -39,6 +39,8 @@ impl User {
     fn run(&mut self) {
         let user = get_current_user();
         //println!("is_poisoned: {}", user.is_poisoned());
+        //user.lock().deref().borrow_mut().get_id();
+
         sleep_ms(1000 * 3);
     }
 }
@@ -73,18 +75,32 @@ fn test0() {
 }
 
 fn test1() {
+    let s = RefCell::new(String::from("hello, world"));
+    //let s1 = s.borrow();
+    let s2 = s.borrow_mut();  // 可变引用 引用 二者不能共存
+    //let s1 = s.borrow_mut();  // 可变引用 引用 二者不能共存
+    //let s2 = s.borrow();
+
+    println!("{},{}", s1, s2);
+}
+
+fn test2() {
     let u1 = User {id: 4};
     let mut user = Arc::new(ReentrantMutex::new(RefCell::new(u1)));
+    CURRENT_USER.set(user.clone());
 
     let locked = user.lock(); 
     let mut u = locked.deref(); // fn deref(&self) -> &T // 返回共享引用 &RefCell<User>
     let id = u.borrow_mut().get_id();
     println!("id: {}", id);
 
+    let id1 = u.borrow_mut().get_id();
+    let id2 = u.borrow().get_id();
     u.borrow_mut().set_id(123);
+    u.borrow_mut().run();   // 可变引用一直存在 那么run里就无法拿到引用
 }
 
-fn test2() {
+fn test3() {
     let u1 = User {id: 4};
     let mut user = Arc::new(ReentrantMutex::new(RefCell::new(u1)));
     CURRENT_USER.set(user.clone());
@@ -101,7 +117,7 @@ fn test2() {
 
 fn main() {
     //test0();
-    //test1();
-    test2();
+    test1();
+    //test2();
 }
 
