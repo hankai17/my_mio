@@ -271,6 +271,26 @@ fn test12() {
     }
 }
 
+fn test13() {
+    let u1 = User {id: 4};
+    let mut user = Arc::new(Mutex::new(u1));
+
+    let id = user.lock().unwrap().get_id();
+    println!("id: {}", id);
+    current_user.set(user.clone());   // 为什么调用完set后 在下面into_inner时 得到的是空?
+
+    print_type_of(&user);
+
+    let m = Arc::into_inner(user).unwrap();
+
+    print_type_of(&m);
+
+    let mut u = Mutex::into_inner(m).unwrap();
+    print_type_of(&u);
+
+    u.run1();
+}
+
 fn main() {
     //test0();
     //test1();
@@ -283,5 +303,6 @@ fn main() {
     //test9();
     //test10();
     //test11();
-    test12();
+    //test12();
+    test13();
 }

@@ -26,6 +26,7 @@ slab    		= "0.4.0"
 net2			= "0.2.29"
 iovec			= "0.1.1"
 bytes			= "1.5.0"
+parking_lot	    = "0.12"
 
 [dev-dependencies]
 env_logger 		= "0.4.0"
