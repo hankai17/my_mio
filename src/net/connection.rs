@@ -31,9 +31,9 @@ pub struct TcpConnection {
     event_loop: Arc<Mutex<EventLoop>>,
     pub sock: TcpStream,
     // timer
-    read_buf: Option<BytesMut>,
-    write_buf_sending: Option<BytesMut>,
-    write_buf_waiting: Option<BytesMut>,
+    read_buffer: Option<BytesMut>,
+    write_buffer_sending: Option<BytesMut>,
+    write_buffer_waiting: Option<BytesMut>,
 
     read_cb: fn(&mut BytesMut),
     write_cb: fn() -> bool,
@@ -58,9 +58,9 @@ impl TcpConnection {
             event_loop: event_loop,
             sock: sock,
 
-            read_buf: Some(BytesMut::with_capacity(1024)),
-            write_buf_sending: Some(BytesMut::with_capacity(1024)),
-            write_buf_waiting: Some(BytesMut::with_capacity(1024)),
+            read_buffer: Some(BytesMut::with_capacity(1024)),
+            write_buffer_sending: Some(BytesMut::with_capacity(1024)),
+            write_buffer_waiting: Some(BytesMut::with_capacity(1024)),
 
             read_cb: default_read_cb,
             write_cb: default_written_cb,
@@ -87,11 +87,11 @@ impl TcpConnection {
     }
 
     fn handleRead(&mut self) -> io::Result<()> {
-        let mut buf = self.read_buf.take().unwrap();
+        let mut buf = self.read_buffer.take().unwrap();
         match self.sock.try_read_buf(&mut buf) {
             Ok(None) => {
                 println!("Conn: spurious read wakeup");
-                self.read_buf = Some(buf);
+                self.read_buffer = Some(buf);
             }
             Ok(Some(r)) => {
                 //println!("Conn: read {} bytes, {:?}", r, buf);
@@ -100,7 +100,7 @@ impl TcpConnection {
                 }
                 // buf toto
                 (self.read_cb)(&mut buf);
-                self.read_buf = Some(buf);
+                self.read_buffer = Some(buf);
                 //self.interest.remove(Ready::readable());
                 //self.interest.insert(Ready::writable());
             }
@@ -114,13 +114,13 @@ impl TcpConnection {
 
     fn writeData(&mut self) -> io::Result<()> {
         let mut buf_tmp = Some(BytesMut::with_capacity(1024)).unwrap();
-        let mut buf_snd = self.write_buf_sending.take().unwrap();
+        let mut buf_snd = self.write_buffer_sending.take().unwrap();
         if buf_snd.len() > 0 {
             buf_tmp = buf_snd.split();
         }
         if buf_tmp.len() == 0 {
             loop {
-                let mut buf = self.write_buf_waiting.take().unwrap();
+                let mut buf = self.write_buffer_waiting.take().unwrap();
                 if buf.len() > 0 {
                     buf_tmp = buf.split();
                     break;
@@ -130,17 +130,17 @@ impl TcpConnection {
             }
         }
 
-        let mut buf = buf_tmp.take().unwrap();
+        let mut buf = buf_tmp;
         match self.sock.try_write_buf(&mut buf) {
             Ok(None) => {
                 println!("client flushing buf; WouldBlock");
-                self.write_buf_sending = Some(buf.split());
+                self.write_buffer_sending = Some(buf.split());
             }
             Ok(Some(r)) => {
                 println!("Conn: write {} bytes", r);
                 buf.advance(r);
                 if buf.len() > 0 {
-                    self.write_buf_sending = Some(buf.split());
+                    self.write_buffer_sending = Some(buf.split());
                     return Ok(());
                 }
                 (self.write_cb)();
@@ -153,22 +153,31 @@ impl TcpConnection {
         Ok(())
     }
 
-    pub fn send(bytes: BytesMut) -> io::Result<usize> {
-        if bytes.len() == 0 {
+    pub fn send(&mut self, bytes: BytesMut) -> io::Result<usize> {
+        let len = bytes.len();
+        if len == 0 {
             return Ok(0);
         }
-        self.write_buffer_waiting.put(bytes);
+        let mut buffer = self.write_buffer_waiting.take().unwrap();
+        buffer.put(bytes);
+        self.write_buffer_waiting = Some(buffer);
         self.writeData();
-        return Ok(bytes.len());
+        return Ok(len);
     }
 
     fn handleWrite(&mut self) -> io::Result<()> {
-        bool empty_waiting = self.write_buffer_waiting.len() == 0;
-        bool empty_sending = self.write_buffer_sending.len() == 0;
+        let mut empty_waiting: bool = false;
+        let mut empty_sending: bool = false;
+        if self.write_buffer_waiting.as_ref().unwrap().len() == 0 {
+            empty_waiting = true;
+        }
+        if self.write_buffer_sending.as_ref().unwrap().len() == 0 {
+            empty_sending = true;
+        }
         if empty_waiting && empty_sending {
             // disable write
         } else {
-            self.writeData()
+            self.writeData();
         }
         return Ok(())
     }

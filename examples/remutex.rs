@@ -81,7 +81,7 @@ fn test1() {
     //let s1 = s.borrow_mut();  // 可变引用 引用 二者不能共存
     //let s2 = s.borrow();
 
-    println!("{},{}", s1, s2);
+    //println!("{},{}", s1, s2);
 }
 
 fn test2() {

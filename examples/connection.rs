@@ -31,6 +31,9 @@ fn default_accept_cb(stream: TcpStream, addr: SocketAddr) {
     let clone = conn.clone();
     let job = Box::new(move |val: i64| { clone.lock().unwrap().handleEvent(val); });
     conn.lock().unwrap().set_read_cb(default_read_cb);
+
+    let rsp = BytesMut::from(&b"HTTP/1.1 200 OK\r\nSet-Cookie:k1=v1\r\nContent-Length: 15\r\nConnection: Keep-Alive\r\n\r\nabcdefghijkldef"[..]);
+    conn.lock().unwrap().send(rsp);
     event_loop.lock().unwrap().register(&conn.lock().unwrap().sock, CLIENT, Ready::readable(), 
             PollOpt::edge(), job);
 }
