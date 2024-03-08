@@ -138,7 +138,6 @@ impl TcpConnection {
             }
             Ok(Some(r)) => {
                 println!("Conn: write {} bytes", r);
-                buf.advance(r);
                 if buf.len() > 0 {
                     self.write_buffer_sending = Some(buf.split());
                     return Ok(());
