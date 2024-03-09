@@ -32,6 +32,8 @@ impl Acceptor {
     }
 
     pub fn handleRead(&mut self, val: i64) {
+        // while 1 TODO
+        // set sockopt TODO
         let (stream, addr) = self.tcp_listener.accept().unwrap();
         (self.accept_cb)(stream, addr);
     }

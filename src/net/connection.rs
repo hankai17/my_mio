@@ -206,12 +206,6 @@ impl TcpConnection {
         //self.event_loop.register(&self, SERVER, r|w|e, self.handleEvent) 
     }
 
-    pub fn set_on_read_cb() { // set by upper eg: session
-    }
-    pub fn set_on_written_cb() {
-    }
-    pub fn set_on_error_cb() {
-    }
     pub fn clone_stream() {
     }
 }
