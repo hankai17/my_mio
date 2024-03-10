@@ -13,18 +13,8 @@ use std::sync::atomic::Ordering::{self, Acquire, Release, AcqRel, Relaxed, SeqCs
 unsafe impl Send for Session {}
 unsafe impl Sync for Session {}
 
-pub struct Session { // trait TODO 1
-    token: Option<Token>,
-    connection: Arc<Mutex<TcpConnection>>,
-};
-
-impl Session {
-    pub fn new(connection: Arc<Mutex<TcpConnection>>) -> Session {
-        Session {
-            token: None,
-            connection: connection 
-        }
-    }
+pub trait Handler: Sized {
+    type Connection;
     fn onRecv(&mut self, &mut bytes: BytesMut) -> io::Result<()> {
         Ok(())
     }
@@ -40,18 +30,20 @@ impl Session {
     }
     fn safeShutdown() {
     }
-}
+};
 
 pub struct SessionManager {
     // map<string, weak<Session>>
 }
 
 impl SessionManager {
+    /*
     fn add(&s: String, session: Arc<Mutex<Session>>) -> bool {
         false
     }
     fn del(&s: String) {
     }
+    */
 }
 
 pub struct TcpServer {
@@ -64,13 +56,18 @@ pub struct TcpServer {
     // on_err_cb
 }
 
-impl TcpServer {
+impl <H: Handler>TcpServer {
+    /*
     fn start_internal(port, addr backlog) {
     }
-    pub fn start<Session>(&mut self, port, addr backlog) {
-        session_alloc = Session::new()
-        start_internal()
+    */
+    pub fn start(&mut self, handler: &mut H) {
+        //session_alloc = []() -> Arc<Mutex<Handler>> { Session::new() }
+        //start_internal()
     }
-    fn ...
+    pub onAcceptConnection(&mut self, &mut connection: TcpConnection) {
+        // let mut session = self.sessino_alloc();
+        // connection.set_read_cb(session.onRecv);
+    }
 }
 
