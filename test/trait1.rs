@@ -1,3 +1,4 @@
+#![allow(unused)]
 use std::sync::{Arc, Mutex};
 
 struct Sheep { naked: bool, name: &'static str }
@@ -107,7 +108,7 @@ impl Test {
 	//fn start<H: ?Sized>(&mut self) 
 	fn start<H: Sized>(&mut self) 
 		where H: Animal {
-		let mut cb =  || -> Arc<Mutex<Animal>> {
+		let mut cb =  || -> Arc<Mutex<dyn Animal>> {
 			Arc::new(Mutex::new(<H as Animal>::new("Dolly")))
 		};
 		let a = cb();
@@ -126,7 +127,7 @@ impl Test {
 
 fn test2() {
 	let mut t = Test::new();
-	let mut a = t.start::<Sheep>();
+	t.start::<Sheep>();
 	//let mut a1 = t.start1::<Sheep>();
 	//a1.lock().unwrap().talk();
 }
