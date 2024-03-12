@@ -10,28 +10,21 @@ use std::time::Duration;
 use std::sync::atomic::{AtomicUsize, AtomicPtr, AtomicBool};
 use std::sync::atomic::Ordering::{self, Acquire, Release, AcqRel, Relaxed, SeqCst};
 
-unsafe impl Send for Session {}
-unsafe impl Sync for Session {}
+unsafe impl Send for Handler {}
+unsafe impl Sync for Handler {}
 
-pub trait Handler: Sized {
+pub trait Handler {
     type Connection;
-    fn onRecv(&mut self, &mut bytes: BytesMut) -> io::Result<()> {
-        Ok(())
-    }
-    fn onWritten(&mut self) -> bool {
-        false
-    }
-    fn onError(&mut self) {
-    }
-    fn send(&mut self, &mut bytes: BytesMut) -> io::Result<()> {
-        Ok(())
-    }
-    fn shutdown() {
-    }
-    fn safeShutdown() {
-    }
+    fn new() -> Self where Self: Sized;
+    fn onRecv(&mut self, &mut bytes: BytesMut) -> io::Result<()> {}
+    fn onWritten(&mut self) -> bool;
+    fn onError(&mut self);
+    fn send(&mut self, &mut bytes: BytesMut) -> io::Result<()>;
+    fn shutdown();
+    fn safeShutdown();
 };
 
+/*
 pub struct SessionManager {
     // map<string, weak<Session>>
 }
@@ -45,7 +38,9 @@ impl SessionManager {
     }
     */
 }
+*/
 
+/*
 pub struct TcpServer {
     event_loop: Arc<Mutex<EventLoop>>, 
     acceptor: Arc<Mutex<Acceptor>>,
@@ -57,10 +52,8 @@ pub struct TcpServer {
 }
 
 impl <H: Handler>TcpServer {
-    /*
     fn start_internal(port, addr backlog) {
     }
-    */
     pub fn start(&mut self, handler: &mut H) {
         //session_alloc = []() -> Arc<Mutex<Handler>> { Session::new() }
         //start_internal()
@@ -70,4 +63,4 @@ impl <H: Handler>TcpServer {
         // connection.set_read_cb(session.onRecv);
     }
 }
-
+*/

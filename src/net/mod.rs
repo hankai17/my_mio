@@ -17,9 +17,15 @@ mod acceptor;
 pub use self::acceptor::{
     Acceptor
 };
+
 mod connection;
 pub use self::connection::{
     TcpConnection
+};
+
+mod tcp_server;
+pub use self::tcp_server::{
+    Handler
 };
 
 use std::{io};
