@@ -3,28 +3,24 @@ use net::{TryRead, TryWrite};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use {Events, Poll, PollOpt, Ready, Token, Job};
 use event_imp::{ready_from_usize, ready_as_usize};
-use net::{EventLoop, TcpStream};
+use net::{EventLoop, TcpStream, Acceptor};
 use std::net::{self, SocketAddr, SocketAddrV4, SocketAddrV6, Ipv4Addr, Ipv6Addr};
 use std::sync::{Arc, Mutex, Condvar};
 use std::time::Duration;
 use std::sync::atomic::{AtomicUsize, AtomicPtr, AtomicBool};
 use std::sync::atomic::Ordering::{self, Acquire, Release, AcqRel, Relaxed, SeqCst};
 
-unsafe impl Send for Handler {}
-unsafe impl Sync for Handler {}
-
 pub trait Handler {
-    type Connection;
+    //type Connection;
     fn new() -> Self where Self: Sized;
-    fn onRecv(&mut self, &mut bytes: BytesMut) -> io::Result<()> {}
+    fn onRecv(&mut self, bytes: &mut BytesMut) -> io::Result<()>;
     fn onWritten(&mut self) -> bool;
     fn onError(&mut self);
-    fn send(&mut self, &mut bytes: BytesMut) -> io::Result<()>;
+    fn send(&mut self, bytes: &mut BytesMut) -> io::Result<()>;
     fn shutdown();
     fn safeShutdown();
-};
+}
 
-/*
 pub struct SessionManager {
     // map<string, weak<Session>>
 }
@@ -38,9 +34,7 @@ impl SessionManager {
     }
     */
 }
-*/
 
-/*
 pub struct TcpServer {
     event_loop: Arc<Mutex<EventLoop>>, 
     acceptor: Arc<Mutex<Acceptor>>,
@@ -51,7 +45,8 @@ pub struct TcpServer {
     // on_err_cb
 }
 
-impl <H: Handler>TcpServer {
+impl TcpServer {
+    /*
     fn start_internal(port, addr backlog) {
     }
     pub fn start(&mut self, handler: &mut H) {
@@ -62,5 +57,6 @@ impl <H: Handler>TcpServer {
         // let mut session = self.sessino_alloc();
         // connection.set_read_cb(session.onRecv);
     }
+    */
 }
-*/
+
