@@ -84,6 +84,20 @@ fn test4() -> Box<dyn FnMut(i64)> {
     Box::new(move |val: i64| {instance.struct_function(val)})
 }
 
+fn test5() {
+    //fn no_fun(x: f32, f: fn(f32) -> f32) -> f32 {
+    fn no_fun(x: f32, f: impl Fn(f32) -> f32) -> f32 { // use Fn traits here to allow closures
+                                                        // If the values are truly constant, you can make them const or static and the code will compile. ???
+        f(x)
+    }
+
+    let a = 3.;
+    let x = 2.;
+    let f = |x| {x * a};
+
+    println!("Product of {} and {} is {}", x, a, no_fun(x, f));
+}
+
 fn main() {
     test1();
     test2();
@@ -91,4 +105,5 @@ fn main() {
     let mut cb = test4();
     cb(44);
     cb(44); // 用这种方式重构? // 参考rust线程池
+	test5();
 }

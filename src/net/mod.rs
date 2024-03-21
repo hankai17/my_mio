@@ -25,7 +25,8 @@ pub use self::connection::{
 
 mod tcp_server;
 pub use self::tcp_server::{
-    Handler
+    Handler,
+    TcpServer,
 };
 
 use std::{io};
