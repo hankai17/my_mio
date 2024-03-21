@@ -24,6 +24,9 @@ macro_rules! pub_struct {
     }
 }
 
+pub type ReadJob = Box<dyn FnMut(&mut BytesMut) + 'static + Send + Sync>;
+pub type WritJob = Box<dyn FnMut() + 'static + Send + Sync>;
+
 pub struct TcpConnection {
     token: Option<Token>,
     interest: Ready,
@@ -38,6 +41,8 @@ pub struct TcpConnection {
     read_cb: fn(&mut BytesMut),
     write_cb: fn() -> bool,
     error_cb: fn(),
+    read_job: ReadJob,
+    writ_job: WritJob,
 
     read_enable: bool,
     write_enable: bool,
@@ -65,6 +70,8 @@ impl TcpConnection {
             read_cb: default_read_cb,
             write_cb: default_written_cb,
             error_cb: default_err_cb,
+            read_job: Box::new(move |bytes: &mut BytesMut| { println!("default read job"); }),
+            writ_job: Box::new(move || { println!("default write job"); }),
 
             read_enable: false,
             write_enable: false,
@@ -86,6 +93,14 @@ impl TcpConnection {
         self.error_cb = cb;
     }
 
+    pub fn set_read_job(&mut self, job: ReadJob) {
+        self.read_job = job;
+    }
+
+    pub fn set_writ_job(&mut self, job: WritJob) {
+        self.writ_job = job;
+    }
+
     fn handleRead(&mut self) -> io::Result<()> {
         let mut buf = self.read_buffer.take().unwrap();
         match self.sock.try_read_buf(&mut buf) {
@@ -99,7 +114,8 @@ impl TcpConnection {
                     self.event_loop.lock().unwrap().deregister(&self.sock);
                 }
                 // buf toto
-                (self.read_cb)(&mut buf);
+                //(self.read_cb)(&mut buf);
+                (self.read_job)(&mut buf);
                 self.read_buffer = Some(buf);
                 //self.interest.remove(Ready::readable());
                 //self.interest.insert(Ready::writable());
@@ -142,7 +158,8 @@ impl TcpConnection {
                     self.write_buffer_sending = Some(buf.split());
                     return Ok(());
                 }
-                (self.write_cb)();
+                //(self.write_cb)();
+                (self.writ_job)();
             }
             Err(e) => {
                 println!("not implemented; client err: {:?}", e);

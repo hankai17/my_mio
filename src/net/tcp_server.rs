@@ -13,9 +13,10 @@ use std::sync::atomic::Ordering::{self, Acquire, Release, AcqRel, Relaxed, SeqCs
 pub trait Handler {
     //type Connection;
     fn new() -> Self where Self: Sized;
-    //fn onRecv(&mut self, bytes: &mut BytesMut) -> io::Result<()>;
-    //fn onWritten(&mut self) -> bool;
-    //fn onError(&mut self);
+    fn setConnection(&mut self, conn: Arc<Mutex<TcpConnection>>);
+    fn onRecv(&mut self, bytes: &mut BytesMut);
+    fn onWritten(&mut self) -> bool;
+    fn onError(&mut self);
     //fn send(&mut self, bytes: &mut BytesMut) -> io::Result<()>;
     ////fn shutdown();
     ////fn safeShutdown();
@@ -39,7 +40,7 @@ pub struct TcpServer {
     event_loop: Arc<Mutex<EventLoop>>, 
     acceptor: Arc<Mutex<Acceptor>>,
     // timer
-    session_alloc: Option<fn() -> Arc<Mutex<dyn Handler>>>,
+    session_alloc: Option<fn() -> Arc<Mutex<dyn Handler + 'static + Send + Sync>>>,
     // on_read_cb
     // on_written_cb
     // on_err_cb
@@ -48,6 +49,11 @@ pub struct TcpServer {
 fn default_accept_cb(stream: TcpStream, addr: SocketAddr) {
     println!("move it into struct TODO");
 }
+
+const CLIENT: Token = Token(10_000_000);
+
+unsafe impl Send for TcpServer {}
+unsafe impl Sync for TcpServer {}
 
 impl TcpServer {
     pub fn new(event_loop: Arc<Mutex<EventLoop>>, addr: &String) -> TcpServer {
@@ -60,18 +66,21 @@ impl TcpServer {
     }
     pub fn onAcceptConnection(&mut self, stream: TcpStream, addr: SocketAddr) {
         println!("into struct");
-        // let mut session = self.sessino_alloc();
-        // connection.set_read_cb(session.onRecv);
+        let mut session = self.session_alloc.unwrap()();
+        let mut conn = Arc::new(Mutex::new(TcpConnection::new(self.event_loop.clone(), stream)));
+        let mut clone_conn = conn.clone();
+        let mut clone_session = session.clone();
+        session.lock().unwrap().setConnection(conn);
 
-        // put conn into session // TODO
+        let read_job = Box::new(move |bytes: &mut BytesMut| { session.lock().unwrap().onRecv(bytes); } );
+        clone_conn.lock().unwrap().set_read_job(read_job);
+        let writ_job = Box::new(move || { clone_session.lock().unwrap().onWritten(); });
+        clone_conn.lock().unwrap().set_writ_job(writ_job);
 
-        //let mut conn = Arc::new(Mutex::new(TcpConnection::new(event_loop.clone(), stream)));
-        //let clone = conn.clone();
-        //let job = Box::new(move |val: i64| { clone.lock().unwrap().handleEvent(val); });
-        //conn.lock().unwrap().set_read_cb(default_read_cb);
-        //conn.lock().unwrap().send(rsp);
-        //event_loop.lock().unwrap().register(&conn.lock().unwrap().sock, CLIENT, Ready::readable(), 
-        //        PollOpt::edge(), job);
+        let conn = clone_conn.clone();
+        let job = Box::new(move |val: i64| { clone_conn.lock().unwrap().handleEvent(val); });
+        self.event_loop.lock().unwrap().register(&conn.lock().unwrap().sock, CLIENT, 
+                Ready::readable() | Ready::writable(), PollOpt::edge(), job);
     }
     fn start_internal(&mut self) {
         let mut clone = self.acceptor.clone();
@@ -89,9 +98,9 @@ impl TcpServer {
         let job = Box::new(move |stream: TcpStream, addr: SocketAddr| { clone.lock().unwrap().onAcceptConnection(stream, addr); });
         this.lock().unwrap().acceptor.lock().unwrap().set_accept_job(job);
     }
-    pub fn start<H: Sized + 'static>(&mut self)
+    pub fn start<H: Sized + 'static + Send + Sync>(&mut self)
         where H: Handler {
-        let mut session_alloc = || -> Arc<Mutex<dyn Handler>> {
+        let mut session_alloc = || -> Arc<Mutex<dyn Handler + 'static + Send + Sync>> {
             Arc::new(Mutex::new(<H as Handler>::new()))
         };
         self.session_alloc = Some(session_alloc);

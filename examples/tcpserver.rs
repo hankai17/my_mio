@@ -14,11 +14,25 @@ use std::time::Duration;
 struct Test {
     id: i32
 }
+
 impl Handler for Test {
     fn new() -> Test {
         Test {
             id: 32
         }
+    }
+    fn setConnection(&mut self, conn: Arc<Mutex<TcpConnection>>) {
+        println!("Test setConnection");
+    }
+    fn onRecv(&mut self, bytes: &mut BytesMut) {
+        println!("Test onRecv");
+    }
+    fn onWritten(&mut self) -> bool {
+        println!("Test onWritten");
+        true
+    }
+    fn onError(&mut self) {
+        println!("Test onError");
     }
 }
 
