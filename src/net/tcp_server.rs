@@ -59,9 +59,19 @@ impl TcpServer {
         }
     }
     pub fn onAcceptConnection(&mut self, stream: TcpStream, addr: SocketAddr) {
+        println!("into struct");
         // let mut session = self.sessino_alloc();
         // connection.set_read_cb(session.onRecv);
-        println!("into struct");
+
+        // put conn into session // TODO
+
+        //let mut conn = Arc::new(Mutex::new(TcpConnection::new(event_loop.clone(), stream)));
+        //let clone = conn.clone();
+        //let job = Box::new(move |val: i64| { clone.lock().unwrap().handleEvent(val); });
+        //conn.lock().unwrap().set_read_cb(default_read_cb);
+        //conn.lock().unwrap().send(rsp);
+        //event_loop.lock().unwrap().register(&conn.lock().unwrap().sock, CLIENT, Ready::readable(), 
+        //        PollOpt::edge(), job);
     }
     fn start_internal(&mut self) {
         let mut clone = self.acceptor.clone();
