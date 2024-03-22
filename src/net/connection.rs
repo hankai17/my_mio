@@ -110,13 +110,13 @@ impl TcpConnection {
             }
             Ok(Some(r)) => {
                 //println!("Conn: read {} bytes, {:?}", r, buf);
-                if r == 0 {
-                    self.event_loop.lock().unwrap().deregister(&self.sock);
-                }
                 // buf toto
                 //(self.read_cb)(&mut buf);
                 (self.read_job)(&mut buf);
                 self.read_buffer = Some(buf);
+                if r == 0 {
+                    self.event_loop.lock().unwrap().deregister(&self.sock);
+                }
                 //self.interest.remove(Ready::readable());
                 //self.interest.insert(Ready::writable());
             }
