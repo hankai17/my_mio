@@ -2,7 +2,7 @@ extern crate my_mio;
 extern crate bytes;
 
 use std::{io, mem, fmt};
-use my_mio::{Events, Poll, PollOpt, Ready, Token, Job};
+use my_mio::{Events, Poll, PollOpt, Ready, Token, Job, Registration, SetReadiness};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use my_mio::net::{TcpListener, TcpStream, EventLoop, EventLoopBuilder, Acceptor, TcpConnection, TcpServer, Handler};
 use std::net::{self, SocketAddr, SocketAddrV4, SocketAddrV6, Ipv4Addr, Ipv6Addr};
@@ -12,23 +12,50 @@ use std::sync::atomic::Ordering::{self, Acquire, Release, AcqRel, Relaxed, SeqCs
 use std::time::Duration;
 
 struct Test {
-    id: i32
+    id: i32,
+    conn: Option<Arc<Mutex<TcpConnection>>>
 }
 
 impl Handler for Test {
     fn new() -> Test {
         Test {
-            id: 32
+            id: 32,
+            conn: None
         }
     }
     fn setConnection(&mut self, conn: Arc<Mutex<TcpConnection>>) {
+        self.conn = Some(conn);
         println!("Test setConnection");
     }
     fn onRecv(&mut self, bytes: &mut BytesMut) {
-        println!("Test onRecv");
+        println!("bytes len: {}, {:?}", bytes.len(), bytes);
+        bytes.advance(bytes.len());
+
+        // 死锁了 解决方案用可重入锁 但是改的地方稍微有点儿多
+        /*
+        let rsp = BytesMut::from(&b"HTTP/1.1 200 OK\r\nSet-Cookie:k1=v1\r\nContent-Length: 15\r\nConnection: Keep-Alive\r\n\r\nabcdefghijkldef"[..]);
+        let mut conn = self.conn.take().unwrap();
+        conn.lock().unwrap().send(rsp);
+        self.conn = Some(conn);
+        */
+
+        let event_loop = EventLoopBuilder::get_current_loop();
+        let poll = event_loop.lock().unwrap().poll;
+        let (r, set) = Registration::new2();
+        let job = Box::new(move |val: i64| { println!("--------------"); });
+        //r.update(&poll, Token(0), Ready::readable(), PollOpt::edge(), job).unwrap();
+        set.set_readiness(Ready::readable()).unwrap();
     }
     fn onWritten(&mut self) -> bool {
         println!("Test onWritten");
+        /*
+        // 这里是发送完的回调 而非可发送回调 // 可发送回调是es直接触发而调用的 如果es中的数据发不完就不会调用这个函数
+        // 那么得找一个地方可以发数据 且不能死锁
+        let rsp = BytesMut::from(&b"HTTP/1.1 200 OK\r\nSet-Cookie:k1=v1\r\nContent-Length: 15\r\nConnection: Keep-Alive\r\n\r\nabcdefghijkldef"[..]);
+        let mut conn = self.conn.take().unwrap();
+        conn.lock().unwrap().send(rsp);
+        self.conn = Some(conn);
+        */
         true
     }
     fn onError(&mut self) {

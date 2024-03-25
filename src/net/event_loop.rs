@@ -114,7 +114,7 @@ unsafe impl Sync for EventLoop {}
 
 pub struct EventLoop { // 改造成ReadinessQueueInner 并提供get()->*mut
     run: bool,
-    poll: Poll,
+    pub poll: Poll,
     events: Events,
     timer: Timer<i32>,
     notify_tx: channel::SyncSender<i32>,
@@ -249,7 +249,14 @@ use std::cell::Cell;
 use std::cell::RefCell;
 thread_local! {
     pub static current_loop: RefCell<Arc<Mutex<EventLoop>>> = panic!("!"); //Arc::new(Mutex::new(EventLoop));
+    pub static job_ready_list: RefCell<Arc<Mutex<Slab<Job>>>> = panic!("!");
 }
+
+pub fn ()
+
+// tok = get(job) 
+//      let tok = job_queue.insert(job)
+// free(job)
 
 impl EventLoopBuilder {
     pub fn new() -> EventLoopBuilder {
@@ -287,6 +294,10 @@ impl EventLoopBuilder {
         let event_loop = Arc::new(Mutex::new(self.build().unwrap()));
         let clone = event_loop.clone();
         current_loop.set(clone);
+
+        let jobs: Slab<Job> = Slab::with_capacity(128);
+        let ready_list = Arc::new(Mutex::new(jobs));
+        job_ready_list.set(ready_list);
         Ok(event_loop)
     }
     pub fn get_current_loop() -> Arc<Mutex<EventLoop>> {
