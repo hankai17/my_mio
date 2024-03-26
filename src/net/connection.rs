@@ -25,7 +25,7 @@ macro_rules! pub_struct {
 }
 
 pub type ReadJob = Box<dyn FnMut(&mut BytesMut) + 'static + Send + Sync>;
-pub type WritJob = Box<dyn FnMut() + 'static + Send + Sync>;
+pub type WritJob = Box<dyn FnMut()->bool + 'static + Send + Sync>;
 
 pub struct TcpConnection {
     token: Option<Token>,
@@ -71,7 +71,7 @@ impl TcpConnection {
             write_cb: default_written_cb,
             error_cb: default_err_cb,
             read_job: Box::new(move |bytes: &mut BytesMut| { println!("default read job"); }),
-            writ_job: Box::new(move || { println!("default write job"); }),
+            writ_job: Box::new(move || { println!("default write job"); true }),
 
             read_enable: false,
             write_enable: false,
@@ -112,9 +112,13 @@ impl TcpConnection {
                 //println!("Conn: read {} bytes, {:?}", r, buf);
                 // buf toto
                 //(self.read_cb)(&mut buf);
-                (self.read_job)(&mut buf);
-                self.read_buffer = Some(buf);
-                if r == 0 {
+                if r > 0 {
+                    (self.read_job)(&mut buf);
+                    self.read_buffer = Some(buf);
+                } else {
+                    println!("r == 0");
+                    (self.read_job)(&mut buf);
+                    self.read_buffer = Some(buf);
                     self.event_loop.lock().unwrap().deregister(&self.sock);
                 }
                 //self.interest.remove(Ready::readable());
@@ -123,6 +127,7 @@ impl TcpConnection {
             Err(e) => {
                 println!("not implemented client err: {:?}", e);
                 // deregister
+                self.event_loop.lock().unwrap().deregister(&self.sock);
             }
         };
         Ok(())
@@ -162,11 +167,16 @@ impl TcpConnection {
                     return Ok(());
                 }
                 //(self.write_cb)();
-                (self.writ_job)();
+                let ret = (self.writ_job)();
                 self.write_buffer_sending = Some(buf.split());
+                if ret == false {
+                    //println!("close stream1");
+                    //self.close_stream();
+                }
             }
             Err(e) => {
                 println!("not implemented; client err: {:?}", e);
+                //self.close_stream();
             }
         }
 
@@ -227,7 +237,10 @@ impl TcpConnection {
         //self.event_loop.register(&self, SERVER, r|w|e, self.handleEvent) 
     }
 
-    pub fn clone_stream() {
+    pub fn clone_stream(&mut self) {
+    }
+    pub fn close_stream(&mut self) {
+        self.event_loop.lock().unwrap().deregister(&self.sock);
     }
 }
 

@@ -28,6 +28,11 @@ impl Handler for Test {
         println!("Test setConnection");
     }
     fn onRecv(&mut self, bytes: &mut BytesMut) {
+        if bytes.len() <= 0 {
+            println!("bytes len: {}, {:?}", bytes.len(), bytes);
+            bytes.advance(bytes.len());
+            return;
+        }
         println!("bytes len: {}, {:?}", bytes.len(), bytes);
         bytes.advance(bytes.len());
 
@@ -73,7 +78,15 @@ impl Handler for Test {
         conn.lock().unwrap().send(rsp);
         self.conn = Some(conn);
         */
+
+        /*
+        // 又死锁了 因为这个回调可能在conn.send函数里
+        let mut conn = self.conn.take().unwrap();
+        conn.lock().unwrap().close_stream();
+        self.conn = Some(conn);
         true
+        */
+        false
     }
     fn onError(&mut self) {
         println!("Test onError");

@@ -74,7 +74,7 @@ impl TcpServer {
 
         let read_job = Box::new(move |bytes: &mut BytesMut| { session.lock().unwrap().onRecv(bytes); } );
         clone_conn.lock().unwrap().set_read_job(read_job);
-        let writ_job = Box::new(move || { clone_session.lock().unwrap().onWritten(); });
+        let writ_job = Box::new(move || { clone_session.lock().unwrap().onWritten() });
         clone_conn.lock().unwrap().set_writ_job(writ_job);
 
         let conn = clone_conn.clone();
