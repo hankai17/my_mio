@@ -436,7 +436,6 @@ impl ReadinessQueue {
                 Dequeue::Data(ptr) => ptr,
             };
             let node = unsafe { &*ptr };
-            println!("get a node from queue...");
             let mut state = node.state.load(Acquire);
             let mut next;
             let mut readiness;
@@ -446,7 +445,6 @@ impl ReadinessQueue {
                 debug_assert!(state.is_queued());
                 if state.is_dropped() {
                     release_node(ptr);
-                    println!("0--------------");
                     continue 'outer;
                 }
                 readiness = state.effective_readiness();
@@ -469,7 +467,6 @@ impl ReadinessQueue {
                 }
                 state = actual;
             }
-            println!("1--------------");
             if next.is_queued() {
                 if until.is_null() {
                     until = ptr;
@@ -479,7 +476,6 @@ impl ReadinessQueue {
             if !readiness.is_empty() {
                 let token = unsafe { token(node, next.token_read_pos()) };
                 dst.push_event(Event::new(readiness, token));
-                println!("put dst queue...");
             }
         }
     }

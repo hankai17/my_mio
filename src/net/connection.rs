@@ -139,9 +139,12 @@ impl TcpConnection {
                 let mut buf = self.write_buffer_waiting.take().unwrap();
                 if buf.len() > 0 {
                     buf_tmp = buf.split();
+                    self.write_buffer_waiting = Some(buf);
                     break;
                 }
                 // onWritten() // all data consumed done
+                self.write_buffer_waiting = Some(buf);
+                self.write_buffer_sending = Some(buf_snd);
                 return Ok(())
             }
         }
@@ -160,6 +163,7 @@ impl TcpConnection {
                 }
                 //(self.write_cb)();
                 (self.writ_job)();
+                self.write_buffer_sending = Some(buf.split());
             }
             Err(e) => {
                 println!("not implemented; client err: {:?}", e);

@@ -153,13 +153,10 @@ impl EventLoop {
     }
     pub fn set_job(&mut self, job: Job) -> Token {
         let token = self.job_ready_list.insert(job);
-        println!("set_job token: {}", token);
         Token(token)
     }
     pub fn get_job(&mut self, token: Token) -> Option<&mut Job> {
-        println!("1get_job token: {}", usize::from(token) as u64);
         if let Some(job) = self.job_ready_list.get_mut(token.into()) {
-            println!("2get_job token: {}", usize::from(token) as u64);
             return Some(job);       // job已经是&mut类型了
         }
         return None;
@@ -200,7 +197,6 @@ impl EventLoop {
         self.poll.poll(&mut self.events, timeout)
     }
     fn io_event(&mut self, evt: Event) {
-        println!("in io_event...");
         //handler.ready(self, evt.token(), evt.readiness());
         if let Some(job) = self.get_job(evt.token()) {
             job(ready_as_usize(evt.readiness()) as i64);
@@ -227,7 +223,6 @@ impl EventLoop {
     fn io_process(&mut self, cnt: usize) {
         let mut i = 0;
         log::trace!("io_process(..); cnt={}; len={}", cnt, self.events.len());
-        println!("io_process(..); cnt={}; len={}", cnt, self.events.len());
         while i < cnt {
             let evt = self.events.get(i).unwrap();  // epoll_event 转为 Ready
             log::trace!("event={:?}; idx={:?}", evt, i);

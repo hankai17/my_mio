@@ -20,8 +20,9 @@ set print pretty
 #b server.rs:112
 #b tcp_server.rs:126
 #b event_loop.rs:183
-b tcpserver.rs:49
-b poll.rs:810
-b RegistrationInner::update
-b ReadinessQueueInner::enqueue_node
-b flag_as_dropped
+#b tcpserver.rs:49
+#b poll.rs:810
+#b RegistrationInner::update
+#b ReadinessQueueInner::enqueue_node
+#b flag_as_dropped
+b src/net/connection.rs:187
