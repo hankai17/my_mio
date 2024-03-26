@@ -40,11 +40,16 @@ impl Handler for Test {
         */
 
         let event_loop = EventLoopBuilder::get_current_loop();
-        let poll = event_loop.lock().unwrap().poll;
+        let job = Box::new(move |val: i64| { println!("1--------------"); });
+        let token = event_loop.lock().unwrap().set_job(job);
+
         let (r, set) = Registration::new2();
-        let job = Box::new(move |val: i64| { println!("--------------"); });
-        //r.update(&poll, Token(0), Ready::readable(), PollOpt::edge(), job).unwrap();
+        //set.set_readiness(Ready::readable()).unwrap();
+        let job = Box::new(move |val: i64| { println!("2--------------"); });
+        event_loop.lock().unwrap().register(&r, token, Ready::readable(), PollOpt::edge(), job).unwrap();
+        //r.register(&poll, Token(0), Ready::readable(), PollOpt::edge(), job).unwrap();
         set.set_readiness(Ready::readable()).unwrap();
+        println!("alreay inserted list (in fact r was droped)");
     }
     fn onWritten(&mut self) -> bool {
         println!("Test onWritten");

@@ -4,7 +4,6 @@ use my_mio::{Events, Poll, PollOpt, Ready, Registration, SetReadiness, Token};
 use my_mio::event::Evented;
 use std::time::Duration;
 
-/*
 fn test1() {
     let poll = Poll::new().unwrap();
     let mut events = Events::with_capacity(128);
@@ -22,6 +21,7 @@ fn test1() {
     assert_eq!(events.get(0).unwrap().token(), Token(0));
 }
 
+/*
 fn test2() {
     use std::sync::{Arc, Barrier};
     use std::thread;
@@ -318,11 +318,11 @@ fn test6() {
 }
 
 fn main() {
-    //test1();
+    test1();
     //test2();
     //test3();
     //test4();
     //test5();
-    test6();
+    //test6();
 }
 

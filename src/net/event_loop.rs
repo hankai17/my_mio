@@ -1,6 +1,6 @@
 use {channel, Poll, Events, Token};
 use event::Evented;
-use event_imp::{Event, Ready, PollOpt, Job};
+use event_imp::{Event, Ready, PollOpt, Job, ready_as_usize};
 use timer::{self, Timer, Timeout};
 use std::{io, usize};
 use std::default::Default;
@@ -8,6 +8,7 @@ use std::time::Duration;
 use std::{fmt, error, any};
 use std::sync::{Arc, Mutex, Condvar};
 use std::thread_local;
+use slab::Slab;
 
 pub enum NotifyError<T> {
     Io(io::Error),
@@ -119,7 +120,8 @@ pub struct EventLoop { // 改造成ReadinessQueueInner 并提供get()->*mut
     timer: Timer<i32>,
     notify_tx: channel::SyncSender<i32>,
     notify_rx: channel::Receiver<i32>,
-    config: Config
+    config: Config,
+    pub job_ready_list: Slab<Job>,
 }
 
 const NOTIFY: Token = Token(usize::MAX - 1);
@@ -146,7 +148,24 @@ impl EventLoop {
             notify_rx: rx,
             config,
             events: Events::with_capacity(1024),
+            job_ready_list: Slab::with_capacity(128),
         })
+    }
+    pub fn set_job(&mut self, job: Job) -> Token {
+        let token = self.job_ready_list.insert(job);
+        println!("set_job token: {}", token);
+        Token(token)
+    }
+    pub fn get_job(&mut self, token: Token) -> Option<&mut Job> {
+        println!("1get_job token: {}", usize::from(token) as u64);
+        if let Some(job) = self.job_ready_list.get_mut(token.into()) {
+            println!("2get_job token: {}", usize::from(token) as u64);
+            return Some(job);       // job已经是&mut类型了
+        }
+        return None;
+    }
+    pub fn free_job(&mut self, token: Token) {
+        self.job_ready_list.remove(token.into());
     }
     pub fn new() -> io::Result<EventLoop> {
         EventLoop::configured(Config::default())
@@ -181,7 +200,12 @@ impl EventLoop {
         self.poll.poll(&mut self.events, timeout)
     }
     fn io_event(&mut self, evt: Event) {
+        println!("in io_event...");
         //handler.ready(self, evt.token(), evt.readiness());
+        if let Some(job) = self.get_job(evt.token()) {
+            job(ready_as_usize(evt.readiness()) as i64);
+            self.free_job(evt.token());
+        }
     }
     fn notify(&mut self) {
         for _ in 0..self.config.messages_per_tick {     // 每个周期尝试从pipe 最多读取256次
@@ -203,6 +227,7 @@ impl EventLoop {
     fn io_process(&mut self, cnt: usize) {
         let mut i = 0;
         log::trace!("io_process(..); cnt={}; len={}", cnt, self.events.len());
+        println!("io_process(..); cnt={}; len={}", cnt, self.events.len());
         while i < cnt {
             let evt = self.events.get(i).unwrap();  // epoll_event 转为 Ready
             log::trace!("event={:?}; idx={:?}", evt, i);
@@ -249,14 +274,8 @@ use std::cell::Cell;
 use std::cell::RefCell;
 thread_local! {
     pub static current_loop: RefCell<Arc<Mutex<EventLoop>>> = panic!("!"); //Arc::new(Mutex::new(EventLoop));
-    pub static job_ready_list: RefCell<Arc<Mutex<Slab<Job>>>> = panic!("!");
+    //pub static job_ready_list: RefCell<Arc<Mutex<Slab<Job>>>> = panic!("!");
 }
-
-pub fn ()
-
-// tok = get(job) 
-//      let tok = job_queue.insert(job)
-// free(job)
 
 impl EventLoopBuilder {
     pub fn new() -> EventLoopBuilder {
@@ -294,10 +313,6 @@ impl EventLoopBuilder {
         let event_loop = Arc::new(Mutex::new(self.build().unwrap()));
         let clone = event_loop.clone();
         current_loop.set(clone);
-
-        let jobs: Slab<Job> = Slab::with_capacity(128);
-        let ready_list = Arc::new(Mutex::new(jobs));
-        job_ready_list.set(ready_list);
         Ok(event_loop)
     }
     pub fn get_current_loop() -> Arc<Mutex<EventLoop>> {
