@@ -29,8 +29,31 @@ impl Handler for Test {
     }
     fn onRecv(&mut self, bytes: &mut BytesMut) {
         if bytes.len() <= 0 {
-            println!("bytes len: {}, {:?}", bytes.len(), bytes);
-            bytes.advance(bytes.len());
+            println!("bytes len 0");
+            let (r, set) = Registration::new2();
+            let mut r = Arc::new(r);
+            let mut r_clone = r.clone();
+            let mut set = Arc::new(set);
+            let mut set_clone = set.clone();
+
+            let mut conn = self.conn.take().unwrap();
+            let mut conn_clone = conn.clone();
+            self.conn = Some(conn);
+
+            let event_loop = EventLoopBuilder::get_current_loop();
+            let job = Box::new(move |val: i64| { 
+                r.clone(); 
+                set.clone(); 
+                println!("1--------------"); 
+                let mut conn = conn_clone.lock().unwrap();
+                let rsp = BytesMut::from(&b"HTTP/1.1 200 OK\r\nSet-Cookie:k1=v1\r\nContent-Length: 15\r\nConnection: Keep-Alive\r\n\r\nabcdefghijkldef"[..]);
+                conn.send(rsp);
+            });
+            let token = event_loop.lock().unwrap().set_job(job);
+
+            set_clone.set_readiness(Ready::readable()).unwrap();
+            let job = Box::new(move |val: i64| { println!("2--------------"); });
+            event_loop.lock().unwrap().register(&r_clone, token, Ready::readable(), PollOpt::edge(), job).unwrap();
             return;
         }
         println!("bytes len: {}, {:?}", bytes.len(), bytes);
