@@ -106,7 +106,12 @@ impl Selector {
         let events_map = self.events_map();
         unsafe {
             cvt(libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_DEL, fd, &mut info))?;
-            events_map.as_mut().unwrap().remove(&fd as &i32);
+            let ret = events_map.as_mut().unwrap().remove(&fd as &i32);
+            if let Some(ret) = ret {
+                println!("deregister fd: {} ok", fd);
+            } else {
+                println!("deregister fd: {} failed", fd)
+            }
             Ok(())
         }
     }

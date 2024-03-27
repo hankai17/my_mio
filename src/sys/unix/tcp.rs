@@ -116,6 +116,7 @@ impl fmt::Debug for TcpStream {
 
 impl<'a> Read for &'a TcpStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        println!("reading {:?}", self.inner);
         (&self.inner).read(buf)
     }
 }

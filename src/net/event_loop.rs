@@ -153,6 +153,7 @@ impl EventLoop {
     }
     pub fn set_job(&mut self, job: Job) -> Token {
         let token = self.job_ready_list.insert(job);
+        println!("set_job token: {}", token);
         Token(token)
     }
     pub fn get_job(&mut self, token: Token) -> Option<&mut Job> {
@@ -162,7 +163,10 @@ impl EventLoop {
         return None;
     }
     pub fn free_job(&mut self, token: Token) {
-        self.job_ready_list.remove(token.into());
+        let u: usize = token.into();
+        println!("free_job token: {}", u);
+        //self.job_ready_list.remove(token.into());
+        self.job_ready_list.remove(u);
     }
     pub fn new() -> io::Result<EventLoop> {
         EventLoop::configured(Config::default())

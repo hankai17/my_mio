@@ -72,6 +72,7 @@ impl Evented for Io {
 
 impl Read for Io {
     fn read(&mut self, dst: &mut [u8]) -> io::Result<usize> {
+        println!("fd {:?} read", self.fd);
         (&self.fd).read(dst)
     }
 }

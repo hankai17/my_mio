@@ -119,7 +119,7 @@ impl TcpConnection {
                     println!("r == 0");
                     (self.read_job)(&mut buf);
                     self.read_buffer = Some(buf);
-                    self.event_loop.lock().unwrap().deregister(&self.sock);
+                    self.close_stream();
                 }
                 //self.interest.remove(Ready::readable());
                 //self.interest.insert(Ready::writable());
@@ -127,7 +127,7 @@ impl TcpConnection {
             Err(e) => {
                 println!("not implemented client err: {:?}", e);
                 // deregister
-                self.event_loop.lock().unwrap().deregister(&self.sock);
+                self.close_stream();
             }
         };
         Ok(())
@@ -147,6 +147,7 @@ impl TcpConnection {
                     self.write_buffer_waiting = Some(buf);
                     break;
                 }
+                println!("?-------------------------");
                 // onWritten() // all data consumed done
                 self.write_buffer_waiting = Some(buf);
                 self.write_buffer_sending = Some(buf_snd);
@@ -155,13 +156,14 @@ impl TcpConnection {
         }
 
         let mut buf = buf_tmp;
+        println!("Conn {:?}: write1 ", self.sock);
         match self.sock.try_write_buf(&mut buf) {
             Ok(None) => {
                 println!("client flushing buf; WouldBlock");
                 self.write_buffer_sending = Some(buf.split());
             }
             Ok(Some(r)) => {
-                println!("Conn: write {} bytes", r);
+                println!("Conn {:?}: write2 {} bytes", self.sock, r);
                 if buf.len() > 0 {
                     self.write_buffer_sending = Some(buf.split());
                     return Ok(());
@@ -171,7 +173,7 @@ impl TcpConnection {
                 self.write_buffer_sending = Some(buf.split());
                 if ret == false {
                     //println!("close stream1");
-                    //self.close_stream();
+                    self.close_stream();
                 }
             }
             Err(e) => {
@@ -247,7 +249,7 @@ impl TcpConnection {
 impl Drop for TcpConnection {
     fn drop(&mut self) {
         //self.event_loop.lock().unwrap().deregister(&self.sock);
-        println!("---------------------drop for tcpconnection")
+        println!("---------------------drop for tcpconnection {:?}", self.sock)
     }
 }
 

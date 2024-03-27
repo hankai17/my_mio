@@ -47,7 +47,7 @@ pub struct TcpServer {
 }
 
 fn default_accept_cb(stream: TcpStream, addr: SocketAddr) {
-    println!("move it into struct TODO");
+    //println!("move it into struct TODO");
 }
 
 const CLIENT: Token = Token(10_000_000);
@@ -65,7 +65,7 @@ impl TcpServer {
         }
     }
     pub fn onAcceptConnection(&mut self, stream: TcpStream, addr: SocketAddr) {
-        println!("into struct");
+        println!("accept: {}, {:?}", addr, stream);
         let mut session = self.session_alloc.unwrap()();
         let mut conn = Arc::new(Mutex::new(TcpConnection::new(self.event_loop.clone(), stream)));
         let mut clone_conn = conn.clone();
