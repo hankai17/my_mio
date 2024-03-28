@@ -41,12 +41,31 @@ impl Acceptor {
         self.acceptor_job = job;
     }
 
+    /*
+    pub fn accept(&self) -> io::Result<(TcpStream, SocketAddr)> {
+        let (s, a) = try!(self.accept_std());
+        Ok((TcpStream::from_stream(s)?, a))
+    }
+    */
     pub fn handleRead(&mut self, val: i64) {
-        // while 1 TODO
-        // set sockopt TODO
-        let (stream, addr) = self.tcp_listener.accept().unwrap();
-        //(self.accept_cb)(stream, addr);
-        (self.acceptor_job)(stream, addr);
+        use std::io::ErrorKind::WouldBlock;
+        use std::io::ErrorKind::Interrupted;
+        while true {
+            match self.tcp_listener.accept() {
+                Ok((stream, addr)) => {
+                    (self.acceptor_job)(stream, addr);
+                }
+                Err(ref e) if e.kind() == Interrupted => {
+                    continue;
+                }
+                Err(ref e) if e.kind() == WouldBlock => {
+                    break;
+                }
+                Err(_) => {
+                    break;
+                }
+            }
+        }
     }
     pub fn bind(&mut self, job: Job) {
         self.event_loop.lock().unwrap().register(&self.tcp_listener, SERVER, Ready::readable(), 
