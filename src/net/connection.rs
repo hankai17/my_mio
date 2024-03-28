@@ -116,7 +116,7 @@ impl TcpConnection {
                     (self.read_job)(&mut buf);
                     self.read_buffer = Some(buf);
                 } else {
-                    println!("r == 0");
+                    //println!("r == 0");
                     (self.read_job)(&mut buf);
                     self.read_buffer = Some(buf);
                     self.close_stream();
@@ -147,7 +147,7 @@ impl TcpConnection {
                     self.write_buffer_waiting = Some(buf);
                     break;
                 }
-                println!("?-------------------------");
+                //println!("?-------------------------");
                 // onWritten() // all data consumed done
                 self.write_buffer_waiting = Some(buf);
                 self.write_buffer_sending = Some(buf_snd);
@@ -156,14 +156,14 @@ impl TcpConnection {
         }
 
         let mut buf = buf_tmp;
-        println!("Conn {:?}: write1 ", self.sock);
+        //println!("Conn {:?}: write1 ", self.sock);
         match self.sock.try_write_buf(&mut buf) {
             Ok(None) => {
-                println!("client flushing buf; WouldBlock");
+                //println!("client flushing buf; WouldBlock");
                 self.write_buffer_sending = Some(buf.split());
             }
             Ok(Some(r)) => {
-                println!("Conn {:?}: write2 {} bytes", self.sock, r);
+                //println!("Conn {:?}: write2 {} bytes", self.sock, r);
                 if buf.len() > 0 {
                     self.write_buffer_sending = Some(buf.split());
                     return Ok(());
@@ -249,7 +249,7 @@ impl TcpConnection {
 impl Drop for TcpConnection {
     fn drop(&mut self) {
         //self.event_loop.lock().unwrap().deregister(&self.sock);
-        println!("---------------------drop for tcpconnection {:?}", self.sock)
+        //println!("---------------------drop for tcpconnection {:?}", self.sock)
     }
 }
 

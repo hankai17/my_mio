@@ -33,10 +33,10 @@ impl Handler for Test {
     */
     fn onRecv(&mut self, bytes: &mut BytesMut) {
         if bytes.len() <= 0 {
-            println!("bytes len 0");
+            //println!("bytes len 0");
             return;
         }
-        println!("bytes len: {}, {:?}", bytes.len(), bytes);
+        //println!("bytes len: {}, {:?}", bytes.len(), bytes);
         bytes.advance(bytes.len());
 
         // 死锁了 解决方案用可重入锁 但是改的地方稍微有点儿多
@@ -71,7 +71,7 @@ impl Handler for Test {
         event_loop.lock().unwrap().register(&r_clone, token, Ready::readable(), PollOpt::edge(), job).unwrap();
     }
     fn onWritten(&mut self) -> bool {
-        println!("Test onWritten");
+        //println!("Test onWritten");
         /*
         // 这里是发送完的回调 而非可发送回调 // 可发送回调是es直接触发而调用的 如果es中的数据发不完就不会调用这个函数
         // 那么得找一个地方可以发数据 且不能死锁
