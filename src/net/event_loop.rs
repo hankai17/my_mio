@@ -113,7 +113,7 @@ impl<M> Sender<M> {
 unsafe impl Send for EventLoop {}
 unsafe impl Sync for EventLoop {}
 
-pub struct EventLoop { // 改造成ReadinessQueueInner 并提供get()->*mut
+pub struct EventLoop {
     run: bool,
     pub poll: Poll,
     events: Events,
@@ -129,7 +129,7 @@ const TIMER: Token = Token(usize::MAX - 2);
 
 impl EventLoop {
     fn configured(config: Config) -> io::Result<EventLoop> {
-        let poll = Poll::new()?;                // 分配一个poll // 监听无锁队列里pipe的读端
+        let poll = Poll::new()?;                                        // 分配一个poll // 监听无锁队列里pipe的读端
         let timer = timer::Builder::default()
             .tick_duration(config.timer_tick)
             .num_slots(config.timer_wheel_size)
@@ -138,8 +138,10 @@ impl EventLoop {
         let (tx, rx) = channel::sync_channel(config.notify_capacity);   // 初始化pipe
         let job1 = Box::new(move |val: i64| {});
         let job2 = Box::new(move |val: i64| {});
-        poll.register(&rx, NOTIFY, Ready::readable(), PollOpt::edge() | PollOpt::oneshot(), job1)?;   // 初始化receiver中的node
-        poll.register(&timer, TIMER, Ready::readable(), PollOpt::edge(), job2)?;  // 初始化timer
+        poll.register(&rx, NOTIFY, Ready::readable(), 
+                PollOpt::edge() | PollOpt::oneshot(), job1)?;           // 初始化receiver中的node
+        poll.register(&timer, TIMER, Ready::readable(), 
+                PollOpt::edge(), job2)?;                                // 初始化timer
         Ok(EventLoop {
             run: true,
             poll,
