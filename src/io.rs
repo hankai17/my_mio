@@ -1,4 +1,4 @@
-pub use std::io::{Read, Write, Result, Error, ErrorKind};
+pub use std::io::{Result, Error, ErrorKind};
 
 pub trait MapNonBlock<T> {
     fn map_non_block(self) -> Result<Option<T>>;

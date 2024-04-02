@@ -1,7 +1,6 @@
 use {io, sys, Ready, Poll, PollOpt, Token, Job};
 use event::Evented;
 use poll::SelectorId;
-use std::fmt;
 use std::net::{self, Ipv4Addr, Ipv6Addr, SocketAddr};
 use iovec::IoVec;
 

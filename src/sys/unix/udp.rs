@@ -2,7 +2,6 @@ use {io, Ready, Poll, PollOpt, Token, Job};
 use event::Evented;
 use unix::EventedFd;
 use sys::unix::uio::VecIo;
-use std::fmt;
 use std::net::{self, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::os::unix::io::{RawFd, IntoRawFd, AsRawFd, FromRawFd};
 

@@ -1,12 +1,11 @@
 use {convert, io, Ready, Poll, PollOpt, Token, Registration, SetReadiness, Job};
 use lazycell::LazyCell;
 use slab::Slab;
-use std::{cmp, error, fmt, u64, usize, iter, thread};
+use std::{cmp, fmt, u64, usize, iter, thread};
 use std::time::{Duration, Instant};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use event::Evented;
-use self::TimerErrorKind::TimerOverflow;
 
 type Tick = u64;
 

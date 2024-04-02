@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 use std::time::Duration;
 use std::{cmp, i32};
 
-use libc::{self, c_int};
+use libc::{c_int};
 use libc::{EPOLLERR, EPOLLHUP, EPOLLONESHOT};
 use libc::{EPOLLET, EPOLLOUT, EPOLLIN, EPOLLPRI}; // define in /usr/include/sys/epoll.h 
 
@@ -45,7 +45,7 @@ impl Selector {
         })
     }
     pub fn id(&self) -> usize { self.id }
-    pub fn select(&self, evts: &mut Events, awakener: Token, timeout: Option<Duration>) -> io::Result<(bool)> {
+    pub fn select(&self, evts: &mut Events, awakener: Token, timeout: Option<Duration>) -> io::Result<bool> {
         let timeout_ms = timeout
                 .map(|to| cmp::min(millis(to), i32::MAX as u64) as i32)
                 .unwrap_or(-1);

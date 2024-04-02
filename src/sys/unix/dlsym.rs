@@ -1,8 +1,7 @@
+#![allow(unused)]
 use std::marker;
 use std::mem;
 use std::sync::atomic::{AtomicUsize, Ordering};
-
-use libc;
 
 macro_rules! dlsym {
     (fn $name:ident($($t:ty),*) -> $ret:ty) => (
@@ -10,7 +9,7 @@ macro_rules! dlsym {
         static $name: ::sys::unix::dlsym::DlSym<unsafe extern fn($($t),*) -> $ret> =
             ::sys::unix::dlsym::DlSym {
                 name: concat!(stringify!($name), "\0"),
-                addr: ::std::sync::atomic::ATOMIC_USIZE_INIT,
+                addr: ::std::sync::atomic::AtomicUsize::new(0),
                 _marker: ::std::marker::PhantomData,
             };
     )

@@ -92,6 +92,7 @@ impl TcpStream {
     pub fn ttl(&self) -> io::Result<u32> {
         self.sys.ttl()
     }
+    /*
     pub fn set_only_v6(&self, only_v6: bool) -> io::Result<()> {
         self.sys.set_only_v6(only_v6)
     }
@@ -104,6 +105,7 @@ impl TcpStream {
     pub fn linger(&self) -> io::Result<Option<Duration>> {
         self.sys.linger()
     }
+    */
     pub fn set_keepalive_ms(&self, keepalive: Option<u32>) -> io::Result<()> {
         self.set_keepalive(keepalive.map(|v| {
             Duration::from_millis(u64::from(v))
@@ -229,7 +231,7 @@ impl TcpListener {
         })
     }
     pub fn accept(&self) -> io::Result<(TcpStream, SocketAddr)> {
-        let (s, a) = try!(self.accept_std());
+        let (s, a) = self.accept_std()?;
         Ok((TcpStream::from_stream(s)?, a))
     }
     pub fn accept_std(&self) -> io::Result<(net::TcpStream, SocketAddr)> {
@@ -252,12 +254,14 @@ impl TcpListener {
     pub fn ttl(&self) -> io::Result<u32> {
         self.sys.ttl()
     }
+    /*
     pub fn set_only_v6(&self, only_v6: bool) -> io::Result<()> {
         self.sys.set_only_v6(only_v6)
     }
     pub fn only_v6(&self) -> io::Result<bool> {
         self.sys.only_v6()
     }
+    */
     pub fn take_error(&self) -> io::Result<Option<io::Error>> {
         self.sys.take_error()
     }

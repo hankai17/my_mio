@@ -233,7 +233,6 @@ impl Event {
     pub fn token(&self) -> Token { self.token }
 }
 
-use std::sync::{Arc, Mutex, Condvar};
 pub type Job = Box<dyn FnMut(i64) + 'static + Send + Sync>;
 
 pub trait Evented {
@@ -242,7 +241,7 @@ pub trait Evented {
     fn deregister(&self, poll: &Poll) -> io::Result<()>;
 }
 
-impl Evented for Box<Evented> {
+impl Evented for Box<dyn Evented> {
     fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
         self.as_ref().register(poll, token, interest, opts, job)
     }

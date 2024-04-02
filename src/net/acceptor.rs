@@ -1,7 +1,7 @@
 use net::{EventLoop, TcpStream, TcpListener};
-use std::net::{self, SocketAddr, SocketAddrV4, SocketAddrV6, Ipv4Addr, Ipv6Addr};
-use std::sync::{Arc, Mutex, Condvar};
-use {Events, Poll, PollOpt, Ready, Token, Job};
+use std::net::{SocketAddr};
+use std::sync::{Arc, Mutex};
+use {PollOpt, Ready, Token, Job};
 
 const SERVER: Token = Token(10_000_000);
 pub type AcceptorJob = Box<dyn FnMut(TcpStream, SocketAddr) + 'static + Send + Sync>;
@@ -50,7 +50,7 @@ impl Acceptor {
     pub fn handleRead(&mut self, val: i64) {
         use std::io::ErrorKind::WouldBlock;
         use std::io::ErrorKind::Interrupted;
-        while true {
+        loop {
             match self.tcp_listener.accept() {
                 Ok((stream, addr)) => {
                     (self.acceptor_job)(stream, addr);

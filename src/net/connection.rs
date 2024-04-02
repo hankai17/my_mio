@@ -1,20 +1,17 @@
-use std::{io, mem, fmt};
+use std::{io};
 use net::{TryRead, TryWrite};
-use bytes::{Buf, BufMut, Bytes, BytesMut};
-use {Events, Poll, PollOpt, Ready, Token, Job};
-use event_imp::{ready_from_usize, ready_as_usize};
+use bytes::{BufMut, BytesMut};
+use {Ready, Token};
+use event_imp::{ready_from_usize};
 use net::{EventLoop, TcpStream};
-use std::net::{self, SocketAddr, SocketAddrV4, SocketAddrV6, Ipv4Addr, Ipv6Addr};
-use std::sync::{Arc, Mutex, Condvar};
-use std::time::Duration;
-use std::sync::atomic::{AtomicUsize, AtomicPtr, AtomicBool};
-use std::sync::atomic::Ordering::{self, Acquire, Release, AcqRel, Relaxed, SeqCst};
+use std::sync::{Arc, Mutex};
 
 // token incr TODO
 
 unsafe impl Send for TcpConnection {}
 unsafe impl Sync for TcpConnection {}
 
+/*
 macro_rules! pub_struct {
     ($name:ident {$($field:ident: $t:ty,)*}) => {
         #[derive(Debug, Clone, PartialEq)]
@@ -23,6 +20,7 @@ macro_rules! pub_struct {
         }
     }
 }
+*/
 
 pub type ReadJob = Box<dyn FnMut(&mut BytesMut) + 'static + Send + Sync>;
 pub type WritJob = Box<dyn FnMut()->bool + 'static + Send + Sync>;
@@ -222,14 +220,14 @@ impl TcpConnection {
         // check closed
         let ready = ready_from_usize(event as usize);
         //println!("ready: {:?}", ready);
-        if (ready.is_readable()) {
-            self.handleRead();
+        if ready.is_readable() {
+           self.handleRead();
         }
-        if (ready.is_writable()) {
-            self.handleWrite();
+        if ready.is_writable() {
+           self.handleWrite();
         }
-        if (ready.is_error() || 
-                ready.is_hup()) {
+        if ready.is_error() ||
+                ready.is_hup() {
             self.handleError();
         }
         Ok(())

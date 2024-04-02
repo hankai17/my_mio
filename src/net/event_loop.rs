@@ -6,7 +6,7 @@ use std::{io, usize};
 use std::default::Default;
 use std::time::Duration;
 use std::{fmt, error, any};
-use std::sync::{Arc, Mutex, Condvar};
+use std::sync::{Arc, Mutex};
 use std::thread_local;
 use slab::Slab;
 
@@ -24,7 +24,7 @@ impl<M: any::Any> error::Error for NotifyError<M> {
             NotifyError::Full(..) => "Queue is full"
         }
     }
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             NotifyError::Io(ref err) => Some(err),
             _ => None
@@ -276,7 +276,6 @@ pub struct EventLoopBuilder {
     config: Config,
 }
 
-use std::cell::Cell;
 use std::cell::RefCell;
 thread_local! {
     pub static current_loop: RefCell<Arc<Mutex<EventLoop>>> = panic!("!"); //Arc::new(Mutex::new(EventLoop));

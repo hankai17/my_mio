@@ -1,7 +1,6 @@
 use std::cmp;
 use std::io;
 use std::os::unix::io::AsRawFd;
-use libc;
 use iovec::IoVec;
 use iovec::unix as iovec;
 

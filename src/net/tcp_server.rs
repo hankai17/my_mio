@@ -1,14 +1,8 @@
-use std::{io, mem, fmt};
-use net::{TryRead, TryWrite};
-use bytes::{Buf, BufMut, Bytes, BytesMut};
-use {Events, Poll, PollOpt, Ready, Token, Job};
-use event_imp::{ready_from_usize, ready_as_usize};
+use bytes::{BytesMut};
+use {PollOpt, Ready, Token};
 use net::{EventLoop, TcpStream, Acceptor, TcpConnection};
-use std::net::{self, SocketAddr, SocketAddrV4, SocketAddrV6, Ipv4Addr, Ipv6Addr};
-use std::sync::{Arc, Mutex, Condvar};
-use std::time::Duration;
-use std::sync::atomic::{AtomicUsize, AtomicPtr, AtomicBool};
-use std::sync::atomic::Ordering::{self, Acquire, Release, AcqRel, Relaxed, SeqCst};
+use std::net::{SocketAddr};
+use std::sync::{Arc, Mutex};
 
 pub trait Handler {
     //type Connection;

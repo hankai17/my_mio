@@ -197,7 +197,19 @@ impl AtomicState {
     }
     fn compare_and_swap(&self, current: ReadinessState, 
             new: ReadinessState, order: Ordering) -> ReadinessState {
-        self.inner.compare_and_swap(current.into(), new.into(), order).into()
+        let success_order = order;
+        let mut fail_order = order;
+        if order == Release {
+            fail_order = Relaxed;
+        } else if order == AcqRel {
+            fail_order = Acquire;
+        }
+        let res = self.inner.compare_exchange(current.into(), new.into(), 
+                success_order, fail_order);
+        match res {
+            Ok(val) => val.into(),
+            Err(val) => val.into(),
+        }
     }
     fn flag_as_dropped(&self) -> bool {
         let prev: ReadinessState = self.inner.fetch_or(DROPPED_MASK | QUEUED_MASK, Release).into();
@@ -318,11 +330,11 @@ impl ReadinessQueueInner {
                     }
                     return false;
                 }
-                let act = self.head_readiness.compare_and_swap(prev, node_ptr, AcqRel);
-                if prev == act {
-                    break;
+                let res = self.head_readiness.compare_exchange(prev, node_ptr, AcqRel, Acquire);
+                match res {
+                    Ok(_) => break,
+                    Err(val) => prev = val,
                 }
-                prev = act; //  cannot assign twice to immutable variable
             }
             debug_assert!((*prev).next_readiness.load(Relaxed).is_null());
             (*prev).next_readiness.store(node_ptr, Release);        // 尾插 头在尾
@@ -338,12 +350,17 @@ impl ReadinessQueueInner {
                 return;
             }
             self.end_marker.next_readiness.store(ptr::null_mut(), Relaxed);
-            let act = self.head_readiness.compare_and_swap(sleep_marker, end_marker, AcqRel);
-            debug_assert!(act != end_marker);
-            if act != sleep_marker {
-                return;
+            let res = self.head_readiness.compare_exchange(sleep_marker, end_marker, AcqRel, Acquire);
+            match res {
+                Ok(val) => {
+                    debug_assert!(val != end_marker);
+                    *self.tail_readiness.get() = end_marker;
+                },
+                Err(val) => {
+                    debug_assert!(val != end_marker);
+                    return;
+                },
             }
-            *self.tail_readiness.get() = end_marker;
         }
     }
     unsafe fn dequeue_node(&self, until: *mut ReadinessNode) -> Dequeue {
@@ -490,15 +507,20 @@ impl ReadinessQueue {
             return false;
         }
         self.inner.sleep_marker.next_readiness.store(ptr::null_mut(), Relaxed);
-        let actual = self.inner.head_readiness.compare_and_swap(end_marker, sleep_marker, AcqRel);
-        debug_assert!(actual != sleep_marker);
-        if actual != end_marker {
-            return false;
+        let res = self.inner.head_readiness.compare_exchange(end_marker, sleep_marker, AcqRel, Acquire);
+        match res {
+            Ok(val) => {
+                debug_assert!(val != sleep_marker);
+                debug_assert!(unsafe {*self.inner.tail_readiness.get() == end_marker});
+                debug_assert!(self.inner.end_marker.next_readiness.load(Relaxed).is_null());
+                unsafe { *self.inner.tail_readiness.get() = sleep_marker };
+                true
+            },
+            Err(val) => {
+                debug_assert!(val != sleep_marker);
+                return false;
+            },
         }
-        debug_assert!(unsafe {*self.inner.tail_readiness.get() == end_marker});
-        debug_assert!(self.inner.end_marker.next_readiness.load(Relaxed).is_null());
-        unsafe { *self.inner.tail_readiness.get() = sleep_marker };
-        true
     }
 }
 
@@ -537,7 +559,7 @@ pub fn selector(poll: &Poll) -> &sys::Selector {
 }
 
 impl Poll {
-    pub fn new() -> io::Result<(Poll)> {
+    pub fn new() -> io::Result<Poll> {
         is_send::<Poll>(); 
         is_sync::<Poll>(); 
         let poll = Poll {
@@ -575,13 +597,13 @@ impl Poll {
         handle.deregister(self)?;
         Ok(())
     }
-    pub fn poll(&self, events: &mut Events, timeout: Option<Duration>) -> io::Result<(usize)> {
+    pub fn poll(&self, events: &mut Events, timeout: Option<Duration>) -> io::Result<usize> {
         self.poll1(events, timeout, false)
     }
-    pub fn poll_interruptible(&self, events: &mut Events, timeout: Option<Duration>) -> io::Result<(usize)> {
+    pub fn poll_interruptible(&self, events: &mut Events, timeout: Option<Duration>) -> io::Result<usize> {
         self.poll1(events, timeout, true)
     }
-    fn poll2(&self, events: &mut Events, mut timeout: Option<Duration>, interruptible: bool) -> io::Result<(usize)> {
+    fn poll2(&self, events: &mut Events, mut timeout: Option<Duration>, interruptible: bool) -> io::Result<usize> {
         if timeout == Some(Duration::from_millis(0)) {
         } else if self.readiness_queue.prepare_for_sleep() {
         } else {
@@ -614,9 +636,14 @@ impl Poll {
         //println!("after queue poll len: {}", events.inner.len());
         Ok(events.inner.len())
     }
-    fn poll1(&self, events: &mut Events, mut timeout: Option<Duration>, interruptible: bool) -> io::Result<(usize)> {
+    fn poll1(&self, events: &mut Events, mut timeout: Option<Duration>, interruptible: bool) -> io::Result<usize> {
         let zero = Some(Duration::from_millis(0));
-        let mut curr = self.lock_state.compare_and_swap(0, 1, SeqCst);
+        let mut curr = 0;
+        let res = self.lock_state.compare_exchange(0, 1, SeqCst, SeqCst);
+        match res {
+            Ok(val) => curr = val,
+            Err(val) => curr = val,
+        }
         if 0 != curr {      // 其它线程已对poll上锁 
             let mut lock = self.lock.lock().unwrap();
             let mut inc = false;
@@ -626,7 +653,12 @@ impl Poll {
                     if inc {
                         next -= 2;
                     }
-                    let actual = self.lock_state.compare_and_swap(curr, next, SeqCst);
+                    let mut actual = curr;
+                    let res = self.lock_state.compare_exchange(curr, next, SeqCst, SeqCst);
+                    match res {
+                        Ok(val) => actual = val,
+                        Err(val) => actual = val,
+                    }
                     if actual != curr {
                         curr = actual;
                         continue;
@@ -641,7 +673,12 @@ impl Poll {
                 }
                 if !inc {
                     let next = curr.checked_add(2).expect("overflow");
-                    let actual = self.lock_state.compare_and_swap(curr, next, SeqCst);  // 确保每个线程按序 +2
+                    let mut actual = curr;
+                    let res = self.lock_state.compare_exchange(curr, next, SeqCst, SeqCst);  // 确保每个线程按序 +2
+                    match res {
+                        Ok(val) => actual = val,
+                        Err(val) => actual = val,
+                    }
                     if actual != curr {
                         curr = actual;
                         continue;
@@ -816,7 +853,12 @@ impl RegistrationInner {
         let other = *other;
         debug_assert!(mem::size_of::<Arc<ReadinessQueueInner>>() == mem::size_of::<*mut ()>());
         if queue.is_null() {
-            let actual = self.readiness_queue.compare_and_swap(queue, other, Release);      // node中的queue 指向poll中的queue
+            let mut actual = other;
+            let res = self.readiness_queue.compare_exchange(queue, other, Release, Relaxed);      // node中的queue 指向poll中的queue
+            match res {
+                Ok(val) => actual = val,
+                Err(val) => actual = val,
+            }
             if actual.is_null() {
                 self.ref_count.fetch_add(1, Relaxed);
                 mem::forget(poll.readiness_queue.clone());  // 平白无故让引用计数+1 // 为什么不设计一个强引用呢?
@@ -836,6 +878,13 @@ impl RegistrationInner {
         if self.update_lock.compare_and_swap(false, true, Acquire) {
             return Ok(());
         }
+        /*
+        let res = self.update_lock.compare_and_swap(false, true, Acquire);
+        match res {
+            Ok(val) => return Ok(()),
+            Err(val) => 
+        }
+        */
         let mut state = self.state.load(Relaxed);
         let mut next;
         let curr_token_pos = state.token_write_pos();

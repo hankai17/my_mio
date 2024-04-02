@@ -4,7 +4,6 @@ use std::net::{self, SocketAddr};
 use std::os::unix::io::{RawFd, FromRawFd, IntoRawFd, AsRawFd};
 use std::time::Duration;
 
-use libc;
 use net2::TcpStreamExt;
 use iovec::IoVec;
 
@@ -88,12 +87,14 @@ impl TcpStream {
     pub fn only_v6(&self) -> io::Result<bool> {
         self.inner.only_v6() 
     }
+    /*
     pub fn set_linger(&self, dur: Option<Duration>) -> io::Result<()> {
         self.inner.set_linger(dur)
     }
     pub fn linger(&self) -> io::Result<Option<Duration>> {
         self.inner.linger()
     }
+    */
     pub fn take_error(&self) -> io::Result<Option<io::Error>> {
         self.inner.take_error()
     }
@@ -186,12 +187,14 @@ impl TcpListener {
     pub fn accept(&self) -> io::Result<(net::TcpStream, SocketAddr)> {
         self.inner.accept()
     }
+    /*
     pub fn set_only_v6(&self, only_v6: bool) -> io::Result<()> {
         self.inner.set_only_v6(only_v6)
     }
     pub fn only_v6(&self) -> io::Result<bool> {
         self.inner.only_v6()
     }
+    */
     pub fn set_ttl(&self, ttl: u32) -> io::Result<()> {
         self.inner.set_ttl(ttl)
     }

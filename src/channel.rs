@@ -1,8 +1,6 @@
 use {io, Ready, Poll, PollOpt, Registration, SetReadiness, Token, Job};
 use event::Evented;
-use std::any::Any;
 use std::fmt;
-use std::error;
 use std::sync::{mpsc, Arc};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use lazycell::{LazyCell, AtomicLazyCell};

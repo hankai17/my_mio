@@ -1,4 +1,5 @@
-#![feature(mutex_unpoison)]
+//#![feature(mutex_unpoison)]
+//#[warn(unused_attributes)]
 
 mod tcp;
 pub use self::tcp::{TcpListener, TcpStream};
@@ -30,7 +31,7 @@ pub use self::tcp_server::{
 };
 
 use std::{io};
-use bytes::{Buf, BufMut, Bytes, BytesMut};
+use bytes::{Buf, BufMut};
 use std::io::{Read, Write};
 
 trait MapNonBlock<T> {

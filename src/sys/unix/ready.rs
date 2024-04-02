@@ -1,6 +1,5 @@
-use event_imp::{Ready, ready_as_usize, ready_from_usize};
+use event_imp::{Ready, ready_from_usize};
 use std::ops;
-use std::fmt;
 
 #[derive(Copy, PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub struct UnixReady(Ready);

@@ -1,4 +1,4 @@
-use libc::{self, c_int};
+use libc::{c_int};
 
 #[macro_use]
 pub mod dlsym;
@@ -28,7 +28,7 @@ pub use self::udp::UdpSocket;
 
 mod uio;
 
-pub use iovec::IoVec;
+//pub use iovec::IoVec;
 
 trait IsMinusOne {
     fn is_minus_one(&self) -> bool;
