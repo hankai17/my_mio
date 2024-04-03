@@ -27,7 +27,10 @@ fn main() {
     let job2 = Box::new(move |val: i64| {});
     poll.register(&t, TIMER, Ready::readable(), PollOpt::edge(), job2);
 
-    t.set_timeout(Duration::from_millis(1000 * 10), 111 as i32);
+    //t.set_timeout(Duration::from_millis(1000 * 10), 10 as i32);
+    //t.set_timeout(Duration::from_millis(1000 * 3), 3 as i32);
+    //t.set_timeout(Duration::from_millis(1000 * 2), 2 as i32);
+    t.set_timeout(Duration::from_millis(1000 * 3), 3 as i32);
 
     //while let Some(t) = self.timer.poll() {
     //    handler.timeout(self, t);
@@ -39,8 +42,8 @@ fn main() {
             continue;
         }
         assert_eq!(n, 1);
-        assert_eq!(events.get(0).unwrap().token(), Token(111));
-        break;
+        //assert_eq!(events.get(0).unwrap().token(), Token(111));
+        //break;
     }
     println!("done");
 }

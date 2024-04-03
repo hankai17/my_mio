@@ -313,26 +313,26 @@ fn spawn_wakeup_thread(state: WakeupState, set_readiness: SetReadiness, start: I
                 return;
             }
             let now_tick = current_tick(start, tick_ms);
-            println!("wakeup thread: sleep_until_tick={:?}; now_tick={:?}", sleep_until_tick, now_tick);
+            println!("wakeup thread, sleep_until_tick: {:?}; now_tick: {:?}", sleep_until_tick, now_tick);
             if now_tick < sleep_until_tick {
                 match tick_ms.checked_mul(sleep_until_tick - now_tick) {
                     Some(sleep_duration) => {
-                        println!("sleeping; tick_ms={}; now_tick={}; sleep_until_tick={}; duration={:?}",
+                        println!("sleeping, tick_ms: {}; now_tick: {}; sleep_until_tick: {}; duration: {:?}",
                                 tick_ms, now_tick, sleep_until_tick, sleep_duration);
-                        thread::park_timeout(Duration::from_millis(sleep_duration));
+                        thread::park_timeout(Duration::from_millis(sleep_duration));    // 定时器定多久 线程就睡眠多久
                     }
                     None => {
-                        println!("sleeping; tick_ms={}; now_tick={}; blocking sleep",
+                        println!("sleeping, tick_ms: {}; now_tick: {}; blocking sleep",
                                 tick_ms, now_tick);
                         thread::park();
                     }
                 }
-                sleep_until_tick = state.load(Ordering::Acquire) as Tick;
+                sleep_until_tick = state.load(Ordering::Acquire) as Tick;               // 定时到 或 被唤醒
             } else {
                 let actual = state.compare_and_swap(sleep_until_tick as usize, usize::MAX, Ordering::AcqRel) as Tick;
                 if actual == sleep_until_tick {
                     println!("setting readiness from wakeup thread");
-                    let _ = set_readiness.set_readiness(Ready::readable());
+                    let _ = set_readiness.set_readiness(Ready::readable());             // 定时已到 入队
                     sleep_until_tick = usize::MAX as Tick;
                 } else {
                     sleep_until_tick = actual as Tick;
