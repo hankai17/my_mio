@@ -166,8 +166,8 @@ impl<T> Timer<T> {
     }
     fn set_timeout_at(&mut self, delay_from_start: Duration, state: T) -> Result<Timeout> {
         let mut tick = duration_to_tick(delay_from_start, self.tick_ms);
-        println!("setting timeout; delay: {:?}; tick: {:?}; current-tick: {:?}", 
-                delay_from_start, tick, self.tick);
+        //println!("setting timeout; delay: {:?}; tick: {:?}; current-tick: {:?}", 
+        //        delay_from_start, tick, self.tick);
         if tick < self.tick {               // 最小定时个数为self.tick
             tick = self.tick + 1;
         }
@@ -176,17 +176,17 @@ impl<T> Timer<T> {
     fn insert(&mut self, tick: Tick, state: T) -> Result<Timeout> {
         let slot = (tick & self.mask) as usize;
         let curr = self.wheel[slot];
-        let entry = Entry::new(state, tick, curr.head);
+        let entry = Entry::new(state, tick, curr.head);             // next指针 // 很隐晦
         let token = Token(self.entries.insert(entry));
         if curr.head != EMPTY {
-            self.entries[curr.head.into()].links.prev = token;      // 前插法 // 只用到了prev指针
+            self.entries[curr.head.into()].links.prev = token;      // 前插法 // prev指针
         }
         self.wheel[slot] = WheelEntry {
             next_tick: cmp::min(tick, curr.next_tick),
             head: token,
         };
         self.schedule_readiness(tick);
-        println!("insert timeout; slot: {}; token: {:?}", slot, token);
+        //println!("insert timeout; slot: {}; token: {:?}", slot, token);
         Ok(Timeout {
             token,
             tick
@@ -208,14 +208,14 @@ impl<T> Timer<T> {
         self.poll_to(target_tick)
     }
     fn poll_to(&mut self, mut target_tick: Tick) -> Option<T> {
-        println!("tick_to; target_tick: {}; current_tick: {}", 
-                target_tick, self.tick);
+        //println!("tick_to; target_tick: {}; current_tick: {}", 
+                //target_tick, self.tick);
         if target_tick < self.tick {
             target_tick = self.tick;
         }
         while self.tick <= target_tick {
             let curr = self.next;
-            println!("ticking; curr: {:?}", curr);
+            //println!("ticking; curr: {:?}", curr);
             if curr == EMPTY {
                 self.tick += 1;
                 let slot = self.slot_for(self.tick);        // 依次遍历槽位
@@ -230,7 +230,7 @@ impl<T> Timer<T> {
                 }
                 let links = self.entries[curr.into()].links;// 拿到头节点的links
                 if links.tick <= self.tick {                // 真过期
-                    println!("triggering; token: {:?}", curr);
+                    //println!("triggering; token: {:?}", curr);
                     self.unlink(&links, curr);
                     return Some(self.entries.remove(curr.into()).state);
                 } else {                                    // 假过期 取下一个
@@ -241,7 +241,7 @@ impl<T> Timer<T> {
             }
         }
         if let Some(inner) = self.inner.borrow() {
-            println!("unsetting readiness");
+            //println!("unsetting readiness");
             let _ = inner.set_readiness.set_readiness(Ready::empty());
             if let Some(tick) = self.next_tick() {
                 self.schedule_readiness(tick);
@@ -250,8 +250,8 @@ impl<T> Timer<T> {
         None
     }
     fn unlink(&mut self, links: &EntryLinks, token: Token) {
-        println!("unlinking timeout; slot: {}; token: {:?}", 
-                self.slot_for(links.tick), token);
+        //println!("unlinking timeout; slot: {}; token: {:?}", 
+          //      self.slot_for(links.tick), token);
         if links.prev == EMPTY {
             let slot = self.slot_for(links.tick);
             self.wheel[slot].head = links.next;
@@ -274,10 +274,10 @@ impl<T> Timer<T> {
                 if curr as Tick <= tick {
                     return;
                 }
-                println!("advancing the wakeup time; target: {}; curr: {}", tick, curr);
+                //println!("advancing the wakeup time; target: {}; curr: {}", tick, curr);
                 let actual = inner.wakeup_state.compare_and_swap(curr, tick as usize, Ordering::Release);
                 if actual == curr {
-                    println!("unparking wakeup thread");
+                    //println!("unparking wakeup thread");
                     inner.wakeup_thread.thread().unpark();  // 如果传入的时间小于stat定时时间 则唤醒线程
                     return;
                 }
@@ -314,17 +314,17 @@ fn spawn_wakeup_thread(state: WakeupState, set_readiness: SetReadiness,
                 return;
             }
             let now_tick = current_tick(start, tick_ms);
-            println!("wakeup thread, sleep_until_tick: {:?}; now_tick: {:?}", sleep_until_tick, now_tick);
+            //println!("wakeup thread, sleep_until_tick: {:?}; now_tick: {:?}", sleep_until_tick, now_tick);
             if now_tick < sleep_until_tick {                                            // 定时未到 睡眠
                 match tick_ms.checked_mul(sleep_until_tick - now_tick) {
                     Some(sleep_duration) => {
-                        println!("sleeping, tick_ms: {}; now_tick: {}; sleep_until_tick: {}; duration: {:?}",
-                                tick_ms, now_tick, sleep_until_tick, sleep_duration);
+                        //println!("sleeping, tick_ms: {}; now_tick: {}; sleep_until_tick: {}; duration: {:?}",
+                                //tick_ms, now_tick, sleep_until_tick, sleep_duration);
                         thread::park_timeout(Duration::from_millis(sleep_duration));    // 定时器定多久 线程就睡眠多久
                     }
                     None => {
-                        println!("sleeping, tick_ms: {}; now_tick: {}; blocking sleep",
-                                tick_ms, now_tick);
+                        //println!("sleeping, tick_ms: {}; now_tick: {}; blocking sleep",
+                         //       tick_ms, now_tick);
                         thread::park();
                     }
                 }
@@ -332,7 +332,7 @@ fn spawn_wakeup_thread(state: WakeupState, set_readiness: SetReadiness,
             } else {                                                                    // 定时到
                 let actual = state.compare_and_swap(sleep_until_tick as usize, usize::MAX, Ordering::AcqRel) as Tick;
                 if actual == sleep_until_tick {
-                    println!("setting readiness from wakeup thread");
+                    //println!("setting readiness from wakeup thread");
                     let _ = set_readiness.set_readiness(Ready::readable());             // 定时到 入队
                     sleep_until_tick = usize::MAX as Tick;
                 } else {

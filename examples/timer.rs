@@ -29,12 +29,11 @@ fn main() {
 
     //t.set_timeout(Duration::from_millis(1000 * 10), 10 as i32);
     //t.set_timeout(Duration::from_millis(1000 * 3), 3 as i32);
-    //t.set_timeout(Duration::from_millis(1000 * 2), 2 as i32);
+    t.set_timeout(Duration::from_millis(1000 * 2), 2 as i32);
     t.set_timeout(Duration::from_millis(1000 * 3), 3 as i32);
-
-    //while let Some(t) = self.timer.poll() {
-    //    handler.timeout(self, t);
-    //}
+    t.set_timeout(Duration::from_millis(1000 * 4), 4 as i32);
+    t.set_timeout(Duration::from_millis(1000 * 5), 5 as i32);
+    t.set_timeout(Duration::from_millis(1000 * 6), 6 as i32);
 
     loop {
         let n = poll.poll(&mut events, None).unwrap();
@@ -44,6 +43,9 @@ fn main() {
         assert_eq!(n, 1);
         //assert_eq!(events.get(0).unwrap().token(), Token(111));
         //break;
+        while let Some(t) = t.poll() {
+            println!("--->t: {}", t);
+        }
     }
     println!("done");
 }
