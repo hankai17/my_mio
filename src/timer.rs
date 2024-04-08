@@ -267,18 +267,18 @@ impl<T> Timer<T> {
             self.next = EMPTY;
         }
     }
-    fn schedule_readiness(&self, tick: Tick) {
+    fn schedule_readiness(&self, tick: Tick) {              // 传参为 定时器唤醒的时间  // 确保传入的时间要小于stat定时时间
         if let Some(inner) = self.inner.borrow() {
             let mut curr = inner.wakeup_state.load(Ordering::Acquire);
             loop {
                 if curr as Tick <= tick {
                     return;
                 }
-                println!("advancing the wakeup time; target={}; curr={}", tick, curr);
+                println!("advancing the wakeup time; target: {}; curr: {}", tick, curr);
                 let actual = inner.wakeup_state.compare_and_swap(curr, tick as usize, Ordering::Release);
                 if actual == curr {
                     println!("unparking wakeup thread");
-                    inner.wakeup_thread.thread().unpark();
+                    inner.wakeup_thread.thread().unpark();  // 如果传入的时间小于stat定时时间 则唤醒线程
                     return;
                 }
                 curr = actual;
@@ -305,7 +305,8 @@ impl<T> Default for Timer<T> {
     }
 }
 
-fn spawn_wakeup_thread(state: WakeupState, set_readiness: SetReadiness, start: Instant, tick_ms: u64) -> thread::JoinHandle<()> {
+fn spawn_wakeup_thread(state: WakeupState, set_readiness: SetReadiness, 
+        start: Instant, tick_ms: u64) -> thread::JoinHandle<()> {                       // 不断判断 stat定时器 是否到期 // 到期则入队
     thread::spawn(move || {
         let mut sleep_until_tick = state.load(Ordering::Acquire) as Tick;
         loop {
@@ -314,7 +315,7 @@ fn spawn_wakeup_thread(state: WakeupState, set_readiness: SetReadiness, start: I
             }
             let now_tick = current_tick(start, tick_ms);
             println!("wakeup thread, sleep_until_tick: {:?}; now_tick: {:?}", sleep_until_tick, now_tick);
-            if now_tick < sleep_until_tick {
+            if now_tick < sleep_until_tick {                                            // 定时未到 睡眠
                 match tick_ms.checked_mul(sleep_until_tick - now_tick) {
                     Some(sleep_duration) => {
                         println!("sleeping, tick_ms: {}; now_tick: {}; sleep_until_tick: {}; duration: {:?}",
@@ -327,12 +328,12 @@ fn spawn_wakeup_thread(state: WakeupState, set_readiness: SetReadiness, start: I
                         thread::park();
                     }
                 }
-                sleep_until_tick = state.load(Ordering::Acquire) as Tick;               // 定时到 或 被唤醒
-            } else {
+                sleep_until_tick = state.load(Ordering::Acquire) as Tick;               // 定时到 或 被唤醒 // 更新睡眠时间
+            } else {                                                                    // 定时到
                 let actual = state.compare_and_swap(sleep_until_tick as usize, usize::MAX, Ordering::AcqRel) as Tick;
                 if actual == sleep_until_tick {
                     println!("setting readiness from wakeup thread");
-                    let _ = set_readiness.set_readiness(Ready::readable());             // 定时已到 入队
+                    let _ = set_readiness.set_readiness(Ready::readable());             // 定时到 入队
                     sleep_until_tick = usize::MAX as Tick;
                 } else {
                     sleep_until_tick = actual as Tick;
@@ -380,5 +381,6 @@ impl<T> Evented for Timer<T> {
     }
 }
 
-
+// 设计理念是 首先有一个最小定时器 stat 用于记录最接近的要发生的定时器时间 仅仅用于readiness触发es
+// 触发后 则进行具体的poll_to
 
