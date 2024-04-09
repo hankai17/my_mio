@@ -9,6 +9,8 @@ use std::{fmt, error, any};
 use std::sync::{Arc, Mutex};
 use std::thread_local;
 use slab::Slab;
+use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
+use std::collections::HashMap;
 
 pub enum NotifyError<T> {
     Io(io::Error),
@@ -107,6 +109,75 @@ impl<M> Sender<M> {
     pub fn send(&self, msg: M) -> Result<(), NotifyError<M>> {
         self.tx.try_send(msg)?;
         Ok(())
+    }
+}
+
+#[derive(Copy, Clone)]
+enum EntryType {
+    SOCKET_EVENT,
+    NOTIFY_EVENT,
+    TIMERS_EVENT,
+    JOBS_event,
+}
+
+#[derive(Copy, Clone)]
+struct TokenEntry {
+    etype: EntryType, 
+    token: Token,
+}
+
+pub struct IdAllocator {
+    counter: AtomicUsize,
+    free: Mutex<Vec<usize>>,
+}
+
+impl IdAllocator {
+    pub fn new() -> Self {
+        IdAllocator {
+            counter: AtomicUsize::new(0),
+            free: Mutex::new(Vec::new()),
+        }
+    }
+    pub fn alloc(&self) -> usize {
+        self.free
+            .try_lock()
+            .and_then(|mut free| Ok(free.pop()))
+            .unwrap_or_else(|_| Some(self.counter.fetch_add(1, Ordering::Relaxed)))
+            .unwrap()
+    }
+    pub fn kill(&self, id: usize) {
+        self.free.lock().unwrap().push(id);
+    }
+}
+
+pub struct TokenAllocator {
+    id: IdAllocator,
+    token_map: HashMap<usize, TokenEntry>,
+}
+
+impl TokenAllocator {
+    pub fn new() -> Self {
+        TokenAllocator {
+            id: IdAllocator::new(),
+            token_map: HashMap::new(),
+        }
+    }
+    pub fn alloc(&mut self, etype: EntryType, token: Token) -> usize {
+        let id = self.id.alloc();
+        // thread safe TODO
+        let mut entry = TokenEntry {
+            etype,
+            token,
+        };
+        self.token_map.insert(id, entry);
+        id
+    }
+    pub fn get(&mut self, id: usize) -> TokenEntry {
+        *self.token_map.get(&id).unwrap()
+    }
+    pub fn dealloc(&mut self, id: usize) {
+        self.token_map.remove(&id);
+        self.id.kill(id);
     }
 }
 
