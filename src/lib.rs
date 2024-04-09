@@ -19,7 +19,7 @@ mod token;
 pub use token::Token;
 
 mod poll;
-pub use poll::{Poll, Registration, SetReadiness};
+pub use poll::{Poll, Registration, SetReadiness, TokenAllocator, TokenType};
 
 pub mod event {
     pub use super::poll::{Events, Iter}; 

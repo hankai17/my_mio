@@ -124,6 +124,9 @@ impl ReceiverCtl {
 
 impl Evented for ReceiverCtl {
     fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {   // 接收端注册: 分配一个node // 如果有pending则立即入队
+        use TokenType;
+        let mut token_alloc = Poll::get_current_token_allocator();
+        let token = Token(token_alloc.lock().unwrap().alloc(TokenType::NOTIFY_EVENT, token));
         if self.registration.borrow().is_some() {
             return Err(io::Error::new(io::ErrorKind::Other, "receiver already registered"));
         }
@@ -136,6 +139,9 @@ impl Evented for ReceiverCtl {
         Ok(())
     }
     fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
+        use TokenType;
+        let mut token_alloc = Poll::get_current_token_allocator();
+        let token = Token(token_alloc.lock().unwrap().alloc(TokenType::NOTIFY_EVENT, token));
         match self.registration.borrow() {
             Some(registration) => registration.update(poll, token, interest, opts),
             None => Err(io::Error::new(io::ErrorKind::Other, "receiver not registered")),

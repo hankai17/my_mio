@@ -1,4 +1,4 @@
-use {channel, Poll, Events, Token};
+use {channel, Poll, Events, Token, TokenAllocator, TokenType};
 use event::Evented;
 use event_imp::{Event, Ready, PollOpt, Job, ready_as_usize};
 use timer::{self, Timer, Timeout};
@@ -9,8 +9,7 @@ use std::{fmt, error, any};
 use std::sync::{Arc, Mutex};
 use std::thread_local;
 use slab::Slab;
-use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
-use std::collections::HashMap;
+use poll::current_token_allocator;
 
 pub enum NotifyError<T> {
     Io(io::Error),
@@ -112,75 +111,6 @@ impl<M> Sender<M> {
     }
 }
 
-#[derive(Copy, Clone)]
-enum EntryType {
-    SOCKET_EVENT,
-    NOTIFY_EVENT,
-    TIMERS_EVENT,
-    JOBS_event,
-}
-
-#[derive(Copy, Clone)]
-struct TokenEntry {
-    etype: EntryType, 
-    token: Token,
-}
-
-pub struct IdAllocator {
-    counter: AtomicUsize,
-    free: Mutex<Vec<usize>>,
-}
-
-impl IdAllocator {
-    pub fn new() -> Self {
-        IdAllocator {
-            counter: AtomicUsize::new(0),
-            free: Mutex::new(Vec::new()),
-        }
-    }
-    pub fn alloc(&self) -> usize {
-        self.free
-            .try_lock()
-            .and_then(|mut free| Ok(free.pop()))
-            .unwrap_or_else(|_| Some(self.counter.fetch_add(1, Ordering::Relaxed)))
-            .unwrap()
-    }
-    pub fn kill(&self, id: usize) {
-        self.free.lock().unwrap().push(id);
-    }
-}
-
-pub struct TokenAllocator {
-    id: IdAllocator,
-    token_map: HashMap<usize, TokenEntry>,
-}
-
-impl TokenAllocator {
-    pub fn new() -> Self {
-        TokenAllocator {
-            id: IdAllocator::new(),
-            token_map: HashMap::new(),
-        }
-    }
-    pub fn alloc(&mut self, etype: EntryType, token: Token) -> usize {
-        let id = self.id.alloc();
-        // thread safe TODO
-        let mut entry = TokenEntry {
-            etype,
-            token,
-        };
-        self.token_map.insert(id, entry);
-        id
-    }
-    pub fn get(&mut self, id: usize) -> TokenEntry {
-        *self.token_map.get(&id).unwrap()
-    }
-    pub fn dealloc(&mut self, id: usize) {
-        self.token_map.remove(&id);
-        self.id.kill(id);
-    }
-}
-
 unsafe impl Send for EventLoop {}
 unsafe impl Sync for EventLoop {}
 
@@ -192,7 +122,20 @@ pub struct EventLoop {
     notify_tx: channel::SyncSender<i32>,
     notify_rx: channel::Receiver<i32>,
     config: Config,
-    pub job_ready_list: Slab<Job>,
+
+    pub task_list: Slab<Job>,
+
+    /*
+    read_ready_list: Slab<Job>,
+    write_ready_list: Slab<Job>,
+    open_list: Slab<Job>,
+    read_enable_list: Slab<Job>,
+    write_enable_list: Slab<Job>,
+    keep_alive_list: Slab<Job>,
+    timer_list: Slab<Job>,
+    */
+    socket_ready_list: Slab<Job>,
+    timer_list: Slab<Job>,
 }
 
 const NOTIFY: Token = Token(usize::MAX - 1);
@@ -200,6 +143,9 @@ const TIMER: Token = Token(usize::MAX - 2);
 
 impl EventLoop {
     fn configured(config: Config) -> io::Result<EventLoop> {
+        let token_allocator = Arc::new(Mutex::new(TokenAllocator::new()));
+        let token_alloc = token_allocator.clone();
+        current_token_allocator.set(token_allocator);
         let poll = Poll::new()?;                                        // 分配一个poll // 监听无锁队列里pipe的读端
         let timer = timer::Builder::default()
             .tick_duration(config.timer_tick)
@@ -209,7 +155,8 @@ impl EventLoop {
         let (tx, rx) = channel::sync_channel(config.notify_capacity);   // 初始化pipe
         let job1 = Box::new(move |val: i64| {});
         let job2 = Box::new(move |val: i64| {});
-        poll.register(&rx, NOTIFY, Ready::readable(), 
+        let notify_token = Token(token_alloc.lock().unwrap().alloc(TokenType::NOTIFY_EVENT, NOTIFY));
+        poll.register(&rx, notify_token, Ready::readable(), 
                 PollOpt::edge() | PollOpt::oneshot(), job1)?;           // 初始化receiver中的node
         poll.register(&timer, TIMER, Ready::readable(), 
                 PollOpt::edge(), job2)?;                                // 初始化timer
@@ -221,29 +168,31 @@ impl EventLoop {
             notify_rx: rx,
             config,
             events: Events::with_capacity(1024),
-            job_ready_list: Slab::with_capacity(128),
+            task_list: Slab::with_capacity(128),
+            socket_ready_list: Slab::with_capacity(128),
+            timer_list: Slab::with_capacity(128),
         })
     }
     pub fn set_job(&mut self, job: Job) -> Token {
-        let token = self.job_ready_list.insert(job);
+        let token = self.task_list.insert(job);
         //println!("set_job token: {}", token);
         Token(token)
     }
     pub fn get_job(&mut self, token: Token) -> Option<&mut Job> {
-        if let Some(job) = self.job_ready_list.get_mut(token.into()) {
+        if let Some(job) = self.task_list.get_mut(token.into()) {
             return Some(job);       // job已经是&mut类型了
         }
         return None;
     }
     pub fn get_job1(&mut self, token: Token) -> Option<Job> {
-        let job = self.job_ready_list.remove(token.into());
+        let job = self.task_list.remove(token.into());
         return Some(job);
     }
     pub fn free_job(&mut self, token: Token) {
         let u: usize = token.into();
         //println!("free_job token: {}", u);
-        //self.job_ready_list.remove(token.into());
-        self.job_ready_list.remove(u);
+        //self.task_list.remove(token.into());
+        self.task_list.remove(u);
     }
     pub fn new() -> io::Result<EventLoop> {
         EventLoop::configured(Config::default())
@@ -350,7 +299,8 @@ pub struct EventLoopBuilder {
 use std::cell::RefCell;
 thread_local! {
     pub static current_loop: RefCell<Arc<Mutex<EventLoop>>> = panic!("!"); //Arc::new(Mutex::new(EventLoop));
-    //pub static job_ready_list: RefCell<Arc<Mutex<Slab<Job>>>> = panic!("!");
+    //pub static task_list: RefCell<Arc<Mutex<Slab<Job>>>> = panic!("!");
+    //pub static current_token_allocator: RefCell<Arc<Mutex<TokenAllocator>>> = panic!("!");
 }
 
 impl EventLoopBuilder {
@@ -389,6 +339,7 @@ impl EventLoopBuilder {
         let event_loop = Arc::new(Mutex::new(self.build().unwrap()));
         let clone = event_loop.clone();
         current_loop.set(clone);
+
         Ok(event_loop)
     }
     pub fn get_current_loop() -> Arc<Mutex<EventLoop>> {

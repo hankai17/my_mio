@@ -31,4 +31,8 @@
         fn get(token) -> <type, true_token> // 然后根据不同的type找不同的队列
         fn free(token)
         模拟epoll.rs中的NEXT_ID
+    ready_list timer_list job_list 全局 or event_loop
+    epoll 传出队列
+
+        
 

@@ -6,8 +6,6 @@ use event_imp::{ready_from_usize};
 use net::{EventLoop, TcpStream};
 use std::sync::{Arc, Mutex};
 
-// token incr TODO
-
 unsafe impl Send for TcpConnection {}
 unsafe impl Sync for TcpConnection {}
 
