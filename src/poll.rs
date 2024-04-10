@@ -808,22 +808,22 @@ impl AsRawFd for Poll {
     }
 }
 
-pub struct Events {
-    inner: sys::Events,
+pub struct Events<'a> {
+    inner: sys::Events<'a>,
 }
 
 pub struct Iter<'a> {
-    inner: &'a Events,
+    inner: &'a Events<'a>,
     pos: usize,
 }
 
-pub struct IntoIter {
-    inner: Events,
+pub struct IntoIter<'a> {
+    inner: Events<'a>,
     pos: usize,
 }
 
-impl Events {
-    pub fn with_capacity(capacity: usize) -> Events {
+impl Events<'_> {
+    pub fn with_capacity(capacity: usize) -> Events<'static> {
         Events {
             inner: sys::Events::with_capacity(capacity),
         }
@@ -851,7 +851,8 @@ impl Events {
     }
 }
 
-impl fmt::Debug for Events {
+/*
+impl fmt::Debug for Events<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Events")
                 .field("capacity", &self.capacity())
@@ -859,9 +860,9 @@ impl fmt::Debug for Events {
     }
 }
 
-impl IntoIterator for Events {
+impl IntoIterator for Events<'_> {
     type Item = Event;
-    type IntoIter = IntoIter;
+    type IntoIter<'a> = IntoIter<'a>;
     fn into_iter(self) -> Self::IntoIter {
         IntoIter {
             inner: self,
@@ -870,7 +871,7 @@ impl IntoIterator for Events {
     }
 }
 
-impl<'a> IntoIterator for &'a Events {
+impl<'a> IntoIterator for &'a Events<'_> {
     type Item = Event;
     type IntoIter = Iter<'a>;
     fn into_iter(self) -> Self::IntoIter {
@@ -887,7 +888,7 @@ impl<'a> Iterator for Iter<'a> {
     }
 }
 
-impl Iterator for IntoIter {
+impl Iterator for IntoIter<'_> {
     type Item = Event;
     fn next(&mut self) -> Option<Event> {
         let ret = self.inner.inner.get(self.pos);
@@ -895,6 +896,7 @@ impl Iterator for IntoIter {
         ret
     }
 }
+*/
 
 struct RegistrationInner {
     node: *mut ReadinessNode,

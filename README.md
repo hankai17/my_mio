@@ -33,6 +33,8 @@
         模拟epoll.rs中的NEXT_ID
     ready_list timer_list job_list 全局 or event_loop
     epoll 传出队列
+- 240410
+    重构传出的Events
 
         
 

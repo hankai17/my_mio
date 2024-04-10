@@ -65,7 +65,9 @@ impl Selector {
                                             timeout_ms))?;
             let cnt = cnt as usize;
             evts.events.set_len(cnt);
+            evts.entries.set_len(cnt);
             for i in 0..cnt {
+                /*
                 if evts.events[i].u64 as usize == awakener.into() {
                     evts.events.remove(i);
                     return Ok(true);
@@ -76,6 +78,10 @@ impl Selector {
                 let c = &mut fd_entry.job;
                 let ready = epoll_to_ioevent(evts.events[i].events as u32);
                 c(ready_as_usize(ready) as i64);
+                */
+                let fd = evts.events[i].u64 as usize as i32;
+                let fd_entry = events_map.as_mut().unwrap().get_mut(&fd).unwrap();
+                evts.entries.push(fd_entry);
             }
         }
         Ok(false)
@@ -186,14 +192,16 @@ impl Drop for Selector {
     }
 }
 
-pub struct Events {
+pub struct Events<'a> {
     events: Vec<libc::epoll_event>,
+    entries: Vec<&'a mut FdEntry>,
 }
 
-impl Events {
-    pub fn with_capacity(u: usize) -> Events {
+impl Events<'_> {
+    pub fn with_capacity(u: usize) -> Events<'static> {
         Events {
-            events: Vec::with_capacity(u)
+            events: Vec::with_capacity(u),
+            entries: Vec::with_capacity(u)
         }
     }
     pub fn len(&self) -> usize { self.events.len() }
@@ -229,7 +237,10 @@ impl Events {
         });
     }
     pub fn clear(&mut self) {
-        unsafe { self.events.set_len(0); }
+        unsafe {
+            self.events.set_len(0); 
+            self.entries.set_len(0); 
+        }
     }
 }
 

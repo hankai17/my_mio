@@ -117,7 +117,6 @@ unsafe impl Sync for EventLoop {}
 pub struct EventLoop {
     run: bool,
     pub poll: Poll,
-    events: Events,
     timer: Timer<i32>,
     notify_tx: channel::SyncSender<i32>,
     notify_rx: channel::Receiver<i32>,
@@ -167,7 +166,6 @@ impl EventLoop {
             notify_tx: tx,
             notify_rx: rx,
             config,
-            events: Events::with_capacity(1024),
             task_list: Slab::with_capacity(128),
             socket_ready_list: Slab::with_capacity(128),
             timer_list: Slab::with_capacity(128),
@@ -223,8 +221,8 @@ impl EventLoop {
         where E: Evented {
         self.poll.deregister(io)
     }
-    fn io_poll(&mut self, timeout: Option<Duration>) -> io::Result<usize> {
-        self.poll.poll(&mut self.events, timeout)
+    fn io_poll(&mut self, events: &mut Events, timeout: Option<Duration>) -> io::Result<usize> {
+        self.poll.poll(events, timeout)
     }
     fn io_event(&mut self, evt: Event) {
         //handler.ready(self, evt.token(), evt.readiness());
@@ -251,12 +249,12 @@ impl EventLoop {
         */
     }
     // https://stackoverflow.com/questions/45116984/the-trait-cannot-be-made-into-an-object
-    fn io_process(&mut self, cnt: usize) {
+    fn io_process(&mut self, events: &mut Events, cnt: usize) {
         let mut i = 0;
-        log::trace!("io_process(..); cnt={}; len={}", cnt, self.events.len());
+        log::trace!("io_process(..); cnt: {}; len: {}", cnt, events.len());
         while i < cnt {
-            let evt = self.events.get(i).unwrap();  // epoll_event 转为 Ready
-            log::trace!("event={:?}; idx={:?}", evt, i);
+            let evt = events.get(i).unwrap();  // epoll_event 转为 Ready
+            log::trace!("event: {:?}; idx: {:?}", evt, i);
             match evt.token() {
                 NOTIFY => self.notify(),
                 TIMER => self.timer_process(),
@@ -267,7 +265,8 @@ impl EventLoop {
     }
     pub fn run_once(&mut self, timeout: Option<Duration>) -> io::Result<()> {
         log::trace!("event loop tick");
-        let cnt = match self.io_poll(timeout) {
+        let mut events = Events::with_capacity(1024);
+        let cnt = match self.io_poll(&mut events, timeout) {
             Ok(e) => e,
             Err(err) => {
                 if err.kind() == io::ErrorKind::Interrupted {
@@ -278,7 +277,7 @@ impl EventLoop {
                 }
             }
         };
-        self.io_process(cnt);
+        self.io_process(&mut events, cnt);
         //handler.tick(self);     // 没有实现也能调?
         Ok(())
     }
