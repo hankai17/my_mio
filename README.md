@@ -35,6 +35,17 @@
     epoll 传出队列
 - 240410
     重构传出的Events
+- 240411
+                  +--type
+        +--token--+
+        |         +--token
+    fd -+
+        |
+        +--job
+
+    Events 生命周期管理
+    添加slab队列
+    调通
 
         
 

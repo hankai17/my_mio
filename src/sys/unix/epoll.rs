@@ -65,7 +65,6 @@ impl Selector {
                                             timeout_ms))?;
             let cnt = cnt as usize;
             evts.events.set_len(cnt);
-            evts.entries.set_len(cnt);
             for i in 0..cnt {
                 /*
                 if evts.events[i].u64 as usize == awakener.into() {
@@ -81,7 +80,7 @@ impl Selector {
                 */
                 let fd = evts.events[i].u64 as usize as i32;
                 let fd_entry = events_map.as_mut().unwrap().get_mut(&fd).unwrap();
-                evts.entries.push(fd_entry);
+                evts.entries.insert(fd as i32, fd_entry);
             }
         }
         Ok(false)
@@ -193,15 +192,15 @@ impl Drop for Selector {
 }
 
 pub struct Events<'a> {
-    events: Vec<libc::epoll_event>,
-    entries: Vec<&'a mut FdEntry>,
+    events: Vec<libc::epoll_event>, // fd
+    entries: HashMap<i32, &'a mut FdEntry>, // <fd, FdEntry>
 }
 
 impl Events<'_> {
     pub fn with_capacity(u: usize) -> Events<'static> {
         Events {
             events: Vec::with_capacity(u),
-            entries: Vec::with_capacity(u)
+            entries: HashMap::new(),
         }
     }
     pub fn len(&self) -> usize { self.events.len() }
@@ -230,6 +229,37 @@ impl Events<'_> {
             Event::new(kind, Token(token as usize))
         })
     }
+    pub fn exec(&mut self, idx: usize) {
+        let event = self.events.get(idx);
+        let epoll = event.unwrap().events as c_int;
+        let mut kind = Ready::empty();
+        if (epoll & EPOLLIN) != 0 {
+            kind = kind | Ready::readable();
+        }
+        if (epoll & EPOLLOUT) != 0 {
+            kind = kind | Ready::writable()
+        }
+        if (epoll & EPOLLPRI) != 0 {
+            kind = kind | Ready::readable() | UnixReady::priority();
+        }
+        if (epoll & EPOLLERR) != 0 {
+            kind = kind | UnixReady::error()
+        }
+        if (epoll & EPOLLHUP) != 0 {
+            kind = kind | UnixReady::hup()
+        }
+        let fd = self.events[idx].u64 as i32;
+        let fd_entry: &mut FdEntry  = self.entries.get_mut(&fd).unwrap();
+
+        let c = &mut fd_entry.job;
+        c(1 as i64);
+        return;
+    }
+    pub fn get_mut(&mut self, idx: usize) -> &mut FdEntry {
+        let fd = self.events[idx].u64 as i32;
+        //let fd_entry: &mut FdEntry  = self.entries.get_mut(&fd).unwrap();
+        self.entries.get_mut(&fd).unwrap()
+    }
     pub fn push_event(&mut self, event: Event) {
         self.events.push(libc::epoll_event {
             events: ioevent_to_epoll(event.readiness(), PollOpt::empty()),
@@ -239,7 +269,7 @@ impl Events<'_> {
     pub fn clear(&mut self) {
         unsafe {
             self.events.set_len(0); 
-            self.entries.set_len(0); 
+            self.entries.clear();
         }
     }
 }
