@@ -1,6 +1,6 @@
 use {channel, Poll, Events, Token, TokenAllocator, TokenType};
 use event::Evented;
-use event_imp::{Event, Ready, PollOpt, Job, ready_as_usize};
+use event_imp::{Event, Ready, PollOpt, Job, ready_as_usize, FdEntry};
 use timer::{self, Timer, Timeout};
 use std::{io, usize};
 use std::default::Default;
@@ -255,11 +255,16 @@ impl EventLoop {
         while i < cnt {
             let evt = events.get(i).unwrap();  // epoll_event 转为 Ready
             log::trace!("event: {:?}; idx: {:?}", evt, i);
+            /*
             match evt.token() {
                 NOTIFY => self.notify(),
                 TIMER => self.timer_process(),
                 _ => self.io_event(evt)
             }
+            */
+            let fd_entry = events.get_mut(i);
+            let c = &mut fd_entry.job;
+            c(123);
             i += 1;
         }
     }

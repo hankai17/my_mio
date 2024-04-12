@@ -235,6 +235,11 @@ impl Event {
 
 pub type Job = Box<dyn FnMut(i64) + 'static + Send + Sync>;
 
+pub struct FdEntry {
+    pub token: Token,
+    pub job: Job,
+}
+
 pub trait Evented {
     fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()>;
     fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()>;

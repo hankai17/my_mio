@@ -10,18 +10,13 @@ use libc::{EPOLLET, EPOLLOUT, EPOLLIN, EPOLLPRI}; // define in /usr/include/sys/
 
 //pub use poll::{TokenAllocator, TokenType};
 
-use {io, Ready, PollOpt, Token, Job, Poll};
+use {io, Ready, PollOpt, Token, Job, Poll, FdEntry};
 use event_imp::{Event, ready_as_usize};
 use sys::unix::{cvt, UnixReady};
 use sys::unix::io::set_cloexec;
 use std::collections::HashMap;
 
 static NEXT_ID: AtomicUsize = ATOMIC_USIZE_INIT;
-
-struct FdEntry {
-    token: Token,
-    job: Job,
-}
 
 pub struct Selector {
     id: usize,
@@ -257,7 +252,6 @@ impl Events<'_> {
     }
     pub fn get_mut(&mut self, idx: usize) -> &mut FdEntry {
         let fd = self.events[idx].u64 as i32;
-        //let fd_entry: &mut FdEntry  = self.entries.get_mut(&fd).unwrap();
         self.entries.get_mut(&fd).unwrap()
     }
     pub fn push_event(&mut self, event: Event) {

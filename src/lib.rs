@@ -10,6 +10,7 @@ pub use event_imp:: {
     PollOpt,
     Ready,
     Job,
+    FdEntry,
 };
 
 mod io;

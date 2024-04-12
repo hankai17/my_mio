@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use std::collections::HashMap;
 use std::cell::RefCell;
 
-use event_imp::{self as event, Ready, Event, Evented, PollOpt, Job};
+use event_imp::{self as event, Ready, Event, Evented, PollOpt, Job, FdEntry};
 use {Token, sys};
 
 const READINESS_SHIFT: usize = 0;
@@ -57,9 +57,13 @@ impl IdAllocator {
     }
     pub fn alloc(&self) -> usize {
         self.free
-            .try_lock()
-            .and_then(|mut free| Ok(free.pop()))
-            .unwrap_or_else(|_| Some(self.counter.fetch_add(1, Ordering::Relaxed)))
+            .lock()
+            .and_then(|mut free| {
+                match free.pop() {
+                    Some(v) => Ok(v),
+                    None => Ok(self.counter.fetch_add(1, Ordering::Relaxed))
+                }
+            })
             .unwrap()
     }
     pub fn kill(&self, id: usize) {
@@ -830,6 +834,9 @@ impl Events<'_> {
     }
     pub fn get(&self, idx: usize) -> Option<Event> {
         self.inner.get(idx)
+    }
+    pub fn get_mut(&mut self, idx: usize) -> &mut FdEntry {
+        self.inner.get_mut(idx)
     }
     pub fn len(&self) -> usize {
         self.inner.len()

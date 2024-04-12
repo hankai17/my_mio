@@ -46,6 +46,6 @@
     Events 生命周期管理
     添加slab队列
     调通
-
-        
-
+- 240412
+    Option的枚举情况有两种 Some和None 可以通过if let/match/unwrap/？取出Some包裹的值 如果没有则是None
+    Result的枚举情况有两种 Ok和Err    同样也是match/unwrap
