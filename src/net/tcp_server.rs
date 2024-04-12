@@ -59,7 +59,7 @@ impl TcpServer {
         }
     }
     pub fn onAcceptConnection(&mut self, stream: TcpStream, addr: SocketAddr) {
-        //println!("accept: {}, {:?}", addr, stream);
+        println!("accept: {}, {:?}", addr, stream);
         let mut session = self.session_alloc.unwrap()();
         let mut conn = Arc::new(Mutex::new(TcpConnection::new(self.event_loop.clone(), stream)));
         let mut clone_conn = conn.clone();

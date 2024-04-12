@@ -36,7 +36,7 @@ impl Handler for Test {
             //println!("bytes len 0");
             return;
         }
-        //println!("bytes len: {}, {:?}", bytes.len(), bytes);
+        println!("bytes len: {}, {:?}", bytes.len(), bytes);
         bytes.advance(bytes.len());
 
         // 死锁了 解决方案用可重入锁 但是改的地方稍微有点儿多

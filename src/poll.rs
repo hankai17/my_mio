@@ -717,9 +717,8 @@ impl Poll {
                 Err(e) => return Err(e),
             }
         }
-        events.inner.clear();   // because cb already execed
         self.readiness_queue.poll(&mut events.inner);
-        //println!("after queue poll len: {}", events.inner.len());
+        println!("after queue poll len: {}", events.inner.len());
         Ok(events.inner.len())
     }
     fn poll1(&self, events: &mut Events, mut timeout: Option<Duration>, interruptible: bool) -> io::Result<usize> {
@@ -835,7 +834,7 @@ impl Events<'_> {
     pub fn get(&self, idx: usize) -> Option<Event> {
         self.inner.get(idx)
     }
-    pub fn get_mut(&mut self, idx: usize) -> &mut FdEntry {
+    pub fn get_mut(&mut self, idx: usize) -> Option<&mut FdEntry> {
         self.inner.get_mut(idx)
     }
     pub fn len(&self) -> usize {

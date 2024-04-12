@@ -59,6 +59,7 @@ impl Selector {
                                             evts.events.capacity() as i32,
                                             timeout_ms))?;
             let cnt = cnt as usize;
+            println!("cnt: {}", cnt);
             evts.events.set_len(cnt);
             for i in 0..cnt {
                 /*
@@ -250,13 +251,18 @@ impl Events<'_> {
         c(1 as i64);
         return;
     }
-    pub fn get_mut(&mut self, idx: usize) -> &mut FdEntry {
+    pub fn get_mut(&mut self, idx: usize) -> Option<&mut FdEntry> {
         let fd = self.events[idx].u64 as i32;
-        self.entries.get_mut(&fd).unwrap()
+        match self.entries.get_mut(&fd) {
+            Some(v) => Some(v),
+            None => None,
+        }
     }
     pub fn push_event(&mut self, event: Event) {
-        self.events.push(libc::epoll_event {
-            events: ioevent_to_epoll(event.readiness(), PollOpt::empty()),
+        println!("push event");
+        self.events.push(
+            libc::epoll_event {
+                    events: ioevent_to_epoll(event.readiness(), PollOpt::empty()),
                     u64: usize::from(event.token()) as u64
         });
     }

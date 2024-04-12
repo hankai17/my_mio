@@ -253,8 +253,8 @@ impl EventLoop {
         let mut i = 0;
         log::trace!("io_process(..); cnt: {}; len: {}", cnt, events.len());
         while i < cnt {
-            let evt = events.get(i).unwrap();  // epoll_event 转为 Ready
-            log::trace!("event: {:?}; idx: {:?}", evt, i);
+            //let evt = events.get(i).unwrap();  // epoll_event 转为 Ready
+            //log::trace!("event: {:?}; idx: {:?}", evt, i);
             /*
             match evt.token() {
                 NOTIFY => self.notify(),
@@ -262,14 +262,19 @@ impl EventLoop {
                 _ => self.io_event(evt)
             }
             */
-            let fd_entry = events.get_mut(i);
-            let c = &mut fd_entry.job;
-            c(123);
+            match events.get_mut(i) {
+                Some(job_entry) => {
+                    let c = &mut job_entry.job;
+                    c(123);
+                },
+                None => {
+                    println!("get_mut none");
+                }
+            }
             i += 1;
         }
     }
     pub fn run_once(&mut self, timeout: Option<Duration>) -> io::Result<()> {
-        log::trace!("event loop tick");
         let mut events = Events::with_capacity(1024);
         let cnt = match self.io_poll(&mut events, timeout) {
             Ok(e) => e,
