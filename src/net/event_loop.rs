@@ -227,9 +227,7 @@ impl EventLoop {
     fn io_event(&mut self, evt: Event) {
         //handler.ready(self, evt.token(), evt.readiness());
         if let Some(mut job) = self.get_job1(evt.token()) {
-            //println!("get job: {:?}", evt.token());
             job(ready_as_usize(evt.readiness()) as i64);
-            //self.free_job(evt.token());
         }
     }
     fn notify(&mut self) {
@@ -262,13 +260,32 @@ impl EventLoop {
                 _ => self.io_event(evt)
             }
             */
-            match events.get_mut(i) {
+            match events.get_mut_fd(i) {
                 Some(job_entry) => {
                     let c = &mut job_entry.job;
                     c(123);
                 },
                 None => {
-                    println!("get_mut none");
+                    println!("get_mut_fd none");
+                }
+            }
+            i += 1;
+        }
+        i = 0;
+        let mut cnt = events.job_len();
+        println!("job_len {}", cnt);
+        while i < cnt {
+            match events.get_mut_job(i) {
+                Some(job_entry) => {
+                    //let c = &mut job_entry.job;
+                    //c(123);
+                    let token = job_entry.token;
+                    if let Some(mut job) = self.get_job1(token) {
+                        job(123);
+                    }
+                },
+                None => {
+                    println!("get_mut_job none");
                 }
             }
             i += 1;

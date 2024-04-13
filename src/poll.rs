@@ -719,6 +719,7 @@ impl Poll {
         }
         self.readiness_queue.poll(&mut events.inner);
         println!("after queue poll len: {}", events.inner.len());
+        println!("after queue poll job len: {}", events.inner.job_len());
         Ok(events.inner.len())
     }
     fn poll1(&self, events: &mut Events, mut timeout: Option<Duration>, interruptible: bool) -> io::Result<usize> {
@@ -834,11 +835,17 @@ impl Events<'_> {
     pub fn get(&self, idx: usize) -> Option<Event> {
         self.inner.get(idx)
     }
-    pub fn get_mut(&mut self, idx: usize) -> Option<&mut FdEntry> {
-        self.inner.get_mut(idx)
+    pub fn get_mut_fd(&mut self, idx: usize) -> Option<&mut FdEntry> {
+        self.inner.get_mut_fd(idx)
+    }
+    pub fn get_mut_job(&mut self, idx: usize) -> Option<&mut FdEntry> {
+        self.inner.get_mut_job(idx)
     }
     pub fn len(&self) -> usize {
         self.inner.len()
+    }
+    pub fn job_len(&self) -> usize {
+        self.inner.job_len()
     }
     pub fn capacity(&self) -> usize {
         self.inner.capacity()
