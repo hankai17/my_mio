@@ -655,7 +655,7 @@ impl Poll {
             lock: Mutex::new(()),
             condvar: Condvar::new(),
         };
-        let job = Box::new(move |val: i64| {});
+        let job = Arc::new(Mutex::new(move |val: i64| {}));
         poll.readiness_queue.inner.awakener.register(&poll, AWAKEN, Ready::readable(), PollOpt::edge(), job)?;
         Ok(poll)
     }
@@ -812,22 +812,22 @@ impl AsRawFd for Poll {
     }
 }
 
-pub struct Events<'a> {
-    inner: sys::Events<'a>,
+pub struct Events {
+    inner: sys::Events,
 }
 
 pub struct Iter<'a> {
-    inner: &'a Events<'a>,
+    inner: &'a Events,
     pos: usize,
 }
 
-pub struct IntoIter<'a> {
-    inner: Events<'a>,
+pub struct IntoIter {
+    inner: Events,
     pos: usize,
 }
 
-impl Events<'_> {
-    pub fn with_capacity(capacity: usize) -> Events<'static> {
+impl Events {
+    pub fn with_capacity(capacity: usize) -> Events {
         Events {
             inner: sys::Events::with_capacity(capacity),
         }

@@ -57,17 +57,17 @@ impl Handler for Test {
         self.conn = Some(conn);
 
         let event_loop = EventLoopBuilder::get_current_loop();
-        let job = Box::new(move |val: i64| { 
+        let job = Arc::new(Mutex::new(move |val: i64| { 
             r.clone(); 
             set.clone(); 
             let mut conn = conn_clone.lock().unwrap();
             let rsp = BytesMut::from(&b"HTTP/1.1 200 OK\r\nSet-Cookie:k1=v1\r\nContent-Length: 15\r\nConnection: Keep-Alive\r\n\r\nabcdefghijkldef"[..]);
             conn.send(rsp);
-        });
+        }));
         let token = event_loop.lock().unwrap().set_job(job);
 
         set_clone.set_readiness(Ready::readable()).unwrap();
-        let job = Box::new(move |val: i64| { println!("2--------------"); });
+        let job = Arc::new(Mutex::new(move |val: i64| { println!("2--------------"); }));
         event_loop.lock().unwrap().register(&r_clone, token, Ready::readable(), PollOpt::edge(), job).unwrap();
     }
     fn onWritten(&mut self) -> bool {

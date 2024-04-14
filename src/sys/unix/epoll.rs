@@ -1,6 +1,7 @@
 #![allow(deprecated)]
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
+use std::sync::{Arc, Mutex, Condvar};
 use std::time::Duration;
 use std::{cmp, i32};
 
@@ -75,8 +76,8 @@ impl Selector {
                 c(ready_as_usize(ready) as i64);
                 */
                 let fd = evts.events[i].u64 as usize as i32;
-                let fd_entry = events_map.as_mut().unwrap().get_mut(&fd).unwrap();
-                evts.entries.push(fd_entry);
+                let fd_entry = events_map.as_mut().unwrap().get(&fd).unwrap();
+                evts.entries.push(fd_entry.clone());
             }
         }
         Ok(false)
@@ -187,14 +188,14 @@ impl Drop for Selector {
     }
 }
 
-pub struct Events<'a> {
+pub struct Events {
     events: Vec<libc::epoll_event>, // fd
-    entries: Vec<&'a mut FdEntry>, // <FdEntry>
+    entries: Vec<FdEntry>, // <FdEntry>
     tmp_entries: Vec<FdEntry>, // <FdEntry>
 }
 
-impl Events<'_> {
-    pub fn with_capacity(u: usize) -> Events<'static> {
+impl Events {
+    pub fn with_capacity(u: usize) -> Events {
         Events {
             events: Vec::with_capacity(u),
             entries: Vec::with_capacity(u),
@@ -244,7 +245,7 @@ impl Events<'_> {
         self.tmp_entries.push(
             FdEntry {
                 token: event.token(), 
-                job: Box::new(|val: i64| println!("Null FdEntry job")),
+                job: Arc::new(Mutex::new(|val: i64| println!("Null FdEntry job"))),
             }
         );
     }

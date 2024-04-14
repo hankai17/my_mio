@@ -53,3 +53,9 @@
     ok
     精简设计
     复原
+- 240414
+    把EventLoop里的task_list去掉 复用EventLoop::run_once中的events临时变量
+        去不掉 没地方保存
+        还是得把events临时变量 变成EventLoop的成员
+            Job 从Box 改成 Arc<Mutex>
+    复原

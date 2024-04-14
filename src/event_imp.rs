@@ -1,5 +1,6 @@
 use {Poll, Token};
 use std::{fmt, io, ops};
+use std::sync::{Arc, Mutex, Condvar};
 
 const READABLE: usize = 0b00001;
 const WRITABLE: usize = 0b00010;
@@ -233,8 +234,9 @@ impl Event {
     pub fn token(&self) -> Token { self.token }
 }
 
-pub type Job = Box<dyn FnMut(i64) + 'static + Send + Sync>;
+pub type Job = Arc<Mutex<dyn FnMut(i64) + 'static + Send + Sync>>;
 
+#[derive(Clone)]
 pub struct FdEntry {
     pub token: Token,
     pub job: Job,

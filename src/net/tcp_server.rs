@@ -72,24 +72,24 @@ impl TcpServer {
         clone_conn.lock().unwrap().set_writ_job(writ_job);
 
         let conn = clone_conn.clone();
-        let job = Box::new(move |val: i64| { clone_conn.lock().unwrap().handleEvent(val); });
+        let job = Arc::new(Mutex::new(move |val: i64| { clone_conn.lock().unwrap().handleEvent(val); }));
         self.event_loop.lock().unwrap().register(&conn.lock().unwrap().sock, CLIENT, 
                 Ready::readable() | Ready::writable(), PollOpt::edge(), job);
     }
     fn start_internal(&mut self) {
         let mut clone = self.acceptor.clone();
-        let job = Box::new(move |val: i64| { clone.lock().unwrap().handleRead(val); });
+        let job = Arc::new(Mutex::new(move |val: i64| { clone.lock().unwrap().handleRead(val); }));
         self.acceptor.lock().unwrap().bind(job);
         self.acceptor.lock().unwrap().set_accept_cb(default_accept_cb);
     }
     pub fn start_internal1(this: Arc<Mutex<Self>>) {
         let mut clone = this.lock().unwrap().acceptor.clone();
-        let job = Box::new(move |val: i64| { clone.lock().unwrap().handleRead(val); });
+        let job = Arc::new(Mutex::new(move |val: i64| { clone.lock().unwrap().handleRead(val); }));
         this.lock().unwrap().acceptor.lock().unwrap().bind(job);
 
         let mut clone = this.clone();
         //let job = Box::new(move |val: &mut TcpConnection| { clone.lock().unwrap().onAcceptConnection(val); });
-        let job = Box::new(move |stream: TcpStream, addr: SocketAddr| { clone.lock().unwrap().onAcceptConnection(stream, addr); });
+        let job = (Box::new(move |stream: TcpStream, addr: SocketAddr| { clone.lock().unwrap().onAcceptConnection(stream, addr); }));
         this.lock().unwrap().acceptor.lock().unwrap().set_accept_job(job);
     }
     pub fn start<H: Sized + 'static + Send + Sync>(&mut self)

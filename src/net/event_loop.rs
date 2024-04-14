@@ -117,6 +117,7 @@ unsafe impl Sync for EventLoop {}
 pub struct EventLoop {
     run: bool,
     pub poll: Poll,
+    events: Events,
     timer: Timer<i32>,
     notify_tx: channel::SyncSender<i32>,
     notify_rx: channel::Receiver<i32>,
@@ -152,8 +153,8 @@ impl EventLoop {
             .capacity(config.timer_capacity)
             .build();
         let (tx, rx) = channel::sync_channel(config.notify_capacity);   // 初始化pipe
-        let job1 = Box::new(move |val: i64| {});
-        let job2 = Box::new(move |val: i64| {});
+        let job1 = Arc::new(Mutex::new(move |val: i64| {}));
+        let job2 = Arc::new(Mutex::new(move |val: i64| {}));
         let notify_token = Token(token_alloc.lock().unwrap().alloc(TokenType::NOTIFY_EVENT, NOTIFY));
         poll.register(&rx, notify_token, Ready::readable(), 
                 PollOpt::edge() | PollOpt::oneshot(), job1)?;           // 初始化receiver中的node
@@ -162,6 +163,7 @@ impl EventLoop {
         Ok(EventLoop {
             run: true,
             poll,
+            events: Events::with_capacity(1024),
             timer,
             notify_tx: tx,
             notify_rx: rx,
@@ -222,12 +224,13 @@ impl EventLoop {
         self.poll.deregister(io)
     }
     fn io_poll(&mut self, events: &mut Events, timeout: Option<Duration>) -> io::Result<usize> {
-        self.poll.poll(events, timeout)
+        //self.poll.poll(events, timeout)
+        self.poll.poll(&mut self.events, timeout)
     }
     fn io_event(&mut self, evt: Event) {
         //handler.ready(self, evt.token(), evt.readiness());
         if let Some(mut job) = self.get_job1(evt.token()) {
-            job(ready_as_usize(evt.readiness()) as i64);
+            job.lock().unwrap()(ready_as_usize(evt.readiness()) as i64);
         }
     }
     fn notify(&mut self) {
@@ -263,7 +266,7 @@ impl EventLoop {
             match events.get_mut_fd(i) {
                 Some(job_entry) => {
                     let c = &mut job_entry.job;
-                    c(123);
+                    c.lock().unwrap()(123);
                 },
                 None => {
                     println!("get_mut_fd none");
@@ -281,7 +284,7 @@ impl EventLoop {
                     //c(123);
                     let token = job_entry.token;
                     if let Some(mut job) = self.get_job1(token) {
-                        job(123);
+                        job.lock().unwrap()(123);
                     }
                 },
                 None => {
