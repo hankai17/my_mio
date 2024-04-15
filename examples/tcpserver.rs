@@ -64,11 +64,12 @@ impl Handler for Test {
             let rsp = BytesMut::from(&b"HTTP/1.1 200 OK\r\nSet-Cookie:k1=v1\r\nContent-Length: 15\r\nConnection: Keep-Alive\r\n\r\nabcdefghijkldef"[..]);
             conn.send(rsp);
         }));
+        let clone = job.clone();
         let token = event_loop.lock().unwrap().set_job(job);
 
         set_clone.set_readiness(Ready::readable()).unwrap();
-        let job = Arc::new(Mutex::new(move |val: i64| { println!("2--------------"); }));
-        event_loop.lock().unwrap().register(&r_clone, token, Ready::readable(), PollOpt::edge(), job).unwrap();
+        //let job = Arc::new(Mutex::new(move |val: i64| { println!("2--------------"); }));
+        event_loop.lock().unwrap().register(&r_clone, token, Ready::readable(), PollOpt::edge(), clone).unwrap();
     }
     fn onWritten(&mut self) -> bool {
         //println!("Test onWritten");

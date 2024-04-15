@@ -223,8 +223,7 @@ impl EventLoop {
         where E: Evented {
         self.poll.deregister(io)
     }
-    fn io_poll(&mut self, events: &mut Events, timeout: Option<Duration>) -> io::Result<usize> {
-        //self.poll.poll(events, timeout)
+    fn io_poll(&mut self, timeout: Option<Duration>) -> io::Result<usize> {
         self.poll.poll(&mut self.events, timeout)
     }
     fn io_event(&mut self, evt: Event) {
@@ -250,9 +249,9 @@ impl EventLoop {
         */
     }
     // https://stackoverflow.com/questions/45116984/the-trait-cannot-be-made-into-an-object
-    fn io_process(&mut self, events: &mut Events, cnt: usize) {
+    fn io_process(&mut self, cnt: usize) {
         let mut i = 0;
-        log::trace!("io_process(..); cnt: {}; len: {}", cnt, events.len());
+        log::trace!("io_process(..); cnt: {}; len: {}", cnt, self.events.len());
         while i < cnt {
             //let evt = events.get(i).unwrap();  // epoll_event 转为 Ready
             //log::trace!("event: {:?}; idx: {:?}", evt, i);
@@ -263,40 +262,20 @@ impl EventLoop {
                 _ => self.io_event(evt)
             }
             */
-            match events.get_mut_fd(i) {
+            match self.events.get_mut(i) {
                 Some(job_entry) => {
                     let c = &mut job_entry.job;
                     c.lock().unwrap()(123);
                 },
                 None => {
-                    println!("get_mut_fd none");
-                }
-            }
-            i += 1;
-        }
-        i = 0;
-        let mut cnt = events.job_len();
-        println!("job_len {}", cnt);
-        while i < cnt {
-            match events.get_mut_job(i) {
-                Some(job_entry) => {
-                    //let c = &mut job_entry.job;
-                    //c(123);
-                    let token = job_entry.token;
-                    if let Some(mut job) = self.get_job1(token) {
-                        job.lock().unwrap()(123);
-                    }
-                },
-                None => {
-                    println!("get_mut_job none");
+                    println!("get_mut none");
                 }
             }
             i += 1;
         }
     }
     pub fn run_once(&mut self, timeout: Option<Duration>) -> io::Result<()> {
-        let mut events = Events::with_capacity(1024);
-        let cnt = match self.io_poll(&mut events, timeout) {
+        let cnt = match self.io_poll(timeout) {
             Ok(e) => e,
             Err(err) => {
                 if err.kind() == io::ErrorKind::Interrupted {
@@ -307,7 +286,7 @@ impl EventLoop {
                 }
             }
         };
-        self.io_process(&mut events, cnt);
+        self.io_process(cnt);
         //handler.tick(self);     // 没有实现也能调?
         Ok(())
     }

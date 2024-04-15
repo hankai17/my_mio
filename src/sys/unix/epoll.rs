@@ -191,7 +191,6 @@ impl Drop for Selector {
 pub struct Events {
     events: Vec<libc::epoll_event>, // fd
     entries: Vec<FdEntry>, // <FdEntry>
-    tmp_entries: Vec<FdEntry>, // <FdEntry>
 }
 
 impl Events {
@@ -199,11 +198,9 @@ impl Events {
         Events {
             events: Vec::with_capacity(u),
             entries: Vec::with_capacity(u),
-            tmp_entries: Vec::with_capacity(u),
         }
     }
     pub fn len(&self) -> usize { self.entries.len() }
-    pub fn job_len(&self) -> usize { self.tmp_entries.len() }
     pub fn capacity(&self) -> usize { self.entries.capacity() }
     pub fn is_empty(&self) -> bool { self.entries.is_empty() }
     pub fn get(&self, idx: usize) -> Option<Event> {
@@ -229,37 +226,30 @@ impl Events {
             Event::new(kind, Token(token as usize))
         })
     }
-    pub fn get_mut_fd(&mut self, idx: usize) -> Option<&mut FdEntry> {
+    pub fn get_mut(&mut self, idx: usize) -> Option<&mut FdEntry> {
         match self.entries.get_mut(idx) {
             Some(v) => Some(v),
             None => None,
         }
     }
-    pub fn push_event(&mut self, event: Event) {
+    pub fn push_event(&mut self, event: Event, job: Job) {
         println!("push event");
         self.events.push(
             libc::epoll_event {
                     events: ioevent_to_epoll(event.readiness(), PollOpt::empty()),
                     u64: usize::from(event.token()) as u64
         });
-        self.tmp_entries.push(
+        self.entries.push(
             FdEntry {
                 token: event.token(), 
-                job: Arc::new(Mutex::new(|val: i64| println!("Null FdEntry job"))),
+                job,
             }
         );
-    }
-    pub fn get_mut_job(&mut self, idx: usize) -> Option<&mut FdEntry> {
-        match self.tmp_entries.get_mut(idx) {
-            Some(v) => Some(v),
-            None => None,
-        }
     }
     pub fn clear(&mut self) {
         unsafe {
             self.events.set_len(0); 
             self.entries.set_len(0);
-            self.tmp_entries.set_len(0);
         }
     }
 }

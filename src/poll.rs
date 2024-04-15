@@ -302,6 +302,7 @@ struct ReadinessNode {  // 三剑客 + next指针 + queue
     update_lock: AtomicBool,
     readiness_queue: AtomicPtr<()>,
     ref_count: AtomicUsize,
+    job: UnsafeCell<Job>,
 }
 
 enum Dequeue {
@@ -331,6 +332,7 @@ impl ReadinessNode {
             update_lock: AtomicBool::new(false),
             readiness_queue: AtomicPtr::new(queue),
             ref_count: AtomicUsize::new(ref_count),
+            job: UnsafeCell::new(Arc::new(Mutex::new(move |val: i64| { println!("null ReadinessNode")}))),
         }
     }
     fn marker() -> ReadinessNode {
@@ -343,6 +345,7 @@ impl ReadinessNode {
             update_lock: AtomicBool::new(false),
             readiness_queue: AtomicPtr::new(ptr::null_mut()),
             ref_count: AtomicUsize::new(0),
+            job: UnsafeCell::new(Arc::new(Mutex::new(move |val: i64| { println!("null ReadinessNode")}))),
         }
     }
     fn enqueue_with_wakeup(&self) -> io::Result::<()> { // node排入队列 队列一般是Poll中的
@@ -527,7 +530,8 @@ impl ReadinessQueue {
                 Dequeue::Empty | Dequeue::Inconsistent => break,
                 Dequeue::Data(ptr) => ptr,
             };
-            let node = unsafe { &*ptr };
+            //let node = unsafe { &*ptr };
+            let node = unsafe { &mut *ptr };
             let mut state = node.state.load(Acquire);
             let mut next;
             let mut readiness;
@@ -567,7 +571,8 @@ impl ReadinessQueue {
             }
             if !readiness.is_empty() {
                 let token = unsafe { token(node, next.token_read_pos()) };
-                dst.push_event(Event::new(readiness, token));
+                let job = node.job.get_mut();
+                dst.push_event(Event::new(readiness, token), job.clone());
             }
         }
     }
@@ -719,7 +724,6 @@ impl Poll {
         }
         self.readiness_queue.poll(&mut events.inner);
         println!("after queue poll len: {}", events.inner.len());
-        println!("after queue poll job len: {}", events.inner.job_len());
         Ok(events.inner.len())
     }
     fn poll1(&self, events: &mut Events, mut timeout: Option<Duration>, interruptible: bool) -> io::Result<usize> {
@@ -835,17 +839,11 @@ impl Events {
     pub fn get(&self, idx: usize) -> Option<Event> {
         self.inner.get(idx)
     }
-    pub fn get_mut_fd(&mut self, idx: usize) -> Option<&mut FdEntry> {
-        self.inner.get_mut_fd(idx)
-    }
-    pub fn get_mut_job(&mut self, idx: usize) -> Option<&mut FdEntry> {
-        self.inner.get_mut_job(idx)
+    pub fn get_mut(&mut self, idx: usize) -> Option<&mut FdEntry> {
+        self.inner.get_mut(idx)
     }
     pub fn len(&self) -> usize {
         self.inner.len()
-    }
-    pub fn job_len(&self) -> usize {
-        self.inner.job_len()
     }
     pub fn capacity(&self) -> usize {
         self.inner.capacity()
@@ -942,7 +940,7 @@ impl RegistrationInner {
         }
         Ok(())
     }
-    fn update(&self, poll: &Poll, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()> {
+    fn update(&self, poll: &Poll, token: Token, interest: Ready, opt: PollOpt, job: Job) -> io::Result<()> {
         let mut queue = self.readiness_queue.load(Relaxed);
         let other: &*mut () = unsafe {
             &*(&poll.readiness_queue.inner as *const _ as *const *mut()) // inner: Arc<ReadinessQueueInner>,
@@ -1014,6 +1012,9 @@ impl RegistrationInner {
         }
         self.update_lock.store(false, Release);
         if !state.is_queued() && next.is_queued() {
+            unsafe { 
+                *self.job.get() = job; 
+            }
             enqueue_with_wakeup(queue, self)?;
         }
         Ok(())
@@ -1131,23 +1132,26 @@ impl Registration {
         };
         (registration, set_readiness)
     }
-    pub fn update(&self, poll: &Poll, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()> {
-        self.inner.update(poll, token, interest, opt)
+    pub fn update(&self, poll: &Poll, token: Token, interest: Ready, opt: PollOpt, job: Job) -> io::Result<()> {
+        self.inner.update(poll, token, interest, opt, job)
     }
     pub fn deregister(&self, poll: &Poll) -> io::Result<()> {
-        self.inner.update(poll, Token(0), Ready::empty(), PollOpt::empty())
+        let job = Arc::new(Mutex::new(move |val: i64| { println!("null1 deregister for Registration") }));
+        self.inner.update(poll, Token(0), Ready::empty(), PollOpt::empty(), job)
     }
 }
 
 impl Evented for Registration {
     fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
-        self.inner.update(poll, token, interest, opts)
+        self.inner.update(poll, token, interest, opts, job)
     }
     fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
-        self.inner.update(poll, token, interest, opts)
+        let job = Arc::new(Mutex::new(move |val: i64| { println!("null reregister for Registration") }));
+        self.inner.update(poll, token, interest, opts, job)
     }
     fn deregister(&self, poll: &Poll) -> io::Result<()> {
-        self.inner.update(poll, Token(0), Ready::empty(), PollOpt::empty())
+        let job = Arc::new(Mutex::new(move |val: i64| { println!("null deregister for Registration") }));
+        self.inner.update(poll, Token(0), Ready::empty(), PollOpt::empty(), job)
     }
 }
 

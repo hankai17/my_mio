@@ -1,7 +1,7 @@
 use {io, Ready, Poll, PollOpt, Registration, SetReadiness, Token, Job};
 use event::Evented;
 use std::fmt;
-use std::sync::{mpsc, Arc};
+use std::sync::{mpsc, Arc, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use lazycell::{LazyCell, AtomicLazyCell};
 
@@ -142,8 +142,9 @@ impl Evented for ReceiverCtl {
         use TokenType;
         let mut token_alloc = Poll::get_current_token_allocator();
         let token = Token(token_alloc.lock().unwrap().alloc(TokenType::NOTIFY_EVENT, token));
+        let job = Arc::new(Mutex::new(move |val: i64| { println!("null reregister for ReceiverCtl") }));
         match self.registration.borrow() {
-            Some(registration) => registration.update(poll, token, interest, opts),
+            Some(registration) => registration.update(poll, token, interest, opts, job),
             None => Err(io::Error::new(io::ErrorKind::Other, "receiver not registered")),
         }
     }

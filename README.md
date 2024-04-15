@@ -58,4 +58,24 @@
         去不掉 没地方保存
         还是得把events临时变量 变成EventLoop的成员
             Job 从Box 改成 Arc<Mutex>
+    update函数 也用tokenallocator打通 这样全局所有的token大一统 即local线程变量管理所有类型 并给每个类型分配唯一id 根据id找到具体的类型
+              +--type
+              |
+    token/id -+   (allocator分配/token/id)
+              |
+              +-token
+
+        +--token
+        |       
+    fd -+
+        |
+        +--job
+    events.get_mut时 得到的是token/id结构即FdEntry(名字不好改成JobEntry)
     复原
+- 240415
+    JobEntry 添加event
+    update函数 也用tokenallocator打通 这样全局所有的token大一统 即local线程变量管理所有类型 并给每个类型分配唯一id 根据id找到具体的类型
+    根据设计 只有当poll queue的时候 才会把job给push到es的events里 所以注册job的时候 job应该保存到queue里
+    否则就是 get_job/set_job那一套
+    poll.rs拆分
+

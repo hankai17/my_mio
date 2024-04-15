@@ -4,7 +4,7 @@ use slab::Slab;
 use std::{cmp, fmt, u64, usize, iter, thread};
 use std::time::{Duration, Instant};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use event::Evented;
 
 type Tick = u64;
@@ -372,8 +372,9 @@ impl<T> Evented for Timer<T> {
     fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
         let mut token_alloc = Poll::get_current_token_allocator();
         let token = Token(token_alloc.lock().unwrap().alloc(TokenType::TIMERS_EVENT, token));
+        let job = Arc::new(Mutex::new(move |val: i64| { println!("null reregister for Timer") }));
         match self.inner.borrow() {
-            Some(inner) => inner.registration.update(poll, token, interest, opts),
+            Some(inner) => inner.registration.update(poll, token, interest, opts, job),
             None => Err(io::Error::new(io::ErrorKind::Other, "receiver not register")),
         }
     }
