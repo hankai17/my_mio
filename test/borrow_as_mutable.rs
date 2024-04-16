@@ -1,4 +1,5 @@
 // cannot borrow `node.job` as mutable, as it is behind a `&` reference
+// 不能借用 &  可以改为借用&mut
 
 struct Row {
 	string: String,

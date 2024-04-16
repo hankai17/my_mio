@@ -1,6 +1,6 @@
 use {channel, Poll, Events, Token, TokenAllocator, TokenType};
 use event::Evented;
-use event_imp::{Event, Ready, PollOpt, Job, ready_as_usize, FdEntry};
+use event_imp::{Event, Ready, PollOpt, Job, ready_as_usize};
 use timer::{self, Timer, Timeout};
 use std::{io, usize};
 use std::default::Default;
@@ -122,9 +122,6 @@ pub struct EventLoop {
     notify_tx: channel::SyncSender<i32>,
     notify_rx: channel::Receiver<i32>,
     config: Config,
-
-    pub task_list: Slab<Job>,
-
     /*
     read_ready_list: Slab<Job>,
     write_ready_list: Slab<Job>,
@@ -168,31 +165,9 @@ impl EventLoop {
             notify_tx: tx,
             notify_rx: rx,
             config,
-            task_list: Slab::with_capacity(128),
             socket_ready_list: Slab::with_capacity(128),
             timer_list: Slab::with_capacity(128),
         })
-    }
-    pub fn set_job(&mut self, job: Job) -> Token {
-        let token = self.task_list.insert(job);
-        //println!("set_job token: {}", token);
-        Token(token)
-    }
-    pub fn get_job(&mut self, token: Token) -> Option<&mut Job> {
-        if let Some(job) = self.task_list.get_mut(token.into()) {
-            return Some(job);       // job已经是&mut类型了
-        }
-        return None;
-    }
-    pub fn get_job1(&mut self, token: Token) -> Option<Job> {
-        let job = self.task_list.remove(token.into());
-        return Some(job);
-    }
-    pub fn free_job(&mut self, token: Token) {
-        let u: usize = token.into();
-        //println!("free_job token: {}", u);
-        //self.task_list.remove(token.into());
-        self.task_list.remove(u);
     }
     pub fn new() -> io::Result<EventLoop> {
         EventLoop::configured(Config::default())
@@ -228,9 +203,6 @@ impl EventLoop {
     }
     fn io_event(&mut self, evt: Event) {
         //handler.ready(self, evt.token(), evt.readiness());
-        if let Some(mut job) = self.get_job1(evt.token()) {
-            job.lock().unwrap()(ready_as_usize(evt.readiness()) as i64);
-        }
     }
     fn notify(&mut self) {
         for _ in 0..self.config.messages_per_tick {     // 每个周期尝试从pipe 最多读取256次
@@ -307,7 +279,6 @@ pub struct EventLoopBuilder {
 use std::cell::RefCell;
 thread_local! {
     pub static current_loop: RefCell<Arc<Mutex<EventLoop>>> = panic!("!"); //Arc::new(Mutex::new(EventLoop));
-    //pub static task_list: RefCell<Arc<Mutex<Slab<Job>>>> = panic!("!");
     //pub static current_token_allocator: RefCell<Arc<Mutex<TokenAllocator>>> = panic!("!");
 }
 

@@ -302,7 +302,7 @@ struct ReadinessNode {  // 三剑客 + next指针 + queue
     update_lock: AtomicBool,
     readiness_queue: AtomicPtr<()>,
     ref_count: AtomicUsize,
-    job: UnsafeCell<Job>,
+    job: Job,
 }
 
 enum Dequeue {
@@ -332,7 +332,7 @@ impl ReadinessNode {
             update_lock: AtomicBool::new(false),
             readiness_queue: AtomicPtr::new(queue),
             ref_count: AtomicUsize::new(ref_count),
-            job: UnsafeCell::new(Arc::new(Mutex::new(move |val: i64| { println!("null ReadinessNode")}))),
+            job: Arc::new(Mutex::new(move |val: i64| { println!("null ReadinessNode")})),
         }
     }
     fn marker() -> ReadinessNode {
@@ -345,7 +345,7 @@ impl ReadinessNode {
             update_lock: AtomicBool::new(false),
             readiness_queue: AtomicPtr::new(ptr::null_mut()),
             ref_count: AtomicUsize::new(0),
-            job: UnsafeCell::new(Arc::new(Mutex::new(move |val: i64| { println!("null ReadinessNode")}))),
+            job: Arc::new(Mutex::new(move |val: i64| { println!("null ReadinessNode")})),
         }
     }
     fn enqueue_with_wakeup(&self) -> io::Result::<()> { // node排入队列 队列一般是Poll中的
@@ -571,8 +571,10 @@ impl ReadinessQueue {
             }
             if !readiness.is_empty() {
                 let token = unsafe { token(node, next.token_read_pos()) };
-                let job = node.job.get_mut();
-                dst.push_event(Event::new(readiness, token), job.clone());
+                dst.push_event(Event::new(readiness, token), node.job.clone());
+                //Arc::into_raw(node.job);
+                println!("after push_event job use_count: {}", Arc::strong_count(&node.job));
+                node.job = Arc::new(Mutex::new(move |val: i64| { println!("deref ReadinessNode")}));
             }
         }
     }
@@ -1013,7 +1015,7 @@ impl RegistrationInner {
         self.update_lock.store(false, Release);
         if !state.is_queued() && next.is_queued() {
             unsafe { 
-                *self.job.get() = job; 
+                (*self.node).job = job;
             }
             enqueue_with_wakeup(queue, self)?;
         }

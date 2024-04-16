@@ -33,19 +33,11 @@ impl Handler for Test {
     */
     fn onRecv(&mut self, bytes: &mut BytesMut) {
         if bytes.len() <= 0 {
-            //println!("bytes len 0");
             return;
         }
         println!("bytes len: {}, {:?}", bytes.len(), bytes);
         bytes.advance(bytes.len());
 
-        // 死锁了 解决方案用可重入锁 但是改的地方稍微有点儿多
-        /*
-        let rsp = BytesMut::from(&b"HTTP/1.1 200 OK\r\nSet-Cookie:k1=v1\r\nContent-Length: 15\r\nConnection: Keep-Alive\r\n\r\nabcdefghijkldef"[..]);
-        let mut conn = self.conn.take().unwrap();
-        conn.lock().unwrap().send(rsp);
-        self.conn = Some(conn);
-        */
         let (r, set) = Registration::new2();
         let mut r = Arc::new(r);
         let mut r_clone = r.clone();
@@ -57,40 +49,21 @@ impl Handler for Test {
         self.conn = Some(conn);
 
         let event_loop = EventLoopBuilder::get_current_loop();
-        let job = Arc::new(Mutex::new(move |val: i64| { 
+        let job = Arc::new(Mutex::new(move |val: i64| {
             r.clone(); 
             set.clone(); 
             let mut conn = conn_clone.lock().unwrap();
             let rsp = BytesMut::from(&b"HTTP/1.1 200 OK\r\nSet-Cookie:k1=v1\r\nContent-Length: 15\r\nConnection: Keep-Alive\r\n\r\nabcdefghijkldef"[..]);
             conn.send(rsp);
+            println!("sending: conn use_count: {}", Arc::strong_count(&conn_clone));
         }));
-        let clone = job.clone();
-        let token = event_loop.lock().unwrap().set_job(job);
-
+        let token = Token(111);
         set_clone.set_readiness(Ready::readable()).unwrap();
-        //let job = Arc::new(Mutex::new(move |val: i64| { println!("2--------------"); }));
-        event_loop.lock().unwrap().register(&r_clone, token, Ready::readable(), PollOpt::edge(), clone).unwrap();
+        event_loop.lock().unwrap().register(&r_clone, token, Ready::readable(), PollOpt::edge(), job).unwrap();
     }
     fn onWritten(&mut self) -> bool {
-        //println!("Test onWritten");
-        /*
-        // 这里是发送完的回调 而非可发送回调 // 可发送回调是es直接触发而调用的 如果es中的数据发不完就不会调用这个函数
-        // 那么得找一个地方可以发数据 且不能死锁
-        let rsp = BytesMut::from(&b"HTTP/1.1 200 OK\r\nSet-Cookie:k1=v1\r\nContent-Length: 15\r\nConnection: Keep-Alive\r\n\r\nabcdefghijkldef"[..]);
         let mut conn = self.conn.take().unwrap();
-        conn.lock().unwrap().send(rsp);
-        self.conn = Some(conn);
-        */
-
-        /*
-        // 又死锁了 因为这个回调可能在conn.send函数里
-        let mut conn = self.conn.take().unwrap();
-        conn.lock().unwrap().close_stream();
-        self.conn = Some(conn);
-        true
-        */
-        let mut conn = self.conn.take().unwrap();
-        //println!("onWritten fun end conn: {:?}", conn.lock().unwrap().sock);
+        println!("onWritten: conn use_count: {}", Arc::strong_count(&conn));
         false
     }
     fn onError(&mut self) {

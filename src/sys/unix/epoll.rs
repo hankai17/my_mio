@@ -123,7 +123,7 @@ impl Selector {
             cvt(libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_DEL, fd, &mut info))?;
             let ret = events_map.as_mut().unwrap().remove(&fd as &i32);
             if let Some(ret) = ret {
-                //println!("deregister fd: {} ok", fd);
+                println!("deregister fd: {} ok", fd);
             } else {
                 //println!("deregister fd: {} failed", fd)
             }
@@ -250,6 +250,7 @@ impl Events {
         unsafe {
             self.events.set_len(0); 
             self.entries.set_len(0);
+            self.entries.clear();
         }
     }
 }
