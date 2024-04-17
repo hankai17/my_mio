@@ -573,7 +573,7 @@ impl ReadinessQueue {
                 let token = unsafe { token(node, next.token_read_pos()) };
                 dst.push_event(Event::new(readiness, token), node.job.clone());
                 //Arc::into_raw(node.job);
-                println!("after push_event job use_count: {}", Arc::strong_count(&node.job));
+                //println!("after push_event job use_count: {}", Arc::strong_count(&node.job));
                 node.job = Arc::new(Mutex::new(move |val: i64| { println!("deref ReadinessNode")}));
             }
         }
@@ -725,7 +725,7 @@ impl Poll {
             }
         }
         self.readiness_queue.poll(&mut events.inner);
-        println!("after queue poll len: {}", events.inner.len());
+        //println!("after queue poll len: {}", events.inner.len());
         Ok(events.inner.len())
     }
     fn poll1(&self, events: &mut Events, mut timeout: Option<Duration>, interruptible: bool) -> io::Result<usize> {

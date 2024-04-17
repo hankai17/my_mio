@@ -78,4 +78,21 @@
     根据设计 只有当poll queue的时候 才会把job给push到es的events里 所以注册job的时候 job应该保存到queue里
     否则就是 get_job/set_job那一套
     poll.rs拆分
+- 240417
+    强引用死循环?
+
+    onAcceptConnection
+    stream -> Arc<conn> -> session
+                  conn <- session    // session会赋给conn->read/write_job成员
+                            register epoll hashmap: <fd, Job(Arc<conn>)>
+                                                    // fd有事件到来则回调connection读写框架 框架里面会调用上层session的job
+
+    Job(Arc(conn)) 入队
+        执行发送函数
+    发送完毕解引用
+        stream -> Arc<conn> -x-> session
+
+
+    conn一直引用session  且无释放时机(只有当conn释放本身时才会释放自身的read/writ_job 从而解引用session)
+    数据发送完毕 session手动解引用 Arc<conn>
 

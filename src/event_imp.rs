@@ -242,6 +242,12 @@ pub struct FdEntry {
     pub job: Job,
 }
 
+impl Drop for FdEntry {
+    fn drop(&mut self) {
+        //println!("------------dropping FdEntry job use_count: {}", Arc::strong_count(&self.job));
+    }
+}
+
 pub trait Evented {
     fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()>;
     fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()>;

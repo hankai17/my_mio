@@ -245,6 +245,7 @@ impl EventLoop {
             }
             i += 1;
         }
+        self.events.clear();
     }
     pub fn run_once(&mut self, timeout: Option<Duration>) -> io::Result<()> {
         let cnt = match self.io_poll(timeout) {

@@ -16,6 +16,12 @@ struct Test {
     conn: Option<Arc<Mutex<TcpConnection>>>
 }
 
+impl Drop for Test {
+    fn drop(&mut self) {
+        println!("---------------------dropping for Test")
+    }
+}
+
 impl Handler for Test {
     fn new() -> Test {
         Test {

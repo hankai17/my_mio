@@ -60,7 +60,7 @@ impl Selector {
                                             evts.events.capacity() as i32,
                                             timeout_ms))?;
             let cnt = cnt as usize;
-            println!("cnt: {}", cnt);
+            //println!("cnt: {}", cnt);
             evts.events.set_len(cnt);
             for i in 0..cnt {
                 /*
@@ -123,7 +123,7 @@ impl Selector {
             cvt(libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_DEL, fd, &mut info))?;
             let ret = events_map.as_mut().unwrap().remove(&fd as &i32);
             if let Some(ret) = ret {
-                println!("deregister fd: {} ok", fd);
+                //println!("deregister fd: {} ok", fd);
             } else {
                 //println!("deregister fd: {} failed", fd)
             }
@@ -233,7 +233,7 @@ impl Events {
         }
     }
     pub fn push_event(&mut self, event: Event, job: Job) {
-        println!("push event");
+        //println!("push event");
         self.events.push(
             libc::epoll_event {
                     events: ioevent_to_epoll(event.readiness(), PollOpt::empty()),
@@ -241,7 +241,7 @@ impl Events {
         });
         self.entries.push(
             FdEntry {
-                token: event.token(), 
+                token: event.token(),
                 job,
             }
         );
@@ -249,8 +249,8 @@ impl Events {
     pub fn clear(&mut self) {
         unsafe {
             self.events.set_len(0); 
-            self.entries.set_len(0);
             self.entries.clear();
+            //self.entries.set_len(0);
         }
     }
 }
