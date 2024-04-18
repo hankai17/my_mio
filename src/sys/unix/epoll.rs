@@ -11,7 +11,7 @@ use libc::{EPOLLET, EPOLLOUT, EPOLLIN, EPOLLPRI}; // define in /usr/include/sys/
 
 //pub use poll::{TokenAllocator, TokenType};
 
-use {io, Ready, PollOpt, Token, Job, Poll, FdEntry};
+use {io, Ready, PollOpt, Token, Job, Poll, JobEntry};
 use event_imp::{Event, ready_as_usize};
 use sys::unix::{cvt, UnixReady};
 use sys::unix::io::set_cloexec;
@@ -22,7 +22,7 @@ static NEXT_ID: AtomicUsize = ATOMIC_USIZE_INIT;
 pub struct Selector {
     id: usize,
     epfd: RawFd,
-    events_map: HashMap<i32, FdEntry>,
+    events_map: HashMap<i32, JobEntry>,
 }
 
 impl Selector {
@@ -82,8 +82,8 @@ impl Selector {
         }
         Ok(false)
     }
-    pub fn events_map(&self) -> *mut HashMap<i32, FdEntry> {
-        &self.events_map as *const HashMap<i32, FdEntry>  as *mut HashMap<i32, FdEntry>
+    pub fn events_map(&self) -> *mut HashMap<i32, JobEntry> {
+        &self.events_map as *const HashMap<i32, JobEntry>  as *mut HashMap<i32, JobEntry>
     }
     pub fn register(&self, fd: RawFd, token: Token, interests: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
         use TokenType;
@@ -95,7 +95,7 @@ impl Selector {
         };
         let events_map = self.events_map();
         unsafe {
-            events_map.as_mut().unwrap().insert(fd as i32, FdEntry {token, job});
+            events_map.as_mut().unwrap().insert(fd as i32, JobEntry {token, job});
             cvt(libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_ADD, fd, &mut info))?;
             Ok(())
         }
@@ -190,7 +190,7 @@ impl Drop for Selector {
 
 pub struct Events {
     events: Vec<libc::epoll_event>, // fd
-    entries: Vec<FdEntry>, // <FdEntry>
+    entries: Vec<JobEntry>, // <JobEntry>
 }
 
 impl Events {
@@ -226,7 +226,7 @@ impl Events {
             Event::new(kind, Token(token as usize))
         })
     }
-    pub fn get_mut(&mut self, idx: usize) -> Option<&mut FdEntry> {
+    pub fn get_mut(&mut self, idx: usize) -> Option<&mut JobEntry> {
         match self.entries.get_mut(idx) {
             Some(v) => Some(v),
             None => None,
@@ -240,7 +240,7 @@ impl Events {
                     u64: usize::from(event.token()) as u64
         });
         self.entries.push(
-            FdEntry {
+            JobEntry {
                 token: event.token(),
                 job,
             }

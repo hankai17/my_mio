@@ -237,14 +237,14 @@ impl Event {
 pub type Job = Arc<Mutex<dyn FnMut(i64) + 'static + Send + Sync>>;
 
 #[derive(Clone)]
-pub struct FdEntry {
+pub struct JobEntry {
     pub token: Token,
     pub job: Job,
 }
 
-impl Drop for FdEntry {
+impl Drop for JobEntry {
     fn drop(&mut self) {
-        //println!("------------dropping FdEntry job use_count: {}", Arc::strong_count(&self.job));
+        //println!("------------dropping JobEntry job use_count: {}", Arc::strong_count(&self.job));
     }
 }
 

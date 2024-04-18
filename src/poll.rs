@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use std::collections::HashMap;
 use std::cell::RefCell;
 
-use event_imp::{self as event, Ready, Event, Evented, PollOpt, Job, FdEntry};
+use event_imp::{self as event, Ready, Event, Evented, PollOpt, Job, JobEntry};
 use {Token, sys};
 
 const READINESS_SHIFT: usize = 0;
@@ -704,7 +704,7 @@ impl Poll {
         }
         loop {
             let now = Instant::now();
-            let res = self.selector.select(&mut events.inner, AWAKEN, timeout);   // inner: sys::Events,
+            let res = self.selector.select(&mut events.inner, AWAKEN, timeout);
             match res {
                 Ok(true) => {
                     self.readiness_queue.inner.awakener.cleanup();
@@ -841,7 +841,7 @@ impl Events {
     pub fn get(&self, idx: usize) -> Option<Event> {
         self.inner.get(idx)
     }
-    pub fn get_mut(&mut self, idx: usize) -> Option<&mut FdEntry> {
+    pub fn get_mut(&mut self, idx: usize) -> Option<&mut JobEntry> {
         self.inner.get_mut(idx)
     }
     pub fn len(&self) -> usize {

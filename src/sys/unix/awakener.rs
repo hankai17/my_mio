@@ -56,5 +56,5 @@ mod pipe {
             self.reader().deregister(poll)
         }
     }
-
 }
+

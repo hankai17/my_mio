@@ -52,7 +52,6 @@
 - 240413
     ok
     精简设计
-    复原
 - 240414
     把EventLoop里的task_list去掉 复用EventLoop::run_once中的events临时变量
         去不掉 没地方保存
@@ -61,17 +60,15 @@
     update函数 也用tokenallocator打通 这样全局所有的token大一统 即local线程变量管理所有类型 并给每个类型分配唯一id 根据id找到具体的类型
               +--type
               |
-    token/id -+   (allocator分配/token/id)
+    Token/id -+   (allocator分配/token/id)
               |
               +-token
 
-        +--token
-        |       
-    fd -+
-        |
-        +--job
-    events.get_mut时 得到的是token/id结构即FdEntry(名字不好改成JobEntry)
-    复原
+                  +--Token
+                  |       
+    <fd, JobEntry-+>
+                  |
+                  +--job
 - 240415
     JobEntry 添加event
     update函数 也用tokenallocator打通 这样全局所有的token大一统 即local线程变量管理所有类型 并给每个类型分配唯一id 根据id找到具体的类型
@@ -96,3 +93,8 @@
     conn一直引用session  且无释放时机(只有当conn释放本身时才会释放自身的read/writ_job 从而解引用session)
     数据发送完毕 session手动解引用 Arc<conn>
 
+    events.get_mut时 得到的是token/id结构即FdEntry(名字不好改成JobEntry)
+    复原 notify timer channel
+- 240418
+    register函数参数中去掉token?
+        建议保留 参数的token可以作为 该类型的token
