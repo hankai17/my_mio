@@ -29,7 +29,7 @@ const DROPPED_MASK: usize = 1 << DROPPED_SHIFT;
 const AWAKEN: Token = Token(usize::MAX);
 const MAX_REFCOUNT: usize = (isize::MAX) as usize;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum TokenType {
     SOCKET_EVENT,
     NOTIFY_EVENT,
@@ -37,10 +37,10 @@ pub enum TokenType {
     JOBS_EVENT,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub struct TokenEntry {
-    ttype: TokenType, 
-    token: Token,
+    pub ttype: TokenType, 
+    pub token: Token,
 }
 
 pub struct IdAllocator {
@@ -386,6 +386,7 @@ impl ReadinessQueueInner {
     }
     fn enqueue_node_with_wakeup(&self, node: &ReadinessNode) -> io::Result<()> {    // 跨线程
         if self.enqueue_node(node) {
+            println!("need wakeup");
             self.wakeup()?;
         }
         Ok(())
@@ -1018,6 +1019,13 @@ impl RegistrationInner {
                 (*self.node).job = job;
             }
             enqueue_with_wakeup(queue, self)?;
+            /*
+            let res = enqueue_with_wakeup(queue, self);
+            match res {
+                Ok(_) => println!("enqueue with wakeup ok"),
+                Err(e) => println!("wakeup failed"),
+            };
+            */
         }
         Ok(())
     }

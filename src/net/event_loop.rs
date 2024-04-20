@@ -175,7 +175,7 @@ impl EventLoop {
     pub fn channel(&self) -> Sender<i32> {
         Sender::new(self.notify_tx.clone())
     }
-    pub fn timeout(&mut self, token: i32, delay: Duration) -> timer::Result<Timeout> {
+    pub fn timeout(&mut self, delay: Duration, token: i32) -> timer::Result<Timeout> {
         self.timer.set_timeout(delay, token)
     }
     pub fn clear_timeout(&mut self, timeout: &Timeout) -> bool {
@@ -236,6 +236,12 @@ impl EventLoop {
             */
             match self.events.get_mut(i) {
                 Some(job_entry) => {
+                    //println!("job_entry: {:?}", job_entry.token);
+                    //use TokenType;
+                    //let mut token_alloc = Poll::get_current_token_allocator();
+                    //let mut token_entry = token_alloc.lock().unwrap().get(job_entry.token.into());
+                    //println!("token_entry: {:?}", token_entry);
+
                     let c = &mut job_entry.job;
                     c.lock().unwrap()(123);
                 },

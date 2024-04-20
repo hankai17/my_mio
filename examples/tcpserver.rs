@@ -85,6 +85,7 @@ fn main() {
         .timer_wheel_size(1024)
         .timer_capacity(65536);
     let mut event_loop = b.get_build().unwrap();
+    event_loop.lock().unwrap().timeout(Duration::from_millis(1000 * 3), 222 as i32);
     let mut tcp_server = Arc::new(Mutex::new(TcpServer::new(event_loop.clone(), &"0.0.0.0:9528".to_string())));
     tcp_server.lock().unwrap().start::<Test>();
     TcpServer::start_internal1(tcp_server);

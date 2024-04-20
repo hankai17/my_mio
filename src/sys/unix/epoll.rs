@@ -52,6 +52,7 @@ impl Selector {
         let timeout_ms = timeout
                 .map(|to| cmp::min(millis(to), i32::MAX as u64) as i32)
                 .unwrap_or(-1);
+        let mut has_notify = false;
         let events_map = self.events_map();
         evts.clear();
         unsafe {
@@ -75,12 +76,27 @@ impl Selector {
                 let ready = epoll_to_ioevent(evts.events[i].events as u32);
                 c(ready_as_usize(ready) as i64);
                 */
+                use TokenType;
+                let mut token_alloc = Poll::get_current_token_allocator();
+
                 let fd = evts.events[i].u64 as usize as i32;
                 let fd_entry = events_map.as_mut().unwrap().get(&fd).unwrap();
+                let mut token_entry = token_alloc.lock().unwrap().get(fd_entry.token.into());
+                println!("token_entry: {:?}", token_entry);
+                if token_entry.ttype == TokenType::NOTIFY_EVENT {
+                    evts.events.remove(i);
+                    has_notify = true;
+                    println!("found notify");
+                    continue;
+                }
                 evts.entries.push(fd_entry.clone());
             }
         }
-        Ok(false)
+        if has_notify {
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
     pub fn events_map(&self) -> *mut HashMap<i32, JobEntry> {
         &self.events_map as *const HashMap<i32, JobEntry>  as *mut HashMap<i32, JobEntry>

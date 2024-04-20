@@ -98,3 +98,7 @@
 - 240418
     register函数参数中去掉token?
         建议保留 参数的token可以作为 该类型的token
+- 240420
+    复原 notify timer channel
+    register函数参数中去掉token?
+    
