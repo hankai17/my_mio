@@ -239,15 +239,15 @@ impl EventLoop {
                     //println!("job_entry: {:?}", job_entry.token);
                     use TokenType;
                     let mut token_alloc = Poll::get_current_token_allocator();
-                    let mut ready = Ready::empty();
                     match token_alloc.lock().unwrap().get_entry(job_entry.token.into()) {
                         Some(token_entry) => {
                             println!("token_entry: {:?}", token_entry);
-                            ready = token_entry.ready;
                         },
                         None => println!("token entry is none")
                     }
+
                     let c = &mut job_entry.job;
+                    let ready = job_entry.ready;
                     c.lock().unwrap()(ready_as_usize(ready) as i64);
                 },
                 None => {

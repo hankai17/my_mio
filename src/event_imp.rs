@@ -240,6 +240,7 @@ pub type Job = Arc<Mutex<dyn FnMut(i64) + 'static + Send + Sync>>;
 pub struct JobEntry {
     pub token: Token,
     pub job: Job,
+    pub ready: Ready,
 }
 
 impl Drop for JobEntry {

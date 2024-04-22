@@ -42,7 +42,6 @@ pub enum TokenType {
 pub struct TokenEntry {
     pub ttype: TokenType, 
     pub token: Token,
-    pub ready: Ready,
 }
 
 pub struct IdAllocator {
@@ -91,7 +90,6 @@ impl TokenAllocator {
         let mut entry = TokenEntry {
             ttype,
             token,
-            ready: Ready::empty(),
         };
         self.token_map.insert(id, entry);
         id

@@ -80,7 +80,7 @@ impl Selector {
                 let mut token_alloc = Poll::get_current_token_allocator();
 
                 let fd = evts.events[i].u64 as usize as i32;
-                let fd_entry = events_map.as_mut().unwrap().get(&fd).unwrap();
+                let fd_entry: &mut JobEntry = events_map.as_mut().unwrap().get_mut(&fd).unwrap();
                 let mut token_entry = token_alloc.lock().unwrap().get(fd_entry.token.into());
                 if token_entry.ttype == TokenType::NOTIFY_EVENT {
                     evts.events.remove(i);
@@ -88,8 +88,8 @@ impl Selector {
                     println!("found notify");
                     continue;
                 }
-                token_entry.ready = evts.get_ready(i).unwrap();
-                println!("after set ready, token_entry: {:?}", token_entry);
+                fd_entry.ready = evts.get_ready(i).unwrap();
+                //println!("after set ready, token_entry: {:?}", token_entry);
                 evts.entries.push(fd_entry.clone());
             }
         }
@@ -112,7 +112,7 @@ impl Selector {
         };
         let events_map = self.events_map();
         unsafe {
-            events_map.as_mut().unwrap().insert(fd as i32, JobEntry {token, job});
+            events_map.as_mut().unwrap().insert(fd as i32, JobEntry { token, job, ready: Ready::empty()});
             cvt(libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_ADD, fd, &mut info))?;
             Ok(())
         }
@@ -272,7 +272,7 @@ impl Events {
         }
     }
     pub fn push_event(&mut self, event: Event, job: Job) {
-        //println!("push event");
+        println!("push event: {:?}", event);
         self.events.push(
             libc::epoll_event {
                     events: ioevent_to_epoll(event.readiness(), PollOpt::empty()),
@@ -282,6 +282,7 @@ impl Events {
             JobEntry {
                 token: event.token(),
                 job,
+                ready: Ready::empty(),
             }
         );
     }

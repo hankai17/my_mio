@@ -217,7 +217,7 @@ impl TcpConnection {
     pub fn handleEvent(&mut self, event: i64) -> io::Result<()> {
         // check closed
         let ready = ready_from_usize(event as usize);
-        //println!("ready: {:?}", ready);
+        //println!("handleEvent ready----------->: {:?}", ready);
         if ready.is_readable() {
            self.handleRead();
         }

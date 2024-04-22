@@ -56,7 +56,6 @@ impl Handler for Test {
 
         let event_loop = EventLoopBuilder::get_current_loop();
         let job = Arc::new(Mutex::new(move |val: i64| {
-            println!("-------------------------------");
             r.clone(); 
             set.clone(); 
             let mut conn = conn_clone.lock().unwrap();
