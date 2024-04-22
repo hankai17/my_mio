@@ -82,13 +82,14 @@ impl Selector {
                 let fd = evts.events[i].u64 as usize as i32;
                 let fd_entry = events_map.as_mut().unwrap().get(&fd).unwrap();
                 let mut token_entry = token_alloc.lock().unwrap().get(fd_entry.token.into());
-                println!("token_entry: {:?}", token_entry);
                 if token_entry.ttype == TokenType::NOTIFY_EVENT {
                     evts.events.remove(i);
                     has_notify = true;
                     println!("found notify");
                     continue;
                 }
+                token_entry.ready = evts.get_ready(i).unwrap();
+                println!("after set ready, token_entry: {:?}", token_entry);
                 evts.entries.push(fd_entry.clone());
             }
         }
@@ -240,6 +241,28 @@ impl Events {
             }
             let token = self.events[idx].u64;   // rust对标准的epoll_event进行封装了?
             Event::new(kind, Token(token as usize))
+        })
+    }
+    pub fn get_ready(&self, idx: usize) -> Option<Ready> {
+        self.events.get(idx).map(|event| {
+            let epoll = event.events as c_int;
+            let mut kind = Ready::empty();
+            if (epoll & EPOLLIN) != 0 {
+                kind = kind | Ready::readable();
+            }
+            if (epoll & EPOLLOUT) != 0 {
+                kind = kind | Ready::writable()
+            }
+            if (epoll & EPOLLPRI) != 0 {
+                kind = kind | Ready::readable() | UnixReady::priority();
+            }
+            if (epoll & EPOLLERR) != 0 {
+                kind = kind | UnixReady::error()
+            }
+            if (epoll & EPOLLHUP) != 0 {
+                kind = kind | UnixReady::hup()
+            }
+            kind
         })
     }
     pub fn get_mut(&mut self, idx: usize) -> Option<&mut JobEntry> {

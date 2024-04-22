@@ -35,12 +35,14 @@ pub enum TokenType {
     NOTIFY_EVENT,
     TIMERS_EVENT,
     JOBS_EVENT,
+    TOKEN_EVENT,
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub struct TokenEntry {
     pub ttype: TokenType, 
     pub token: Token,
+    pub ready: Ready,
 }
 
 pub struct IdAllocator {
@@ -89,12 +91,16 @@ impl TokenAllocator {
         let mut entry = TokenEntry {
             ttype,
             token,
+            ready: Ready::empty(),
         };
         self.token_map.insert(id, entry);
         id
     }
     pub fn get(&mut self, id: usize) -> TokenEntry {
         *self.token_map.get(&id).unwrap()
+    }
+    pub fn get_entry(&mut self, id: usize) -> Option<TokenEntry> {
+        self.token_map.get(&id).copied()
     }
     pub fn dealloc(&mut self, id: usize) {
         self.token_map.remove(&id);
@@ -571,7 +577,9 @@ impl ReadinessQueue {
                 self.inner.enqueue_node(node);
             }
             if !readiness.is_empty() {
+                let mut token_alloc = Poll::get_current_token_allocator();
                 let token = unsafe { token(node, next.token_read_pos()) };
+                let token = Token(token_alloc.lock().unwrap().alloc(TokenType::TOKEN_EVENT, token));
                 dst.push_event(Event::new(readiness, token), node.job.clone());
                 //Arc::into_raw(node.job);
                 //println!("after push_event job use_count: {}", Arc::strong_count(&node.job));

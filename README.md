@@ -58,11 +58,11 @@
         还是得把events临时变量 变成EventLoop的成员
             Job 从Box 改成 Arc<Mutex>
     update函数 也用tokenallocator打通 这样全局所有的token大一统 即local线程变量管理所有类型 并给每个类型分配唯一id 根据id找到具体的类型
-              +--type
-              |
-    Token/id -+   (allocator分配/token/id)
-              |
-              +-token
+                            +--type
+                            |
+    <Token/id,  TokenEntry>-+   (allocator分配/token/id)
+                            |
+                            +-token
 
                   +--Token
                   |       
@@ -101,4 +101,9 @@
 - 240420
     复原 notify timer channel
     register函数参数中去掉token?
-    
+- 240422
+    event 传入 job() 参数里
+    复原 notify timer channel
+    register函数参数中去掉token?
+    event_loop 队列整理 
+    文件拆分

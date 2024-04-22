@@ -237,13 +237,18 @@ impl EventLoop {
             match self.events.get_mut(i) {
                 Some(job_entry) => {
                     //println!("job_entry: {:?}", job_entry.token);
-                    //use TokenType;
-                    //let mut token_alloc = Poll::get_current_token_allocator();
-                    //let mut token_entry = token_alloc.lock().unwrap().get(job_entry.token.into());
-                    //println!("token_entry: {:?}", token_entry);
-
+                    use TokenType;
+                    let mut token_alloc = Poll::get_current_token_allocator();
+                    let mut ready = Ready::empty();
+                    match token_alloc.lock().unwrap().get_entry(job_entry.token.into()) {
+                        Some(token_entry) => {
+                            println!("token_entry: {:?}", token_entry);
+                            ready = token_entry.ready;
+                        },
+                        None => println!("token entry is none")
+                    }
                     let c = &mut job_entry.job;
-                    c.lock().unwrap()(123);
+                    c.lock().unwrap()(ready_as_usize(ready) as i64);
                 },
                 None => {
                     println!("get_mut none");
