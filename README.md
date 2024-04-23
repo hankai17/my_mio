@@ -102,9 +102,10 @@
     复原 notify timer channel
     register函数参数中去掉token?
 - 240422
-    event 传入 job() 参数里
-    复原 notify timer channel
     register函数参数中去掉token?
     event_loop 队列整理 
     文件拆分
     全局<Token/id, TokenEntry> 生命周期管理
+- 240423
+    register(...token...) => register(...type...)
+    复原 notify timer channel

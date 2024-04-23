@@ -242,6 +242,9 @@ impl EventLoop {
                     match token_alloc.lock().unwrap().get_entry(job_entry.token.into()) {
                         Some(token_entry) => {
                             println!("token_entry: {:?}", token_entry);
+                            if token_entry.ttype == TokenType::TOKEN_EVENT {
+                                println!("TOKEN_EVENT id: {:?}", token_entry.token);
+                            }
                         },
                         None => println!("token entry is none")
                     }

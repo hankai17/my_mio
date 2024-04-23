@@ -1,9 +1,8 @@
 use net::{EventLoop, TcpStream, TcpListener};
 use std::net::{SocketAddr};
 use std::sync::{Arc, Mutex};
-use {PollOpt, Ready, Token, Job};
+use {Poll, PollOpt, Ready, Token, Job, TokenType};
 
-const SERVER: Token = Token(10_000_000);
 pub type AcceptorJob = Box<dyn FnMut(TcpStream, SocketAddr) + 'static + Send + Sync>;
 
 unsafe impl Send for Acceptor {}
@@ -68,7 +67,9 @@ impl Acceptor {
         }
     }
     pub fn bind(&mut self, job: Job) {
-        self.event_loop.lock().unwrap().register(&self.tcp_listener, SERVER, Ready::readable(), 
+        //let mut token_alloc = Poll::get_current_token_allocator();
+        //let token = Token(token_alloc.lock().unwrap().alloc(TokenType::ACCEPT_EVENT, Token(0)));
+        self.event_loop.lock().unwrap().register(&self.tcp_listener, Token(0), Ready::readable(), 
                 PollOpt::edge(), job);
         self.is_listening = true;
     }

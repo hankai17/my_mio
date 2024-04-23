@@ -36,6 +36,8 @@ pub enum TokenType {
     TIMERS_EVENT,
     JOBS_EVENT,
     TOKEN_EVENT,
+    ACCEPT_EVENT,
+    OTHER_EVENT,
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
@@ -577,7 +579,7 @@ impl ReadinessQueue {
             if !readiness.is_empty() {
                 let mut token_alloc = Poll::get_current_token_allocator();
                 let token = unsafe { token(node, next.token_read_pos()) };
-                let token = Token(token_alloc.lock().unwrap().alloc(TokenType::TOKEN_EVENT, token));
+                //let token = Token(token_alloc.lock().unwrap().alloc(TokenType::TOKEN_EVENT, token));
                 dst.push_event(Event::new(readiness, token), node.job.clone());
                 //Arc::into_raw(node.job);
                 //println!("after push_event job use_count: {}", Arc::strong_count(&node.job));
