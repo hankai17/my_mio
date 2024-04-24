@@ -1,5 +1,5 @@
 use bytes::{BytesMut};
-use {Poll, PollOpt, Ready, Token, TokenType};
+use {Poll, PollOpt, Ready, Token, TokenType, TokenEntry};
 use net::{EventLoop, TcpStream, Acceptor, TcpConnection};
 use std::net::{SocketAddr};
 use std::sync::{Arc, Mutex};
@@ -73,9 +73,16 @@ impl TcpServer {
         let job = Arc::new(Mutex::new(move |val: i64| { clone_conn.lock().unwrap().handleEvent(val); }));
 
         let mut token_alloc = Poll::get_current_token_allocator();
-        let token = Token(token_alloc.lock().unwrap().alloc(TokenType::SOCKET_EVENT, Token(0)));
-        self.event_loop.lock().unwrap().register(&conn.lock().unwrap().sock, token, 
-                Ready::readable() | Ready::writable(), PollOpt::edge(), job);
+        self.event_loop.lock().unwrap().register(
+                &conn.lock().unwrap().sock,
+                TokenEntry {
+                    ttype: TokenType::SOCKET_EVENT, 
+                    token: Token(0)
+                }, 
+                Ready::readable() | Ready::writable(),
+                PollOpt::edge(), 
+                job
+        );
     }
     fn start_internal(&mut self) {
         let mut clone = self.acceptor.clone();

@@ -11,7 +11,7 @@ use libc::{EPOLLET, EPOLLOUT, EPOLLIN, EPOLLPRI}; // define in /usr/include/sys/
 
 //pub use poll::{TokenAllocator, TokenType};
 
-use {io, Ready, PollOpt, Token, Job, Poll, JobEntry};
+use {io, Ready, PollOpt, Token, Job, Poll, JobEntry, TokenEntry, TokenType};
 use event_imp::{Event, ready_as_usize};
 use sys::unix::{cvt, UnixReady};
 use sys::unix::io::set_cloexec;
@@ -48,7 +48,7 @@ impl Selector {
         })
     }
     pub fn id(&self) -> usize { self.id }
-    pub fn select(&self, evts: &mut Events, awakener: Token, timeout: Option<Duration>) -> io::Result<bool> {
+    pub fn select(&self, evts: &mut Events, timeout: Option<Duration>) -> io::Result<bool> {
         let timeout_ms = timeout
                 .map(|to| cmp::min(millis(to), i32::MAX as u64) as i32)
                 .unwrap_or(-1);
@@ -76,12 +76,10 @@ impl Selector {
                 let ready = epoll_to_ioevent(evts.events[i].events as u32);
                 c(ready_as_usize(ready) as i64);
                 */
-                use TokenType;
-                let mut token_alloc = Poll::get_current_token_allocator();
-
                 let fd = evts.events[i].u64 as usize as i32;
                 let fd_entry: &mut JobEntry = events_map.as_mut().unwrap().get_mut(&fd).unwrap();
-                let mut token_entry = token_alloc.lock().unwrap().get(fd_entry.token.into());
+                let mut token_entry = fd_entry.token_entry;
+
                 if token_entry.ttype == TokenType::NOTIFY_EVENT {
                     evts.events.remove(i);
                     has_notify = true;
@@ -102,28 +100,24 @@ impl Selector {
     pub fn events_map(&self) -> *mut HashMap<i32, JobEntry> {
         &self.events_map as *const HashMap<i32, JobEntry>  as *mut HashMap<i32, JobEntry>
     }
-    pub fn register(&self, fd: RawFd, token: Token, interests: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
-        use TokenType;
-        let mut token_alloc = Poll::get_current_token_allocator();
-        let token = Token(token_alloc.lock().unwrap().alloc(TokenType::SOCKET_EVENT, token));
+    pub fn register(&self, fd: RawFd, token: TokenEntry, interests: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
         let mut info = libc::epoll_event {
             events: ioevent_to_epoll(interests, opts),
             u64: fd as u64
         };
         let events_map = self.events_map();
         unsafe {
-            events_map.as_mut().unwrap().insert(fd as i32, JobEntry { token, job, ready: Ready::empty()});
+            events_map.as_mut().unwrap().insert(fd as i32, JobEntry { token_entry: token, job, ready: Ready::empty()});
             cvt(libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_ADD, fd, &mut info))?;
             Ok(())
         }
     }
-    pub fn reregister(&self, fd: RawFd, token: Token, interests: Ready, opts: PollOpt) -> io::Result<()> {
-        use TokenType;
-        let mut token_alloc = Poll::get_current_token_allocator();
-        let token = Token(token_alloc.lock().unwrap().alloc(TokenType::SOCKET_EVENT, token));
+    pub fn reregister(&self, fd: RawFd, token: TokenEntry, interests: Ready, opts: PollOpt) -> io::Result<()> {
+        // TODO
+        let t = token.token;
         let mut info = libc::epoll_event {
             events: ioevent_to_epoll(interests, opts),
-            u64: usize::from(token) as u64
+            u64: usize::from(t) as u64
         };
         unsafe {
             cvt(libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_MOD, fd, &mut info))?;
@@ -280,9 +274,12 @@ impl Events {
         });
         self.entries.push(
             JobEntry {
-                token: event.token(),
-                job,
+                token_entry: TokenEntry {
+                    ttype: TokenType::TOKEN_EVENT,
+                    token: event.token()
+                },
                 ready: Ready::empty(),
+                job,
             }
         );
     }

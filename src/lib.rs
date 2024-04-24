@@ -11,6 +11,8 @@ pub use event_imp:: {
     Ready,
     Job,
     JobEntry,
+    TokenType,
+    TokenEntry,
 };
 
 mod io;
@@ -20,7 +22,7 @@ mod token;
 pub use token::Token;
 
 mod poll;
-pub use poll::{Poll, Registration, SetReadiness, TokenAllocator, TokenType};
+pub use poll::{Poll, Registration, SetReadiness, TokenAllocator};
 
 pub mod event {
     pub use super::poll::{Events, Iter}; 

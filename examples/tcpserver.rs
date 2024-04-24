@@ -2,7 +2,7 @@ extern crate my_mio;
 extern crate bytes;
 
 use std::{io, mem, fmt};
-use my_mio::{Events, Poll, PollOpt, Ready, Token, Job, Registration, SetReadiness, TokenType};
+use my_mio::{Events, Poll, PollOpt, Ready, Token, Job, Registration, SetReadiness, TokenType, TokenEntry};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use my_mio::net::{TcpListener, TcpStream, EventLoop, EventLoopBuilder, Acceptor, TcpConnection, TcpServer, Handler};
 use std::net::{self, SocketAddr, SocketAddrV4, SocketAddrV6, Ipv4Addr, Ipv6Addr};
@@ -63,10 +63,17 @@ impl Handler for Test {
             conn.send(rsp);
             println!("sending: conn use_count: {}", Arc::strong_count(&conn_clone));
         }));
-        let mut token_alloc = Poll::get_current_token_allocator();
-        let token = Token(token_alloc.lock().unwrap().alloc(TokenType::OTHER_EVENT, Token(0)));
         set_clone.set_readiness(Ready::readable()).unwrap();
-        event_loop.lock().unwrap().register(&r_clone, token, Ready::readable(), PollOpt::edge(), job).unwrap();
+        event_loop.lock().unwrap().register(
+                &r_clone,
+                TokenEntry {
+                    ttype: TokenType::OTHER_EVENT,
+                    token: Token(0)
+                },
+                Ready::readable(),
+                PollOpt::edge(),
+                job
+        ).unwrap();
     }
     fn onWritten(&mut self) -> bool {
         let mut conn = self.conn.take().unwrap();

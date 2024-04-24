@@ -1,4 +1,4 @@
-use {channel, Poll, Events, Token, TokenAllocator, TokenType};
+use {channel, Poll, Events, Token, TokenAllocator, TokenType, TokenEntry};
 use event::Evented;
 use event_imp::{Event, Ready, PollOpt, Job, ready_as_usize};
 use timer::{self, Timer, Timeout};
@@ -135,9 +135,6 @@ pub struct EventLoop {
     timer_list: Slab<Job>,
 }
 
-const NOTIFY: Token = Token(usize::MAX - 1);
-const TIMER: Token = Token(usize::MAX - 2);
-
 impl EventLoop {
     fn configured(config: Config) -> io::Result<EventLoop> {
         let token_allocator = Arc::new(Mutex::new(TokenAllocator::new()));
@@ -150,13 +147,24 @@ impl EventLoop {
             .capacity(config.timer_capacity)
             .build();
         let (tx, rx) = channel::sync_channel(config.notify_capacity);   // 初始化pipe
-        let job1 = Arc::new(Mutex::new(move |val: i64| {}));
-        let job2 = Arc::new(Mutex::new(move |val: i64| {}));
-        let notify_token = Token(token_alloc.lock().unwrap().alloc(TokenType::NOTIFY_EVENT, NOTIFY));
-        poll.register(&rx, notify_token, Ready::readable(), 
-                PollOpt::edge() | PollOpt::oneshot(), job1)?;           // 初始化receiver中的node
-        poll.register(&timer, TIMER, Ready::readable(), 
-                PollOpt::edge(), job2)?;                                // 初始化timer
+        poll.register(&rx, 
+                    TokenEntry {
+                        ttype: TokenType::NOTIFY_EVENT, 
+                        token: Token(0)
+                    }, 
+                    Ready::readable(), 
+                    PollOpt::edge() | PollOpt::oneshot(), 
+                    Arc::new(Mutex::new(move |val: i64| {}))
+        )?;
+        poll.register(&timer,
+                    TokenEntry {
+                        ttype: TokenType::TIMERS_EVENT,
+                        token: Token(0)
+                    },
+                    Ready::readable(),
+                    PollOpt::edge(),
+                    Arc::new(Mutex::new(move |val: i64| {}))
+        )?;
         Ok(EventLoop {
             run: true,
             poll,
@@ -186,11 +194,11 @@ impl EventLoop {
     }
     pub fn is_running(&self) -> bool { self.run }
     //pub fn register<E: ?Sized>(&mut self, io: &E, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()>
-    pub fn register<E>(&self, io: &E, token: Token, interest: Ready, opt: PollOpt, job: Job) -> io::Result<()> // 也可以
+    pub fn register<E>(&self, io: &E, token: TokenEntry, interest: Ready, opt: PollOpt, job: Job) -> io::Result<()> // 也可以
         where E: Evented {
         self.poll.register(io, token, interest, opt, job)
     }
-    pub fn reregister<E: ?Sized>(&self, io: &E, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()>
+    pub fn reregister<E: ?Sized>(&self, io: &E, token: TokenEntry, interest: Ready, opt: PollOpt) -> io::Result<()>
         where E: Evented {
         self.poll.reregister(io, token, interest, opt)
     }
@@ -211,7 +219,14 @@ impl EventLoop {
                 _ => break,
             }
         }
-        let _ = self.poll.reregister(&self.notify_rx, NOTIFY, Ready::readable(), PollOpt::edge() | PollOpt::oneshot());
+        let _ = self.poll.reregister(&self.notify_rx, 
+                                    TokenEntry {
+                                        ttype: TokenType::NOTIFY_EVENT, 
+                                        token: Token(0)
+                                    }, 
+                                    Ready::readable(),
+                                    PollOpt::edge() | PollOpt::oneshot()
+        );
     }
     fn timer_process(&self) {
         /*
@@ -236,10 +251,8 @@ impl EventLoop {
             */
             match self.events.get_mut(i) {
                 Some(job_entry) => {
-                    //println!("job_entry: {:?}", job_entry.token);
-                    use TokenType;
-                    let mut token_alloc = Poll::get_current_token_allocator();
-                    match token_alloc.lock().unwrap().get_entry(job_entry.token.into()) {
+                    println!("job_entry: {:?}", job_entry.token_entry);
+                        /*
                         Some(token_entry) => {
                             println!("token_entry: {:?}", token_entry);
                             if token_entry.ttype == TokenType::TOKEN_EVENT {
@@ -247,8 +260,7 @@ impl EventLoop {
                             }
                         },
                         None => println!("token entry is none")
-                    }
-
+                        */
                     let c = &mut job_entry.job;
                     let ready = job_entry.ready;
                     c.lock().unwrap()(ready_as_usize(ready) as i64);

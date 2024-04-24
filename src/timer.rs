@@ -1,4 +1,4 @@
-use {convert, io, Ready, Poll, PollOpt, Token, Registration, SetReadiness, Job, TokenType};
+use {convert, io, Ready, Poll, PollOpt, Token, Registration, SetReadiness, Job, TokenType, TokenEntry};
 use lazycell::LazyCell;
 use slab::Slab;
 use std::{cmp, fmt, u64, usize, iter, thread};
@@ -344,13 +344,11 @@ fn spawn_wakeup_thread(state: WakeupState, set_readiness: SetReadiness,
 }
 
 impl<T> Evented for Timer<T> {
-    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
-        let mut token_alloc = Poll::get_current_token_allocator();
-        let token = Token(token_alloc.lock().unwrap().alloc(TokenType::TIMERS_EVENT, token));
+    fn register(&self, poll: &Poll, token: TokenEntry, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
         if self.inner.borrow().is_some() {
             return Err(io::Error::new(io::ErrorKind::Other, "timer alreay registered"));
         }
-        let (registration, set_readiness) = Registration::new(poll, token, interest, opts);
+        let (registration, set_readiness) = Registration::new(poll, token.token, interest, opts);
         let wakeup_state = Arc::new(AtomicUsize::new(usize::MAX));
         let thread_handle = spawn_wakeup_thread(
             wakeup_state.clone(),
@@ -369,9 +367,7 @@ impl<T> Evented for Timer<T> {
         }
         Ok(())
     }
-    fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
-        let mut token_alloc = Poll::get_current_token_allocator();
-        let token = Token(token_alloc.lock().unwrap().alloc(TokenType::TIMERS_EVENT, token));
+    fn reregister(&self, poll: &Poll, token: TokenEntry, interest: Ready, opts: PollOpt) -> io::Result<()> {
         let job = Arc::new(Mutex::new(move |val: i64| { println!("null reregister for Timer") }));
         match self.inner.borrow() {
             Some(inner) => inner.registration.update(poll, token, interest, opts, job),

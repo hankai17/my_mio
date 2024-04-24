@@ -109,3 +109,16 @@
 - 240423
     register(...token...) => register(...type...)
     复原 notify timer channel
+- 240424
+                                +--type
+                  +--TokenEntry-+
+                  |             +--id
+    <fd, JobEntry-+>
+                  |
+                  +--job
+
+    let (registration, set_readiness) = Registration::new(poll, token.token, interest, opts);
+    改成
+    let (registration, set_readiness) = Registration::new(poll, TokenEntry, interest, opts);
+
+

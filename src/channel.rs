@@ -1,4 +1,4 @@
-use {io, Ready, Poll, PollOpt, Registration, SetReadiness, Token, Job};
+use {io, Ready, Poll, PollOpt, Registration, SetReadiness, TokenEntry, Job};
 use event::Evented;
 use std::fmt;
 use std::sync::{mpsc, Arc, Mutex};
@@ -123,14 +123,11 @@ impl ReceiverCtl {
 }
 
 impl Evented for ReceiverCtl {
-    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {   // 接收端注册: 分配一个node // 如果有pending则立即入队
-        use TokenType;
-        let mut token_alloc = Poll::get_current_token_allocator();
-        let token = Token(token_alloc.lock().unwrap().alloc(TokenType::NOTIFY_EVENT, token));
+    fn register(&self, poll: &Poll, token: TokenEntry, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {   // 接收端注册: 分配一个node // 如果有pending则立即入队
         if self.registration.borrow().is_some() {
             return Err(io::Error::new(io::ErrorKind::Other, "receiver already registered"));
         }
-        let (registration, set_readiness) = Registration::new(poll, token, interest, opts);
+        let (registration, set_readiness) = Registration::new(poll, token.token, interest, opts);
         if self.inner.pending.load(Ordering::Relaxed) > 0 {
             let _ = set_readiness.set_readiness(Ready::readable());
         }
@@ -138,10 +135,7 @@ impl Evented for ReceiverCtl {
         self.inner.set_readiness.fill(set_readiness).expect("unexpected state encountered");    // hankai1初始化inner中的set_readiness
         Ok(())
     }
-    fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
-        use TokenType;
-        let mut token_alloc = Poll::get_current_token_allocator();
-        let token = Token(token_alloc.lock().unwrap().alloc(TokenType::NOTIFY_EVENT, token));
+    fn reregister(&self, poll: &Poll, token: TokenEntry, interest: Ready, opts: PollOpt) -> io::Result<()> {
         let job = Arc::new(Mutex::new(move |val: i64| { println!("null reregister for ReceiverCtl") }));
         match self.registration.borrow() {
             Some(registration) => registration.update(poll, token, interest, opts, job),
@@ -229,10 +223,10 @@ impl<T> Receiver<T> {
 }
 
 impl<T> Evented for Receiver<T> {
-    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
+    fn register(&self, poll: &Poll, token: TokenEntry, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
         self.ctl.register(poll, token, interest, opts, job)
     }
-    fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
+    fn reregister(&self, poll: &Poll, token: TokenEntry, interest: Ready, opts: PollOpt) -> io::Result<()> {
         self.ctl.reregister(poll, token, interest, opts)
     }
     fn deregister(&self, poll: &Poll) -> io::Result<()> {

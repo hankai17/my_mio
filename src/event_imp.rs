@@ -236,9 +236,26 @@ impl Event {
 
 pub type Job = Arc<Mutex<dyn FnMut(i64) + 'static + Send + Sync>>;
 
+#[derive(Copy, Clone, PartialEq, Debug)]
+pub enum TokenType {
+    SOCKET_EVENT,
+    NOTIFY_EVENT,
+    TIMERS_EVENT,
+    JOBS_EVENT,
+    TOKEN_EVENT,
+    ACCEPT_EVENT,
+    OTHER_EVENT,
+}
+
+#[derive(Copy, Clone, PartialEq, Debug)]
+pub struct TokenEntry {
+    pub ttype: TokenType, 
+    pub token: Token,
+}
+
 #[derive(Clone)]
 pub struct JobEntry {
-    pub token: Token,
+    pub token_entry: TokenEntry,
     pub job: Job,
     pub ready: Ready,
 }
@@ -250,16 +267,16 @@ impl Drop for JobEntry {
 }
 
 pub trait Evented {
-    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()>;
-    fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()>;
+    fn register(&self, poll: &Poll, token: TokenEntry, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()>;
+    fn reregister(&self, poll: &Poll, token: TokenEntry, interest: Ready, opts: PollOpt) -> io::Result<()>;
     fn deregister(&self, poll: &Poll) -> io::Result<()>;
 }
 
 impl Evented for Box<dyn Evented> {
-    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
+    fn register(&self, poll: &Poll, token: TokenEntry, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
         self.as_ref().register(poll, token, interest, opts, job)
     }
-    fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
+    fn reregister(&self, poll: &Poll, token: TokenEntry, interest: Ready, opts: PollOpt) -> io::Result<()> {
         self.as_ref().reregister(poll, token, interest, opts)
     }
     fn deregister(&self, poll: &Poll) -> io::Result<()> {
@@ -268,10 +285,10 @@ impl Evented for Box<dyn Evented> {
 }
 
 impl <T: Evented> Evented for Box<T> {
-    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
+    fn register(&self, poll: &Poll, token: TokenEntry, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
         self.as_ref().register(poll, token, interest, opts, job)
     }
-    fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
+    fn reregister(&self, poll: &Poll, token: TokenEntry, interest: Ready, opts: PollOpt) -> io::Result<()> {
         self.as_ref().reregister(poll, token, interest, opts)
     }
     fn deregister(&self, poll: &Poll) -> io::Result<()> {
@@ -280,10 +297,10 @@ impl <T: Evented> Evented for Box<T> {
 }
 
 impl <T: Evented> Evented for ::std::sync::Arc<T> {
-    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
+    fn register(&self, poll: &Poll, token: TokenEntry, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
         self.as_ref().register(poll, token, interest, opts, job)
     }
-    fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
+    fn reregister(&self, poll: &Poll, token: TokenEntry, interest: Ready, opts: PollOpt) -> io::Result<()> {
         self.as_ref().reregister(poll, token, interest, opts)
     }
     fn deregister(&self, poll: &Poll) -> io::Result<()> {

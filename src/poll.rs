@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use std::collections::HashMap;
 use std::cell::RefCell;
 
-use event_imp::{self as event, Ready, Event, Evented, PollOpt, Job, JobEntry};
+use event_imp::{self as event, Ready, Event, Evented, PollOpt, Job, JobEntry, TokenEntry, TokenType};
 use {Token, sys};
 
 const READINESS_SHIFT: usize = 0;
@@ -28,23 +28,6 @@ const DROPPED_MASK: usize = 1 << DROPPED_SHIFT;
 
 const AWAKEN: Token = Token(usize::MAX);
 const MAX_REFCOUNT: usize = (isize::MAX) as usize;
-
-#[derive(Copy, Clone, PartialEq, Debug)]
-pub enum TokenType {
-    SOCKET_EVENT,
-    NOTIFY_EVENT,
-    TIMERS_EVENT,
-    JOBS_EVENT,
-    TOKEN_EVENT,
-    ACCEPT_EVENT,
-    OTHER_EVENT,
-}
-
-#[derive(Copy, Clone, PartialEq, Debug)]
-pub struct TokenEntry {
-    pub ttype: TokenType, 
-    pub token: Token,
-}
 
 pub struct IdAllocator {
     counter: AtomicUsize,
@@ -671,23 +654,31 @@ impl Poll {
             lock: Mutex::new(()),
             condvar: Condvar::new(),
         };
-        let job = Arc::new(Mutex::new(move |val: i64| {}));
-        poll.readiness_queue.inner.awakener.register(&poll, AWAKEN, Ready::readable(), PollOpt::edge(), job)?;
+        poll.readiness_queue.inner.awakener.register(
+                &poll,
+                TokenEntry {
+                    ttype: TokenType::NOTIFY_EVENT, 
+                    token: Token(0)
+                }, 
+                Ready::readable(),
+                PollOpt::edge(),
+                Arc::new(Mutex::new(move |val: i64| {}))
+        )?;
         Ok(poll)
     }
-    pub fn register<E: ?Sized>(&self, handle: &E, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()>
+    pub fn register<E: ?Sized>(&self, handle: &E, token: TokenEntry, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()>
         where E: Evented
     {
-        validate_args(token)?;
+        //validate_args(token.ttype)?;
         log::trace!("register poller");
         handle.register(self, token, interest, opts, job)?;      // 为何不直接用self.selector 要用参数handle的register?
                                                             // 依赖反转 只是提供一个接口而已 不同类型的Evented(eg: channel:ReceiverCtl eg: unix/eventedfd Io)有不同的register
         Ok(())
     }
-    pub fn reregister<E: ?Sized>(&self, handle: &E, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()>
+    pub fn reregister<E: ?Sized>(&self, handle: &E, token: TokenEntry, interest: Ready, opts: PollOpt) -> io::Result<()>
         where E: Evented
     {
-        validate_args(token)?;
+        //validate_args(token.ttype)?;
         log::trace!("reregister poller");
         handle.reregister(self, token, interest, opts)?;
         Ok(())
@@ -713,7 +704,7 @@ impl Poll {
         }
         loop {
             let now = Instant::now();
-            let res = self.selector.select(&mut events.inner, AWAKEN, timeout);
+            let res = self.selector.select(&mut events.inner, timeout);
             match res {
                 Ok(true) => {
                     self.readiness_queue.inner.awakener.cleanup();
@@ -951,7 +942,8 @@ impl RegistrationInner {
         }
         Ok(())
     }
-    fn update(&self, poll: &Poll, token: Token, interest: Ready, opt: PollOpt, job: Job) -> io::Result<()> {
+    fn update(&self, poll: &Poll, token: TokenEntry, interest: Ready, opt: PollOpt, job: Job) -> io::Result<()> {
+        let mut token = token.token;
         let mut queue = self.readiness_queue.load(Relaxed);
         let other: &*mut () = unsafe {
             &*(&poll.readiness_queue.inner as *const _ as *const *mut()) // inner: Arc<ReadinessQueueInner>,
@@ -1150,26 +1142,26 @@ impl Registration {
         };
         (registration, set_readiness)
     }
-    pub fn update(&self, poll: &Poll, token: Token, interest: Ready, opt: PollOpt, job: Job) -> io::Result<()> {
+    pub fn update(&self, poll: &Poll, token: TokenEntry, interest: Ready, opt: PollOpt, job: Job) -> io::Result<()> {
         self.inner.update(poll, token, interest, opt, job)
     }
     pub fn deregister(&self, poll: &Poll) -> io::Result<()> {
         let job = Arc::new(Mutex::new(move |val: i64| { println!("null1 deregister for Registration") }));
-        self.inner.update(poll, Token(0), Ready::empty(), PollOpt::empty(), job)
+        self.inner.update(poll, TokenEntry{ ttype: TokenType::TOKEN_EVENT, token: Token(0) }, Ready::empty(), PollOpt::empty(), job)
     }
 }
 
 impl Evented for Registration {
-    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
+    fn register(&self, poll: &Poll, token: TokenEntry, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
         self.inner.update(poll, token, interest, opts, job)
     }
-    fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
+    fn reregister(&self, poll: &Poll, token: TokenEntry, interest: Ready, opts: PollOpt) -> io::Result<()> {
         let job = Arc::new(Mutex::new(move |val: i64| { println!("null reregister for Registration") }));
         self.inner.update(poll, token, interest, opts, job)
     }
     fn deregister(&self, poll: &Poll) -> io::Result<()> {
         let job = Arc::new(Mutex::new(move |val: i64| { println!("null deregister for Registration") }));
-        self.inner.update(poll, Token(0), Ready::empty(), PollOpt::empty(), job)
+        self.inner.update(poll, TokenEntry{ ttype: TokenType::TOKEN_EVENT, token: Token(0) }, Ready::empty(), PollOpt::empty(), job)
     }
 }
 
