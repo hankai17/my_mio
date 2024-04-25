@@ -120,5 +120,8 @@
     let (registration, set_readiness) = Registration::new(poll, token.token, interest, opts);
     改成
     let (registration, set_readiness) = Registration::new(poll, TokenEntry, interest, opts);
-
+- 240425
+    只有超时 没有回调?  timer_list 实现
+    trigger 添加
+    批量数据发送
 

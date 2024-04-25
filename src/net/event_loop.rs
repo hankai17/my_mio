@@ -251,19 +251,23 @@ impl EventLoop {
             */
             match self.events.get_mut(i) {
                 Some(job_entry) => {
-                    println!("job_entry: {:?}", job_entry.token_entry);
-                        /*
-                        Some(token_entry) => {
-                            println!("token_entry: {:?}", token_entry);
-                            if token_entry.ttype == TokenType::TOKEN_EVENT {
-                                println!("TOKEN_EVENT id: {:?}", token_entry.token);
+                    let mut token_entry = job_entry.token_entry;
+                    println!("------>token_entry: {:?}", token_entry);
+                    match token_entry.ttype {
+                        TokenType::TIMERS_EVENT => {
+                            while let Some(t) = self.timer.poll() {
                             }
                         },
-                        None => println!("token entry is none")
-                        */
-                    let c = &mut job_entry.job;
-                    let ready = job_entry.ready;
-                    c.lock().unwrap()(ready_as_usize(ready) as i64);
+                        _ => {
+                            let c = &mut job_entry.job;
+                            let ready = job_entry.ready;
+                            println!("ready: {:?}", ready);
+                            c
+                            .lock()
+                            .unwrap()(ready_as_usize(ready) as i64);
+                        }
+                    }
+                    println!("<------job_entry done");
                 },
                 None => {
                     println!("get_mut none");

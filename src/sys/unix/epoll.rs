@@ -61,33 +61,21 @@ impl Selector {
                                             evts.events.capacity() as i32,
                                             timeout_ms))?;
             let cnt = cnt as usize;
-            //println!("cnt: {}", cnt);
+            println!("cnt: {}", cnt);
             evts.events.set_len(cnt);
             for i in 0..cnt {
-                /*
-                if evts.events[i].u64 as usize == awakener.into() {
-                    evts.events.remove(i);
-                    return Ok(true);
-                }
                 let fd = evts.events[i].u64 as usize as i32;
-                let mut fd_entry = events_map.as_mut().unwrap().get_mut(&fd).unwrap();
-
-                let c = &mut fd_entry.job;
-                let ready = epoll_to_ioevent(evts.events[i].events as u32);
-                c(ready_as_usize(ready) as i64);
-                */
-                let fd = evts.events[i].u64 as usize as i32;
+                println!("fd: {}", fd);
                 let fd_entry: &mut JobEntry = events_map.as_mut().unwrap().get_mut(&fd).unwrap();
                 let mut token_entry = fd_entry.token_entry;
 
                 if token_entry.ttype == TokenType::NOTIFY_EVENT {
                     evts.events.remove(i);
                     has_notify = true;
-                    println!("found notify");
+                    println!("token_entry: {:?}, found notify", token_entry);
                     continue;
                 }
                 fd_entry.ready = evts.get_ready(i).unwrap();
-                //println!("after set ready, token_entry: {:?}", token_entry);
                 evts.entries.push(fd_entry.clone());
             }
         }

@@ -26,6 +26,9 @@ set print pretty
 #b ReadinessQueueInner::enqueue_node
 #b flag_as_dropped
 #b src/net/connection.rs:187
-b timer.rs:288
-b timer.rs:346
-b timer.rs:210
+#b timer.rs:288
+#b timer.rs:346
+#b timer.rs:210
+
+b event_loop.rs:262
+b event_loop.rs:267

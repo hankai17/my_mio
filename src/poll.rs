@@ -375,8 +375,10 @@ impl ReadinessQueueInner {
     }
     fn enqueue_node_with_wakeup(&self, node: &ReadinessNode) -> io::Result<()> {    // 跨线程
         if self.enqueue_node(node) {
-            println!("need wakeup");
+            println!("enqueue_node_with_wakeup need wakeup");
             self.wakeup()?;
+        } else {
+            println!("enqueue_node_with_wakeup need not wakeup");
         }
         Ok(())
     }

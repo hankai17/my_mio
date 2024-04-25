@@ -194,6 +194,7 @@ impl TcpConnection {
     }
 
     fn handleWrite(&mut self) -> io::Result<()> {
+        println!("handleWrite");
         let mut empty_waiting: bool = false;
         let mut empty_sending: bool = false;
         if self.write_buffer_waiting.as_ref().unwrap().len() == 0 {
@@ -204,6 +205,7 @@ impl TcpConnection {
         }
         if empty_waiting && empty_sending {
             // disable write
+            println!("handleWrite disable write TODO");
         } else {
             self.writeData();
         }
@@ -217,7 +219,7 @@ impl TcpConnection {
     pub fn handleEvent(&mut self, event: i64) -> io::Result<()> {
         // check closed
         let ready = ready_from_usize(event as usize);
-        //println!("handleEvent ready----------->: {:?}", ready);
+        println!("handleEvent ready----------->: {:?}", ready);
         if ready.is_readable() {
            self.handleRead();
         }

@@ -1,6 +1,7 @@
 use bytes::{BytesMut};
 use {Poll, PollOpt, Ready, Token, TokenType, TokenEntry};
 use net::{EventLoop, TcpStream, Acceptor, TcpConnection};
+use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 use std::net::{SocketAddr};
 use std::sync::{Arc, Mutex};
 
@@ -47,6 +48,8 @@ fn default_accept_cb(stream: TcpStream, addr: SocketAddr) {
 unsafe impl Send for TcpServer {}
 unsafe impl Sync for TcpServer {}
 
+static SOCKET_TOKEN_ID: AtomicUsize = ATOMIC_USIZE_INIT;
+
 impl TcpServer {
     pub fn new(event_loop: Arc<Mutex<EventLoop>>, addr: &String) -> TcpServer {
         let mut acceptor = Arc::new(Mutex::new(Acceptor::new(event_loop.clone(), addr)));
@@ -72,13 +75,14 @@ impl TcpServer {
         let conn = clone_conn.clone();
         let job = Arc::new(Mutex::new(move |val: i64| { clone_conn.lock().unwrap().handleEvent(val); }));
 
-        let mut token_alloc = Poll::get_current_token_allocator();
         self.event_loop.lock().unwrap().register(
                 &conn.lock().unwrap().sock,
                 TokenEntry {
                     ttype: TokenType::SOCKET_EVENT, 
-                    token: Token(0)
-                }, 
+                    token: Token (
+                        SOCKET_TOKEN_ID.fetch_add(1, Ordering::Relaxed) + 1
+                    )
+                },
                 Ready::readable() | Ready::writable(),
                 PollOpt::edge(), 
                 job
