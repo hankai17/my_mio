@@ -215,28 +215,6 @@ impl fmt::Debug for PollOpt {
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
-pub struct Event {
-    kind: Ready,
-    token: Token
-}
-
-impl Event {
-    pub fn new(readiness: Ready, token: Token) -> Event {
-        Event {
-            kind: readiness,
-            token,
-        }
-    }
-    pub fn readiness(&self) -> Ready {
-        self.kind
-    }
-    pub fn kind(&self) -> Ready { self.kind }
-    pub fn token(&self) -> Token { self.token }
-}
-
-pub type Job = Arc<Mutex<dyn FnMut(i64) + 'static + Send + Sync>>;
-
-#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum TokenType {
     SOCKET_EVENT,
     NOTIFY_EVENT,
@@ -247,11 +225,33 @@ pub enum TokenType {
     OTHER_EVENT,
 }
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct TokenEntry {
     pub ttype: TokenType, 
     pub token: Token,
 }
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub struct Event {
+    kind: Ready,
+    token: TokenEntry
+}
+
+impl Event {
+    pub fn new(readiness: Ready, token: TokenEntry) -> Event {
+        Event {
+            kind: readiness,
+            token,
+        }
+    }
+    pub fn readiness(&self) -> Ready {
+        self.kind
+    }
+    pub fn kind(&self) -> Ready { self.kind }
+    pub fn token(&self) -> TokenEntry { self.token }
+}
+
+pub type Job = Arc<Mutex<dyn FnMut(i64) + 'static + Send + Sync>>;
 
 #[derive(Clone)]
 pub struct JobEntry {

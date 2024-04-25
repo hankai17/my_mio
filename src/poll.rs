@@ -284,9 +284,9 @@ impl AtomicState {
 
 struct ReadinessNode {  // 三剑客 + next指针 + queue
     state: AtomicState,
-    token_0: UnsafeCell<Token>,
-    token_1: UnsafeCell<Token>,
-    token_2: UnsafeCell<Token>,
+    token_0: UnsafeCell<TokenEntry>,
+    token_1: UnsafeCell<TokenEntry>,
+    token_2: UnsafeCell<TokenEntry>,
     next_readiness: AtomicPtr<ReadinessNode>,
     update_lock: AtomicBool,
     readiness_queue: AtomicPtr<()>,
@@ -310,13 +310,13 @@ fn enqueue_with_wakeup(queue: *mut(), node: &ReadinessNode) -> io::Result<()> {
 }
 
 impl ReadinessNode {
-    fn new(queue: *mut(), token: Token, interest: Ready,                    // 表达的意思是queue内部可变(非const queue)
+    fn new(queue: *mut(), token: TokenEntry, interest: Ready,                    // 表达的意思是queue内部可变(非const queue)
             opt: PollOpt, ref_count: usize) -> ReadinessNode {
         ReadinessNode {
             state: AtomicState::new(interest, opt),
             token_0: UnsafeCell::new(token),
-            token_1: UnsafeCell::new(Token(0)),
-            token_2: UnsafeCell::new(Token(0)),
+            token_1: UnsafeCell::new(TokenEntry { token: Token(0), ttype: TokenType::TOKEN_EVENT} ),
+            token_2: UnsafeCell::new(TokenEntry { token: Token(0), ttype: TokenType::TOKEN_EVENT} ),
             next_readiness: AtomicPtr::new(ptr::null_mut()),
             update_lock: AtomicBool::new(false),
             readiness_queue: AtomicPtr::new(queue),
@@ -327,9 +327,9 @@ impl ReadinessNode {
     fn marker() -> ReadinessNode {
         ReadinessNode {
             state: AtomicState::new(Ready::empty(), PollOpt::empty()),
-            token_0: UnsafeCell::new(Token(0)),
-            token_1: UnsafeCell::new(Token(0)),
-            token_2: UnsafeCell::new(Token(0)),
+            token_0: UnsafeCell::new(TokenEntry { token: Token(0), ttype: TokenType::TOKEN_EVENT}),
+            token_1: UnsafeCell::new(TokenEntry { token: Token(0), ttype: TokenType::TOKEN_EVENT}),
+            token_2: UnsafeCell::new(TokenEntry { token: Token(0), ttype: TokenType::TOKEN_EVENT}),
             next_readiness: AtomicPtr::new(ptr::null_mut()),
             update_lock: AtomicBool::new(false),
             readiness_queue: AtomicPtr::new(ptr::null_mut()),
@@ -481,7 +481,7 @@ struct ReadinessQueue {
 
 unsafe impl Send for ReadinessQueue {}
 unsafe impl Sync for ReadinessQueue {}
-unsafe fn token(node: &ReadinessNode, pos: usize) -> Token {
+unsafe fn token(node: &ReadinessNode, pos: usize) -> TokenEntry {
     match pos {
         0 => *node.token_0.get(),
         1 => *node.token_1.get(),
@@ -560,12 +560,8 @@ impl ReadinessQueue {
                 self.inner.enqueue_node(node);
             }
             if !readiness.is_empty() {
-                let mut token_alloc = Poll::get_current_token_allocator();
                 let token = unsafe { token(node, next.token_read_pos()) };
-                //let token = Token(token_alloc.lock().unwrap().alloc(TokenType::TOKEN_EVENT, token));
                 dst.push_event(Event::new(readiness, token), node.job.clone());
-                //Arc::into_raw(node.job);
-                //println!("after push_event job use_count: {}", Arc::strong_count(&node.job));
                 node.job = Arc::new(Mutex::new(move |val: i64| { println!("deref ReadinessNode")}));
             }
         }
@@ -838,9 +834,6 @@ impl Events {
             inner: sys::Events::with_capacity(capacity),
         }
     }
-    pub fn get(&self, idx: usize) -> Option<Event> {
-        self.inner.get(idx)
-    }
     pub fn get_mut(&mut self, idx: usize) -> Option<&mut JobEntry> {
         self.inner.get_mut(idx)
     }
@@ -943,7 +936,6 @@ impl RegistrationInner {
         Ok(())
     }
     fn update(&self, poll: &Poll, token: TokenEntry, interest: Ready, opt: PollOpt, job: Job) -> io::Result<()> {
-        let mut token = token.token;
         let mut queue = self.readiness_queue.load(Relaxed);
         let other: &*mut () = unsafe {
             &*(&poll.readiness_queue.inner as *const _ as *const *mut()) // inner: Arc<ReadinessQueueInner>,
@@ -1087,7 +1079,7 @@ impl fmt::Debug for SetReadiness {
 unsafe impl Send for Registration {}
 unsafe impl Sync for Registration {}
 
-pub fn new_registration(poll: &Poll, token: Token, ready: Ready, opt: PollOpt) 
+pub fn new_registration(poll: &Poll, token: TokenEntry, ready: Ready, opt: PollOpt) 
         -> (Registration, SetReadiness)
 {
     Registration::new_priv(poll, token, ready, opt)
@@ -1096,7 +1088,7 @@ pub fn new_registration(poll: &Poll, token: Token, ready: Ready, opt: PollOpt)
 impl Registration {
     pub fn new2() -> (Registration, SetReadiness) {
         let node = Box::into_raw(Box::new(ReadinessNode::new(
-                ptr::null_mut(), Token(0), Ready::empty(), PollOpt::empty(), 2)));
+                ptr::null_mut(), TokenEntry {token: Token(0), ttype: TokenType::TOKEN_EVENT}, Ready::empty(), PollOpt::empty(), 2)));
         let registration = Registration {
             inner: RegistrationInner {
                 node,
@@ -1109,27 +1101,22 @@ impl Registration {
         };
         (registration, set_readiness)
     }
-    pub fn new(poll: &Poll, token: Token, interest: Ready, opt: PollOpt)
+    pub fn new(poll: &Poll, token: TokenEntry, interest: Ready, opt: PollOpt)
             -> (Registration, SetReadiness)
     {
         let (r, s) = Registration::new_priv(poll, token, interest, opt);
-        //println!("after clone poll.readiness_queue.inner use_count4: {}", Arc::strong_count(&poll.readiness_queue.inner));
         (r, s)
     }
-    fn new_priv(poll: &Poll, token: Token, interest: Ready, opt: PollOpt)
+    fn new_priv(poll: &Poll, token: TokenEntry, interest: Ready, opt: PollOpt)
             -> (Registration, SetReadiness)
     {
         is_send::<Registration>();
         is_sync::<Registration>();
         is_send::<SetReadiness>();
         is_sync::<SetReadiness>();
-        //println!("poll.readiness_queue.inner use_count: {}", Arc::strong_count(&poll.readiness_queue.inner));
-        let queue = poll.readiness_queue.inner.clone(); // inner: Arc<ReadinessQueueInner> // 引用计数+1
-        //println!("after clone poll.readiness_queue.inner use_count1: {}", Arc::strong_count(&poll.readiness_queue.inner));
-        let queue1: *mut () = unsafe { mem::transmute(queue) };  // Arc<R> -> *mut() 类型  // 此时的queue是 queue本身的裸地址? // queue被move走了 所以不会析构 所以偷了一个引用计数+1
-        //println!("after clone poll.readiness_queue.inner use_count2: {}", Arc::strong_count(&poll.readiness_queue.inner));
+        let queue = poll.readiness_queue.inner.clone();
+        let queue1: *mut () = unsafe { mem::transmute(queue) };
         let node = Box::into_raw(Box::new(ReadinessNode::new(queue1, token, interest, opt, 3)));
-        //println!("after clone poll.readiness_queue.inner use_count3: {}", Arc::strong_count(&poll.readiness_queue.inner));
         let registration = Registration {
             inner: RegistrationInner {
                 node,

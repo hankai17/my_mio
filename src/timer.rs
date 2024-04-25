@@ -348,7 +348,7 @@ impl<T> Evented for Timer<T> {
         if self.inner.borrow().is_some() {
             return Err(io::Error::new(io::ErrorKind::Other, "timer alreay registered"));
         }
-        let (registration, set_readiness) = Registration::new(poll, token.token, interest, opts);
+        let (registration, set_readiness) = Registration::new(poll, token, interest, opts);
         let wakeup_state = Arc::new(AtomicUsize::new(usize::MAX));
         let thread_handle = spawn_wakeup_thread(
             wakeup_state.clone(),

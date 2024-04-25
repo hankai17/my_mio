@@ -214,29 +214,6 @@ impl Events {
     pub fn len(&self) -> usize { self.entries.len() }
     pub fn capacity(&self) -> usize { self.entries.capacity() }
     pub fn is_empty(&self) -> bool { self.entries.is_empty() }
-    pub fn get(&self, idx: usize) -> Option<Event> {
-        self.events.get(idx).map(|event| {
-            let epoll = event.events as c_int;
-            let mut kind = Ready::empty();
-            if (epoll & EPOLLIN) != 0 {
-                kind = kind | Ready::readable();
-            }
-            if (epoll & EPOLLOUT) != 0 {
-                kind = kind | Ready::writable()
-            }
-            if (epoll & EPOLLPRI) != 0 {
-                kind = kind | Ready::readable() | UnixReady::priority();
-            }
-            if (epoll & EPOLLERR) != 0 {
-                kind = kind | UnixReady::error()
-            }
-            if (epoll & EPOLLHUP) != 0 {
-                kind = kind | UnixReady::hup()
-            }
-            let token = self.events[idx].u64;   // rust对标准的epoll_event进行封装了?
-            Event::new(kind, Token(token as usize))
-        })
-    }
     pub fn get_ready(&self, idx: usize) -> Option<Ready> {
         self.events.get(idx).map(|event| {
             let epoll = event.events as c_int;
@@ -270,14 +247,11 @@ impl Events {
         self.events.push(
             libc::epoll_event {
                     events: ioevent_to_epoll(event.readiness(), PollOpt::empty()),
-                    u64: usize::from(event.token()) as u64
+                    u64: usize::from(event.token().token) as u64
         });
         self.entries.push(
             JobEntry {
-                token_entry: TokenEntry {
-                    ttype: TokenType::TOKEN_EVENT,
-                    token: event.token()
-                },
+                token_entry: event.token(),
                 ready: Ready::empty(),
                 job,
             }

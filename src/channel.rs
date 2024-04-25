@@ -127,7 +127,7 @@ impl Evented for ReceiverCtl {
         if self.registration.borrow().is_some() {
             return Err(io::Error::new(io::ErrorKind::Other, "receiver already registered"));
         }
-        let (registration, set_readiness) = Registration::new(poll, token.token, interest, opts);
+        let (registration, set_readiness) = Registration::new(poll, token, interest, opts);
         if self.inner.pending.load(Ordering::Relaxed) > 0 {
             let _ = set_readiness.set_readiness(Ready::readable());
         }
