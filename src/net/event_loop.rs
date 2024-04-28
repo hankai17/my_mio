@@ -310,7 +310,6 @@ pub struct EventLoopBuilder {
 use std::cell::RefCell;
 thread_local! {
     pub static current_loop: RefCell<Arc<Mutex<EventLoop>>> = panic!("!"); //Arc::new(Mutex::new(EventLoop));
-    //pub static current_token_allocator: RefCell<Arc<Mutex<TokenAllocator>>> = panic!("!");
 }
 
 impl EventLoopBuilder {

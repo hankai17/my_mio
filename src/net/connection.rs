@@ -23,6 +23,65 @@ macro_rules! pub_struct {
 pub type ReadJob = Box<dyn FnMut(&mut BytesMut) + 'static + Send + Sync>;
 pub type WritJob = Box<dyn FnMut()->bool + 'static + Send + Sync>;
 
+thread_local! {
+    pub static current_token_allocator: RefCell<Arc<Mutex<NetHandler>>> = panic!("!");
+}
+/*
+    pub fn get_current_token_allocator() -> Arc<Mutex<TokenAllocator>> {
+        let ptr = current_token_allocator.with(|allocator| -> *mut Arc<Mutex<TokenAllocator>> {return allocator.as_ptr()});
+        unsafe {
+            let clone = (*ptr).clone();
+            clone
+        }
+    }
+*/
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub struct VIO {
+    //buffer,
+    //mutex,
+    read_job: ReadJob,
+    write_job: WritJob,
+    nbytes: i64,
+    ndone: i64,
+    op: i64,
+}
+
+impl VIO {
+    pub fn new() -> VIO {
+        VIO {
+            read_job: Box::new(move |bytes: &mut BytesMut| { println!("default read job"); }),
+            writ_job: Box::new(move || { println!("default write job"); true }),
+            nbytes: 0,
+            ndone: 0,
+            op: 0,
+        }
+    }
+    pub fn set_read_job(&mut self, job: ReadJob) {
+        self.read_job = job;
+    }
+    pub fn set_writ_job(&mut self, job: WritJob) {
+        self.writ_job = job;
+    }
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub struct NetState {
+    enabled: bool,
+    triggered: bool,
+    vio: Arc<Mutex<VIO>>,
+}
+
+impl NetStat {
+    pub fn new() -> NetStat {
+        NetStat {
+            enabled: false,
+            triggered: false,
+            vio: Arc::new(Mutex::new(VIO::new())),
+        }
+    }
+}
+
 pub struct TcpConnection {
     token: Option<Token>,
     interest: Ready,
@@ -40,10 +99,9 @@ pub struct TcpConnection {
     read_job: ReadJob,
     writ_job: WritJob,
 
-    read_enable: bool,
-    write_enable: bool,
-    read_triggered: bool,
-    write_triggered: bool,
+    read: NetState,
+    write: NetState,
+
     is_closed: bool
 }
 
@@ -69,10 +127,8 @@ impl TcpConnection {
             read_job: Box::new(move |bytes: &mut BytesMut| { println!("default read job"); }),
             writ_job: Box::new(move || { println!("default write job"); true }),
 
-            read_enable: false,
-            write_enable: false,
-            read_triggered: false,
-            write_triggered: true,
+            read: NetState::new(),
+            write: NetState::new(),
             is_closed: false
         }
     }
@@ -242,6 +298,8 @@ impl TcpConnection {
     pub fn close_stream(&mut self) {
         self.event_loop.lock().unwrap().deregister(&self.sock);
         println!("close_stream deregister done");
+    }
+    pub fn reenable(&mut self) {
     }
 }
 

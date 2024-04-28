@@ -124,4 +124,6 @@
     只有超时 没有回调?  timer_list 实现
     trigger 添加
     批量数据发送
+- 240428
+    重新设计read/write
 

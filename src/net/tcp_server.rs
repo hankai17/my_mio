@@ -36,9 +36,6 @@ pub struct TcpServer {
     acceptor: Arc<Mutex<Acceptor>>,
     // timer
     session_alloc: Option<fn() -> Arc<Mutex<dyn Handler + 'static + Send + Sync>>>,
-    // on_read_cb
-    // on_written_cb
-    // on_err_cb
 }
 
 fn default_accept_cb(stream: TcpStream, addr: SocketAddr) {
