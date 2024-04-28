@@ -23,19 +23,6 @@ macro_rules! pub_struct {
 pub type ReadJob = Box<dyn FnMut(&mut BytesMut) + 'static + Send + Sync>;
 pub type WritJob = Box<dyn FnMut()->bool + 'static + Send + Sync>;
 
-thread_local! {
-    pub static current_token_allocator: RefCell<Arc<Mutex<NetHandler>>> = panic!("!");
-}
-/*
-    pub fn get_current_token_allocator() -> Arc<Mutex<TokenAllocator>> {
-        let ptr = current_token_allocator.with(|allocator| -> *mut Arc<Mutex<TokenAllocator>> {return allocator.as_ptr()});
-        unsafe {
-            let clone = (*ptr).clone();
-            clone
-        }
-    }
-*/
-
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct VIO {
     //buffer,
@@ -299,8 +286,35 @@ impl TcpConnection {
         self.event_loop.lock().unwrap().deregister(&self.sock);
         println!("close_stream deregister done");
     }
-    pub fn reenable(&mut self) {
+    //pub fn reenable(&mut self, vio: Arc<Mutex<VIO>>)
+    pub fn reenable(&mut self, NetState) {
+        // 如果上层已经enabled 则返回
+        // set NetState enabled
+        // 如果NetState是read
+        //     epoll_ctl READ
+        //     if read.triggered  // 即底层已触发读事件
+        //          挂到nh的ready list上
+        //     else
+        //          从nh的ready list摘下来
+        // write same as ...
     }
+    pub fn do_io_read(&mut self, job, nbytes: i64, buf) {
+        // read.vio.op = READ;
+        // read.vio.nbytes = nbytes;
+        // read.vio.ndone = 0;
+        // read.vio.mutex = job's
+        // if buf                       // 注意buf是上层维护的
+        //    read.vio.buff = buf
+        //    if !read.enabled 如果上层没有enabled 则(依赖反转)调用上层的reenable
+        // buf为空
+        //    read.vio.buff = null
+        //    read.enabled = 0   如果buf传空 即说明上层不想读数据了
+        // return read.vio
+    }
+    pub fn do_io_write(&mut self, job, nbytes: i64, buf) {
+    }
+    pub fn do_io_close
+    pub fn do_io_shutdown
 }
 
 impl Drop for TcpConnection {

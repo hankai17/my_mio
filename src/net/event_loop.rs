@@ -111,6 +111,20 @@ impl<M> Sender<M> {
     }
 }
 
+thread_local! {
+    pub static current_token_allocator: RefCell<Arc<Mutex<NetHandler>>> = panic!("!");
+}
+/*
+    pub fn get_current_token_allocator() -> Arc<Mutex<TokenAllocator>> {
+        let ptr = current_token_allocator.with(|allocator| -> *mut Arc<Mutex<TokenAllocator>> {return allocator.as_ptr()});
+        unsafe {
+            let clone = (*ptr).clone();
+            clone
+        }
+    }
+*/
+
+
 unsafe impl Send for EventLoop {}
 unsafe impl Sync for EventLoop {}
 

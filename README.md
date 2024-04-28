@@ -126,4 +126,7 @@
     批量数据发送
 - 240428
     重新设计read/write
+                       +--  调用成员的job
+                       |
+    <fd, TcpConnection-+> 
 
