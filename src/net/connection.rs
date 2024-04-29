@@ -259,7 +259,7 @@ impl TcpConnection {
         Ok(())
     }
 
-    pub fn handleEvent(&mut self, event: i64) -> io::Result<()> {
+    pub fn handleEvent(&mut self, event: i64) -> io::Result<()> {                   // hankai3
         // check closed
         let ready = ready_from_usize(event as usize);
         println!("handleEvent ready----------->: {:?}", ready);
@@ -287,7 +287,7 @@ impl TcpConnection {
         println!("close_stream deregister done");
     }
     //pub fn reenable(&mut self, vio: Arc<Mutex<VIO>>)
-    pub fn reenable(&mut self, NetState) {
+    pub fn reenable(&mut self, NetState) {                                          // hankai2
         // 如果上层已经enabled 则返回
         // set NetState enabled
         // 如果NetState是read
@@ -305,7 +305,7 @@ impl TcpConnection {
         // read.vio.mutex = job's
         // if buf                       // 注意buf是上层维护的
         //    read.vio.buff = buf
-        //    if !read.enabled 如果上层没有enabled 则(依赖反转)调用上层的reenable
+        //    if !read.enabled 如果上层没有enabled 则(依赖反转)调用上层的reenable   // hankai1
         // buf为空
         //    read.vio.buff = null
         //    read.enabled = 0   如果buf传空 即说明上层不想读数据了

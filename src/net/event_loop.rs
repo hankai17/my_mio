@@ -111,6 +111,16 @@ impl<M> Sender<M> {
     }
 }
 
+pub struct NetHandler {
+    pub read_ready_list: Slab<Job>,
+    pub write_ready_list: Slab<Job>,
+    pub open_list: Slab<Job>,
+    pub read_enable_list: Slab<Job>,
+    pub write_enable_list: Slab<Job>,
+    pub keep_alive_list: Slab<Job>,
+    pub timer_list: Slab<Job>,
+}
+
 thread_local! {
     pub static current_token_allocator: RefCell<Arc<Mutex<NetHandler>>> = panic!("!");
 }
@@ -136,15 +146,6 @@ pub struct EventLoop {
     notify_tx: channel::SyncSender<i32>,
     notify_rx: channel::Receiver<i32>,
     config: Config,
-    /*
-    read_ready_list: Slab<Job>,
-    write_ready_list: Slab<Job>,
-    open_list: Slab<Job>,
-    read_enable_list: Slab<Job>,
-    write_enable_list: Slab<Job>,
-    keep_alive_list: Slab<Job>,
-    timer_list: Slab<Job>,
-    */
     socket_ready_list: Slab<Job>,
     timer_list: Slab<Job>,
 }
@@ -303,6 +304,7 @@ impl EventLoop {
                 }
             }
         };
+        // vc->job
         self.io_process(cnt);
         //handler.tick(self);     // 没有实现也能调?
         Ok(())
