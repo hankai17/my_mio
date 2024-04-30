@@ -22,16 +22,22 @@ macro_rules! pub_struct {
 
 pub type ReadJob = Box<dyn FnMut(&mut BytesMut) + 'static + Send + Sync>;
 pub type WritJob = Box<dyn FnMut()->bool + 'static + Send + Sync>;
+pub type HandlerJob = Box<dyn FnMut()->i64 + 'static + Send + Sync>; // 传参为i64, 泛指针
+
+pub struct Continuation {   // Must Arc<Mutex>
+    handler: HandlerJob,
+    // linklist
+    // name
+}
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
-pub struct VIO {
-    //buffer,
-    //mutex,
-    read_job: ReadJob,
-    write_job: WritJob,
+pub struct VIO {    // Must Arc<Mutex>
+    buffer: Arc<Mutex<BytesMut>>,
+    cont: Arc<Mutex<Continuation>>,
     nbytes: i64,
     ndone: i64,
     op: i64,
+    vc: Arc<Mutex<VConnection>>,
 }
 
 impl VIO {
@@ -50,6 +56,18 @@ impl VIO {
     pub fn set_writ_job(&mut self, job: WritJob) {
         self.writ_job = job;
     }
+}
+
+pub trait VConnection: Sized {
+    fn do_io_read(c: Arc<Mutex<Continuation>>, bytes: i64, Arc<Mutex<BytesMut>>) -> VIO {
+    }
+    fn do_io_write(c: Arc<Mutex<Continuation>>, bytes: i64, Arc<Mutex<BytesMut>>) -> VIO {
+    }
+    fn do_io_close(errno: i64) {
+    }
+    fn do_io_shutdown(errno: i64) {
+    }
+    fn reenable(vio)
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
