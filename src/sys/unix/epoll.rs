@@ -61,11 +61,9 @@ impl Selector {
                                             evts.events.capacity() as i32,
                                             timeout_ms))?;
             let cnt = cnt as usize;
-            println!("cnt: {}", cnt);
             evts.events.set_len(cnt);
             for i in 0..cnt {
                 let fd = evts.events[i].u64 as usize as i32;
-                println!("fd: {}", fd);
                 let fd_entry: &mut JobEntry = events_map.as_mut().unwrap().get_mut(&fd).unwrap();
                 let mut token_entry = fd_entry.token_entry;
 
@@ -231,7 +229,6 @@ impl Events {
         }
     }
     pub fn push_event(&mut self, event: Event, job: Job) {
-        println!("push event: {:?}", event);
         self.events.push(
             libc::epoll_event {
                     events: ioevent_to_epoll(event.readiness(), PollOpt::empty()),

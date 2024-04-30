@@ -125,3 +125,6 @@
     trigger 添加
     批量数据发送
 
+- 240430
+    conn 支持timeout功能
+

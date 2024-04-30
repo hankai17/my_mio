@@ -18,7 +18,7 @@ struct Test {
 
 impl Drop for Test {
     fn drop(&mut self) {
-        println!("---------------------dropping for Test")
+        //println!("---------------------dropping for Test")
     }
 }
 
@@ -26,11 +26,13 @@ impl Handler for Test {
     fn new() -> Test {
         Test {
             id: 32,
-            conn: None
+            conn: None,
         }
     }
+    //pub type TimerJob = Box<dyn FnMut() + 'static + Send + Sync>;
     fn setConnection(&mut self, conn: Arc<Mutex<TcpConnection>>) {
         self.conn = Some(conn);
+         
     }
     /*
     fn unsetConnection(&mut self) {
@@ -61,7 +63,7 @@ impl Handler for Test {
             let mut conn = conn_clone.lock().unwrap();
             let rsp = BytesMut::from(&b"HTTP/1.1 200 OK\r\nSet-Cookie:k1=v1\r\nContent-Length: 15\r\nConnection: Keep-Alive\r\n\r\nabcdefghijkldef"[..]);
             conn.send(rsp);
-            println!("sending: conn use_count: {}", Arc::strong_count(&conn_clone));
+            //println!("sending: conn use_count: {}", Arc::strong_count(&conn_clone));
         }));
         set_clone.set_readiness(Ready::readable()).unwrap();
         event_loop.lock().unwrap().register(
@@ -77,7 +79,7 @@ impl Handler for Test {
     }
     fn onWritten(&mut self) -> bool {
         let mut conn = self.conn.take().unwrap();
-        println!("onWritten: conn use_count: {}", Arc::strong_count(&conn));
+        //println!("onWritten: conn use_count: {}", Arc::strong_count(&conn));
         false
     }
     fn onError(&mut self) {
@@ -86,6 +88,7 @@ impl Handler for Test {
 }
 
 fn main() {
+
     let mut b = EventLoopBuilder::new();
     b.notify_capacity(1_048_576)
         .messages_per_tick(64)
@@ -93,7 +96,12 @@ fn main() {
         .timer_wheel_size(1024)
         .timer_capacity(65536);
     let mut event_loop = b.get_build().unwrap();
-    event_loop.lock().unwrap().timeout(Duration::from_millis(1000 * 3), 222 as i32);
+
+    //pub type TimerJob = Box<dyn FnMut() + 'static + Send + Sync>;
+    event_loop.lock().unwrap().timeout(Duration::from_millis(1000 * 3), 
+        Box::new(move|| {println!("timer test...")})
+    );
+
     let mut tcp_server = Arc::new(Mutex::new(TcpServer::new(event_loop.clone(), &"0.0.0.0:9528".to_string())));
     tcp_server.lock().unwrap().start::<Test>();
     TcpServer::start_internal1(tcp_server);

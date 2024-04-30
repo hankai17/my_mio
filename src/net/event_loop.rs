@@ -114,23 +114,16 @@ impl<M> Sender<M> {
 unsafe impl Send for EventLoop {}
 unsafe impl Sync for EventLoop {}
 
+pub type TimerJob = Box<dyn FnMut() + 'static + Send + Sync>;
+
 pub struct EventLoop {
     run: bool,
     pub poll: Poll,
     events: Events,
-    timer: Timer<i32>,
+    timer: Timer<TimerJob>,
     notify_tx: channel::SyncSender<i32>,
     notify_rx: channel::Receiver<i32>,
     config: Config,
-    /*
-    read_ready_list: Slab<Job>,
-    write_ready_list: Slab<Job>,
-    open_list: Slab<Job>,
-    read_enable_list: Slab<Job>,
-    write_enable_list: Slab<Job>,
-    keep_alive_list: Slab<Job>,
-    timer_list: Slab<Job>,
-    */
     socket_ready_list: Slab<Job>,
     timer_list: Slab<Job>,
 }
@@ -183,7 +176,7 @@ impl EventLoop {
     pub fn channel(&self) -> Sender<i32> {
         Sender::new(self.notify_tx.clone())
     }
-    pub fn timeout(&mut self, delay: Duration, token: i32) -> timer::Result<Timeout> {
+    pub fn timeout(&mut self, delay: Duration, token: TimerJob) -> timer::Result<Timeout> {
         self.timer.set_timeout(delay, token)
     }
     pub fn clear_timeout(&mut self, timeout: &Timeout) -> bool {
@@ -252,22 +245,20 @@ impl EventLoop {
             match self.events.get_mut(i) {
                 Some(job_entry) => {
                     let mut token_entry = job_entry.token_entry;
-                    println!("------>token_entry: {:?}", token_entry);
                     match token_entry.ttype {
                         TokenType::TIMERS_EVENT => {
-                            while let Some(t) = self.timer.poll() {
+                            while let Some(mut t) = self.timer.poll() {
+                                t();
                             }
                         },
                         _ => {
                             let c = &mut job_entry.job;
                             let ready = job_entry.ready;
-                            println!("ready: {:?}", ready);
                             c
                             .lock()
                             .unwrap()(ready_as_usize(ready) as i64);
                         }
                     }
-                    println!("<------job_entry done");
                 },
                 None => {
                     println!("get_mut none");
