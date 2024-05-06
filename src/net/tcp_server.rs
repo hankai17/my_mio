@@ -5,6 +5,15 @@ use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 use std::net::{SocketAddr};
 use std::sync::{Arc, Mutex};
 
+macro_rules! enclose {
+    ( ($( $x:ident ),*) $y:expr ) => {
+        {
+            $(let $x = $x.clone();)*
+            $y
+        }
+    };
+}
+
 pub trait Handler {
     //type Connection;
     fn new() -> Self where Self: Sized;
@@ -59,20 +68,38 @@ impl TcpServer {
             session_alloc: None,
         }
     }
+
     pub fn onAcceptConnection(&mut self, stream: TcpStream, addr: SocketAddr) {
-        let mut session = self.session_alloc.unwrap()();
         let mut conn = Arc::new(Mutex::new(TcpConnection::new(self.event_loop.clone(), stream)));
-        let mut clone_conn = conn.clone();
-        let mut clone_session = session.clone();
-        session.lock().unwrap().setConnection(conn);
+        let mut session = self.session_alloc.unwrap()();
+        session.lock().unwrap().setConnection(conn.clone());
 
-        let read_job = Box::new(move |bytes: &mut BytesMut| { session.lock().unwrap().onRecv(bytes); } );
-        clone_conn.lock().unwrap().set_read_job(read_job);
-        let writ_job = Box::new(move || { clone_session.lock().unwrap().onWritten() });
-        clone_conn.lock().unwrap().set_writ_job(writ_job);
+        conn.lock().unwrap().set_read_job(
+            Box::new (enclose! { 
+                (session)
+				move |bytes: &mut BytesMut| {
+                    session.lock().unwrap().onRecv(bytes);
+                }
+            })
+        );
 
-        let conn = clone_conn.clone();
-        let job = Arc::new(Mutex::new(move |val: i64| { clone_conn.lock().unwrap().handleEvent(val); }));
+        conn.lock().unwrap().set_writ_job(
+            Box::new (enclose! {
+                (session)
+                move || {
+                    session.lock().unwrap().onWritten()
+                }
+            })
+        );
+
+        let job = Arc::new(Mutex::new(
+            enclose! {
+                (conn)
+                move |val: i64| {
+                    conn.lock().unwrap().handleEvent(val);
+                }
+            }
+        ));
 
         self.event_loop.lock().unwrap().register(
                 &conn.lock().unwrap().sock,
@@ -87,29 +114,34 @@ impl TcpServer {
                 job
         );
     }
-    fn start_internal(&mut self) {
-        let mut clone = self.acceptor.clone();
-        let job = Arc::new(Mutex::new(move |val: i64| { clone.lock().unwrap().handleRead(val); }));
-        self.acceptor.lock().unwrap().bind(job);
-        self.acceptor.lock().unwrap().set_accept_cb(default_accept_cb);
-    }
-    pub fn start_internal1(this: Arc<Mutex<Self>>) {
-        let mut clone = this.lock().unwrap().acceptor.clone();
-        let job = Arc::new(Mutex::new(move |val: i64| { clone.lock().unwrap().handleRead(val); }));
-        this.lock().unwrap().acceptor.lock().unwrap().bind(job);
 
-        let mut clone = this.clone();
-        //let job = Box::new(move |val: &mut TcpConnection| { clone.lock().unwrap().onAcceptConnection(val); });
-        let job = (Box::new(move |stream: TcpStream, addr: SocketAddr| { clone.lock().unwrap().onAcceptConnection(stream, addr); }));
+    pub fn start_internal(this: Arc<Mutex<Self>>) {
+        let mut acceptor = this.lock().unwrap().acceptor.clone();
+        this.lock().unwrap().acceptor.lock().unwrap().bind(
+            Arc::new(Mutex::new(
+                move |val: i64| {
+                    acceptor.lock().unwrap().handleRead(val);
+                }
+            ))
+        );
+
+        let job = Box::new(
+            enclose! {
+                (this)
+                move |stream: TcpStream, addr: SocketAddr| {
+                    this.lock().unwrap().onAcceptConnection(stream, addr);
+                }
+            }
+        );
         this.lock().unwrap().acceptor.lock().unwrap().set_accept_job(job);
     }
+
     pub fn start<H: Sized + 'static + Send + Sync>(&mut self)
         where H: Handler {
         let mut session_alloc = || -> Arc<Mutex<dyn Handler + 'static + Send + Sync>> {
             Arc::new(Mutex::new(<H as Handler>::new()))
         };
         self.session_alloc = Some(session_alloc);
-        //self.start_internal();
     }
 }
 

@@ -39,6 +39,11 @@ impl Handler for Test {
         self.conn = None;
     }
     */
+    /*
+    fn onAccept(&mut self) {
+        // set timeout
+    }
+    */
     fn onRecv(&mut self, bytes: &mut BytesMut) {
         if bytes.len() <= 0 {
             return;
@@ -46,26 +51,32 @@ impl Handler for Test {
         println!("bytes len: {}, {:?}", bytes.len(), bytes);
         bytes.advance(bytes.len());
 
-        let (r, set) = Registration::new2();
+        let (r, s) = Registration::new2();
         let mut r = Arc::new(r);
+        let mut s = Arc::new(s);
+
         let mut r_clone = r.clone();
-        let mut set = Arc::new(set);
-        let mut set_clone = set.clone();
+        let mut s_clone = s.clone();
 
         let mut conn = self.conn.take().unwrap();
         let mut conn_clone = conn.clone();
         self.conn = Some(conn);
 
         let event_loop = EventLoopBuilder::get_current_loop();
+
         let job = Arc::new(Mutex::new(move |val: i64| {
-            r.clone(); 
-            set.clone(); 
+            r_clone.clone(); 
+            s_clone.clone();
             let mut conn = conn_clone.lock().unwrap();
-            let rsp = BytesMut::from(&b"HTTP/1.1 200 OK\r\nSet-Cookie:k1=v1\r\nContent-Length: 15\r\nConnection: Keep-Alive\r\n\r\nabcdefghijkldef"[..]);
-            conn.send(rsp);
-            //println!("sending: conn use_count: {}", Arc::strong_count(&conn_clone));
+            conn.send(
+                BytesMut::from(&b"HTTP/1.1 200 OK\r\nSet-Cookie:k1=v1\r\nContent-Length: 15\r\nConnection: Keep-Alive\r\n\r\nabcdefghijkldef"[..])
+            );
         }));
-        set_clone.set_readiness(Ready::readable()).unwrap();
+
+        let mut r_clone = r.clone();
+        let mut s_clone = s.clone();
+        s_clone.set_readiness(Ready::readable()).unwrap();
+
         event_loop.lock().unwrap().register(
                 &r_clone,
                 TokenEntry {
@@ -104,7 +115,7 @@ fn main() {
 
     let mut tcp_server = Arc::new(Mutex::new(TcpServer::new(event_loop.clone(), &"0.0.0.0:9528".to_string())));
     tcp_server.lock().unwrap().start::<Test>();
-    TcpServer::start_internal1(tcp_server);
+    TcpServer::start_internal(tcp_server);
 
     let ptr: *mut Mutex<EventLoop> = Arc::as_ptr(&mut event_loop) as *mut _;
     unsafe {

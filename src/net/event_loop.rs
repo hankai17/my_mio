@@ -221,13 +221,6 @@ impl EventLoop {
                                     PollOpt::edge() | PollOpt::oneshot()
         );
     }
-    fn timer_process(&self) {
-        /*
-        while let Some(t) = self.timer.poll() {
-            handler.timeout(self, t);
-        }
-        */
-    }
     // https://stackoverflow.com/questions/45116984/the-trait-cannot-be-made-into-an-object
     fn io_process(&mut self, cnt: usize) {
         let mut i = 0;
@@ -238,7 +231,6 @@ impl EventLoop {
             /*
             match evt.token() {
                 NOTIFY => self.notify(),
-                TIMER => self.timer_process(),
                 _ => self.io_event(evt)
             }
             */
