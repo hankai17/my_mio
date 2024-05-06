@@ -128,3 +128,5 @@
 - 240430
     conn 支持timeout功能
 
+- 240506
+    conn 支持timeout功能

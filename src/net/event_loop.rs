@@ -1,6 +1,6 @@
 use {channel, Poll, Events, Token, TokenAllocator, TokenType, TokenEntry};
 use event::Evented;
-use event_imp::{Event, Ready, PollOpt, Job, ready_as_usize};
+use event_imp::{Event, Ready, PollOpt, Job, ready_as_usize, TimerJob};
 use timer::{self, Timer, Timeout};
 use std::{io, usize};
 use std::default::Default;
@@ -113,8 +113,6 @@ impl<M> Sender<M> {
 
 unsafe impl Send for EventLoop {}
 unsafe impl Sync for EventLoop {}
-
-pub type TimerJob = Box<dyn FnMut() + 'static + Send + Sync>;
 
 pub struct EventLoop {
     run: bool,

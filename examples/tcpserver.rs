@@ -2,18 +2,23 @@ extern crate my_mio;
 extern crate bytes;
 
 use std::{io, mem, fmt};
-use my_mio::{Events, Poll, PollOpt, Ready, Token, Job, Registration, SetReadiness, TokenType, TokenEntry};
+use my_mio::{Events, Poll, PollOpt, Ready, Token, Job, TimerJob, Registration, SetReadiness, TokenType, TokenEntry};
+use my_mio::timer::{Timeout};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use my_mio::net::{TcpListener, TcpStream, EventLoop, EventLoopBuilder, Acceptor, TcpConnection, TcpServer, Handler};
 use std::net::{self, SocketAddr, SocketAddrV4, SocketAddrV6, Ipv4Addr, Ipv6Addr};
-use std::sync::{Arc, Mutex, Condvar};
+use std::sync::{Arc, Mutex, Condvar, Weak};
 use std::sync::atomic::{AtomicUsize, AtomicPtr, AtomicBool};
 use std::sync::atomic::Ordering::{self, Acquire, Release, AcqRel, Relaxed, SeqCst};
 use std::time::Duration;
 
 struct Test {
     id: i32,
-    conn: Option<Arc<Mutex<TcpConnection>>>
+    timer: Option<Timeout>, //pub type TimerJob = Box<dyn FnMut() + 'static + Send + Sync>;
+    conn: Option<Weak<Mutex<TcpConnection>>>
+}
+
+impl Test {
 }
 
 impl Drop for Test {
@@ -26,29 +31,56 @@ impl Handler for Test {
     fn new() -> Test {
         Test {
             id: 32,
+            timer: None,
             conn: None,
         }
     }
-    //pub type TimerJob = Box<dyn FnMut() + 'static + Send + Sync>;
-    fn setConnection(&mut self, conn: Arc<Mutex<TcpConnection>>) {
-        self.conn = Some(conn);
-         
+
+    fn attachConnection(&mut self, conn: Arc<Mutex<TcpConnection>>) {
+        self.conn = Some(Arc::downgrade(&conn));
     }
-    /*
-    fn unsetConnection(&mut self) {
+
+    fn freeConnection(&mut self) {
         self.conn = None;
     }
-    */
-    /*
+
     fn onAccept(&mut self) {
-        // set timeout
+        let mut conn = self.conn.take().unwrap();
+        let mut conn_clone = match conn.upgrade() {
+            Some(conn) => conn.clone(),
+            None => return,
+        };
+        self.conn = Some(conn);
+        let event_loop = EventLoopBuilder::get_current_loop();
+
+        let mut timer = event_loop.lock().unwrap().timeout(
+            Duration::from_millis(1000 * 3),
+            Box::new(
+                move || {
+                    //println!("timeout test...");
+                    conn_clone.lock().unwrap().close_stream();
+                }
+            )
+        );
+        match timer {
+            Ok(timer) => self.timer = Some(timer),
+            _ => return,
+        }
     }
-    */
+
     fn onRecv(&mut self, bytes: &mut BytesMut) {
         if bytes.len() <= 0 {
             return;
         }
-        println!("bytes len: {}, {:?}", bytes.len(), bytes);
+        match &self.timer {
+            Some(timer) => {
+                let mut event_loop = EventLoopBuilder::get_current_loop();
+                event_loop.lock().unwrap().clear_timeout(&timer);
+                //println!("timeout cancel")
+            },
+            _ => {},
+        }
+        //println!("bytes len: {}, {:?}", bytes.len(), bytes);
         bytes.advance(bytes.len());
 
         let (r, s) = Registration::new2();
@@ -59,11 +91,13 @@ impl Handler for Test {
         let mut s_clone = s.clone();
 
         let mut conn = self.conn.take().unwrap();
-        let mut conn_clone = conn.clone();
+        let mut conn_clone = match conn.upgrade() {
+            Some(conn) => conn.clone(),
+            None => return,
+        };
         self.conn = Some(conn);
 
         let event_loop = EventLoopBuilder::get_current_loop();
-
         let job = Arc::new(Mutex::new(move |val: i64| {
             r_clone.clone(); 
             s_clone.clone();
@@ -88,11 +122,12 @@ impl Handler for Test {
                 job
         ).unwrap();
     }
+
     fn onWritten(&mut self) -> bool {
-        let mut conn = self.conn.take().unwrap();
-        //println!("onWritten: conn use_count: {}", Arc::strong_count(&conn));
+        self.freeConnection();
         false
     }
+
     fn onError(&mut self) {
         println!("Test onError");
     }
@@ -107,11 +142,6 @@ fn main() {
         .timer_wheel_size(1024)
         .timer_capacity(65536);
     let mut event_loop = b.get_build().unwrap();
-
-    //pub type TimerJob = Box<dyn FnMut() + 'static + Send + Sync>;
-    event_loop.lock().unwrap().timeout(Duration::from_millis(1000 * 3), 
-        Box::new(move|| {println!("timer test...")})
-    );
 
     let mut tcp_server = Arc::new(Mutex::new(TcpServer::new(event_loop.clone(), &"0.0.0.0:9528".to_string())));
     tcp_server.lock().unwrap().start::<Test>();

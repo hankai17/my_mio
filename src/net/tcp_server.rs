@@ -17,7 +17,9 @@ macro_rules! enclose {
 pub trait Handler {
     //type Connection;
     fn new() -> Self where Self: Sized;
-    fn setConnection(&mut self, conn: Arc<Mutex<TcpConnection>>);
+    fn attachConnection(&mut self, conn: Arc<Mutex<TcpConnection>>);
+    fn freeConnection(&mut self);
+    fn onAccept(&mut self);
     fn onRecv(&mut self, bytes: &mut BytesMut);
     fn onWritten(&mut self) -> bool;
     fn onError(&mut self);
@@ -72,7 +74,9 @@ impl TcpServer {
     pub fn onAcceptConnection(&mut self, stream: TcpStream, addr: SocketAddr) {
         let mut conn = Arc::new(Mutex::new(TcpConnection::new(self.event_loop.clone(), stream)));
         let mut session = self.session_alloc.unwrap()();
-        session.lock().unwrap().setConnection(conn.clone());
+        session.lock().unwrap().attachConnection(conn.clone());
+
+        session.lock().unwrap().onAccept();
 
         conn.lock().unwrap().set_read_job(
             Box::new (enclose! { 

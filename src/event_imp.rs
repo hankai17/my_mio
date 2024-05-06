@@ -252,6 +252,7 @@ impl Event {
 }
 
 pub type Job = Arc<Mutex<dyn FnMut(i64) + 'static + Send + Sync>>;
+pub type TimerJob = Box<dyn FnMut() + 'static + Send + Sync>;
 
 #[derive(Clone)]
 pub struct JobEntry {
