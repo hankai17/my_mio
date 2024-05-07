@@ -10,6 +10,5 @@ pub use self::unix::{
     set_nonblock,
     TcpStream,
     TcpListener,
-    UdpSocket,
 };
 

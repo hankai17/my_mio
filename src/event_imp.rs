@@ -1,6 +1,6 @@
 use {Poll, Token};
 use std::{fmt, io, ops};
-use std::sync::{Arc, Mutex, Condvar};
+use std::sync::{Arc, Mutex};
 
 const READABLE: usize = 0b00001;
 const WRITABLE: usize = 0b00010;
@@ -44,6 +44,7 @@ impl Ready {
 pub fn ready_as_usize(events: Ready) -> usize {
     events.0
 }
+
 pub fn ready_from_usize(events: usize) -> Ready {
     Ready(events)
 }
@@ -216,13 +217,14 @@ impl fmt::Debug for PollOpt {
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum TokenType {
-    SOCKET_EVENT,
-    NOTIFY_EVENT,
-    TIMERS_EVENT,
-    JOBS_EVENT,
-    TOKEN_EVENT,
-    ACCEPT_EVENT,
-    OTHER_EVENT,
+#[warn(non_camel_case_types)]
+    SocketEvent,
+    NotifyEvent,
+    TimersEvent,
+    JobsEvent,
+    TokenEvent,
+    AcceptEvent,
+    OtherEvent,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -263,7 +265,7 @@ pub struct JobEntry {
 
 impl Drop for JobEntry {
     fn drop(&mut self) {
-        //println!("------------dropping JobEntry job use_count: {}", Arc::strong_count(&self.job));
+        // TODO
     }
 }
 

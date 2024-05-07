@@ -24,8 +24,7 @@ pub type ReadJob = Box<dyn FnMut(&mut BytesMut) + 'static + Send + Sync>;
 pub type WritJob = Box<dyn FnMut()->bool + 'static + Send + Sync>;
 
 pub struct TcpConnection {
-    token: Option<Token>,
-    interest: Ready,
+    //interest: Ready,
 
     event_loop: Arc<Mutex<EventLoop>>,
     pub sock: TcpStream,
@@ -40,11 +39,11 @@ pub struct TcpConnection {
     read_job: ReadJob,
     writ_job: WritJob,
 
-    read_enable: bool,
-    write_enable: bool,
-    read_triggered: bool,
-    write_triggered: bool,
-    is_closed: bool
+    //read_enable: bool,
+    //write_enable: bool,
+    //read_triggered: bool,
+    //write_triggered: bool,
+    //is_closed: bool
 }
 
 fn default_read_cb(bytes: &mut BytesMut) {}
@@ -54,8 +53,6 @@ fn default_err_cb() {}
 impl TcpConnection {
     pub fn new(event_loop: Arc<Mutex<EventLoop>>, sock: TcpStream) -> TcpConnection {
         TcpConnection {
-            token: None,
-            interest: Ready::empty(),
             event_loop: event_loop,
             sock: sock,
 
@@ -66,14 +63,14 @@ impl TcpConnection {
             read_cb: default_read_cb,
             write_cb: default_written_cb,
             error_cb: default_err_cb,
-            read_job: Box::new(move |bytes: &mut BytesMut| { println!("default read job"); }),
+            read_job: Box::new(move |_| { println!("default read job"); }),
             writ_job: Box::new(move || { println!("default write job"); true }),
 
-            read_enable: false,
-            write_enable: false,
-            read_triggered: false,
-            write_triggered: true,
-            is_closed: false
+            //read_enable: false,
+            //write_enable: false,
+            //read_triggered: false,
+            //write_triggered: true,
+            //is_closed: false
         }
     }
 

@@ -122,14 +122,11 @@ pub struct EventLoop {
     notify_tx: channel::SyncSender<i32>,
     notify_rx: channel::Receiver<i32>,
     config: Config,
-    socket_ready_list: Slab<Job>,
-    timer_list: Slab<Job>,
 }
 
 impl EventLoop {
     fn configured(config: Config) -> io::Result<EventLoop> {
         let token_allocator = Arc::new(Mutex::new(TokenAllocator::new()));
-        let token_alloc = token_allocator.clone();
         current_token_allocator.set(token_allocator);
         let poll = Poll::new()?;                                        // 分配一个poll // 监听无锁队列里pipe的读端
         let timer = timer::Builder::default()
@@ -140,21 +137,21 @@ impl EventLoop {
         let (tx, rx) = channel::sync_channel(config.notify_capacity);   // 初始化pipe
         poll.register(&rx, 
                     TokenEntry {
-                        ttype: TokenType::NOTIFY_EVENT, 
+                        ttype: TokenType::NotifyEvent, 
                         token: Token(0)
                     }, 
                     Ready::readable(), 
                     PollOpt::edge() | PollOpt::oneshot(), 
-                    Arc::new(Mutex::new(move |val: i64| {}))
+                    Arc::new(Mutex::new(move |_| {}))
         )?;
         poll.register(&timer,
                     TokenEntry {
-                        ttype: TokenType::TIMERS_EVENT,
+                        ttype: TokenType::TimersEvent,
                         token: Token(0)
                     },
                     Ready::readable(),
                     PollOpt::edge(),
-                    Arc::new(Mutex::new(move |val: i64| {}))
+                    Arc::new(Mutex::new(move |_| {}))
         )?;
         Ok(EventLoop {
             run: true,
@@ -164,8 +161,6 @@ impl EventLoop {
             notify_tx: tx,
             notify_rx: rx,
             config,
-            socket_ready_list: Slab::with_capacity(128),
-            timer_list: Slab::with_capacity(128),
         })
     }
     pub fn new() -> io::Result<EventLoop> {
@@ -200,9 +195,6 @@ impl EventLoop {
     fn io_poll(&mut self, timeout: Option<Duration>) -> io::Result<usize> {
         self.poll.poll(&mut self.events, timeout)
     }
-    fn io_event(&mut self, evt: Event) {
-        //handler.ready(self, evt.token(), evt.readiness());
-    }
     fn notify(&mut self) {
         for _ in 0..self.config.messages_per_tick {     // 每个周期尝试从pipe 最多读取256次
             match self.notify_rx.try_recv() {
@@ -212,7 +204,7 @@ impl EventLoop {
         }
         let _ = self.poll.reregister(&self.notify_rx, 
                                     TokenEntry {
-                                        ttype: TokenType::NOTIFY_EVENT, 
+                                        ttype: TokenType::NotifyEvent, 
                                         token: Token(0)
                                     }, 
                                     Ready::readable(),
@@ -229,14 +221,13 @@ impl EventLoop {
             /*
             match evt.token() {
                 NOTIFY => self.notify(),
-                _ => self.io_event(evt)
             }
             */
             match self.events.get_mut(i) {
                 Some(job_entry) => {
-                    let mut token_entry = job_entry.token_entry;
+                    let token_entry = job_entry.token_entry;
                     match token_entry.ttype {
-                        TokenType::TIMERS_EVENT => {
+                        TokenType::TimersEvent => {
                             while let Some(mut t) = self.timer.poll() {
                                 t();
                             }
@@ -347,10 +338,5 @@ impl EventLoopBuilder {
         return clone;
         */
     }
-}
-
-#[derive(Clone)]
-struct EventLoopImp {
-    inner: Arc<Mutex<EventLoop>>,
 }
 

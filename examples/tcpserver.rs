@@ -114,7 +114,7 @@ impl Handler for Test {
         event_loop.lock().unwrap().register(
                 &r_clone,
                 TokenEntry {
-                    ttype: TokenType::OTHER_EVENT,
+                    ttype: TokenType::OtherEvent,
                     token: Token(0)
                 },
                 Ready::readable(),

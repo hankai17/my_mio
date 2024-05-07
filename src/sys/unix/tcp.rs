@@ -7,7 +7,7 @@ use std::time::Duration;
 use net2::TcpStreamExt;
 use iovec::IoVec;
 
-use {io, Ready, Poll, PollOpt, Token, Job, TokenEntry};
+use {io, Ready, Poll, PollOpt, Job, TokenEntry};
 use event::Evented;
 
 use sys::unix::eventedfd::EventedFd;

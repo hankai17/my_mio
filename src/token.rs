@@ -12,3 +12,4 @@ impl From<Token> for usize {
         val.0
     }
 }
+

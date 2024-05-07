@@ -2,7 +2,7 @@ pub use self::pipe::Awakener;
 
 mod pipe {
     use sys::unix;
-    use {io, Ready, Poll, PollOpt, Token, Job, TokenEntry};
+    use {io, Ready, Poll, PollOpt, Job, TokenEntry};
     use std::io::{Read, Write};
     use event::Evented;
 

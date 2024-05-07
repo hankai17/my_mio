@@ -1,7 +1,7 @@
 use net::{EventLoop, TcpStream, TcpListener};
 use std::net::{SocketAddr};
 use std::sync::{Arc, Mutex};
-use {Poll, PollOpt, Ready, Token, Job, TokenType, TokenEntry};
+use {PollOpt, Ready, Token, Job, TokenType, TokenEntry};
 
 pub type AcceptorJob = Box<dyn FnMut(TcpStream, SocketAddr) + 'static + Send + Sync>;
 
@@ -16,7 +16,7 @@ pub struct Acceptor {
     acceptor_job: AcceptorJob
 }
 
-fn default_accept_cb(stream: TcpStream, addr: SocketAddr) {}
+fn default_accept_cb(stream: TcpStream, _addr: SocketAddr) {}
 
 impl Acceptor {
     pub fn new(event_loop: Arc<Mutex<EventLoop>>, addr: &String) -> Acceptor {
@@ -25,7 +25,7 @@ impl Acceptor {
             event_loop: event_loop,
             is_listening: false,
             accept_cb: default_accept_cb,
-            acceptor_job: Box::new(move |stream: TcpStream, addr: SocketAddr| { println!("default acceptor job"); })
+            acceptor_job: Box::new(move |_, _| { println!("default acceptor job"); })
         }
     }
 
@@ -46,7 +46,7 @@ impl Acceptor {
         Ok((TcpStream::from_stream(s)?, a))
     }
     */
-    pub fn handleRead(&mut self, val: i64) {
+    pub fn handleRead(&mut self, _val: i64) {
         use std::io::ErrorKind::WouldBlock;
         use std::io::ErrorKind::Interrupted;
         loop {
@@ -70,7 +70,7 @@ impl Acceptor {
         self.event_loop.lock().unwrap().register(
                 &self.tcp_listener, 
                 TokenEntry {
-                    ttype: TokenType::ACCEPT_EVENT,
+                    ttype: TokenType::AcceptEvent,
                     token: Token(0)
                 }, 
                 Ready::readable(), 

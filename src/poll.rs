@@ -26,7 +26,6 @@ const MASK_4: usize = 16 - 1;
 const QUEUED_MASK: usize = 1 << QUEUED_SHIFT;
 const DROPPED_MASK: usize = 1 << DROPPED_SHIFT;
 
-const AWAKEN: Token = Token(usize::MAX);
 const MAX_REFCOUNT: usize = (isize::MAX) as usize;
 
 pub struct IdAllocator {
@@ -72,7 +71,7 @@ impl TokenAllocator {
     pub fn alloc(&mut self, ttype: TokenType, token: Token) -> usize {
         let id = self.id.alloc();
         // thread safe TODO
-        let mut entry = TokenEntry {
+        let entry = TokenEntry {
             ttype,
             token,
         };
@@ -89,13 +88,6 @@ impl TokenAllocator {
         self.token_map.remove(&id);
         self.id.kill(id);
     }
-}
-
-fn validate_args(token: Token) -> io::Result<()> {
-    if token == AWAKEN {
-        return Err(io::Error::new(io::ErrorKind::Other, "invalid token"));
-    }
-    Ok(())
 }
 
 pub struct SelectorId {
@@ -315,26 +307,26 @@ impl ReadinessNode {
         ReadinessNode {
             state: AtomicState::new(interest, opt),
             token_0: UnsafeCell::new(token),
-            token_1: UnsafeCell::new(TokenEntry { token: Token(0), ttype: TokenType::TOKEN_EVENT} ),
-            token_2: UnsafeCell::new(TokenEntry { token: Token(0), ttype: TokenType::TOKEN_EVENT} ),
+            token_1: UnsafeCell::new(TokenEntry { token: Token(0), ttype: TokenType::TokenEvent} ),
+            token_2: UnsafeCell::new(TokenEntry { token: Token(0), ttype: TokenType::TokenEvent} ),
             next_readiness: AtomicPtr::new(ptr::null_mut()),
             update_lock: AtomicBool::new(false),
             readiness_queue: AtomicPtr::new(queue),
             ref_count: AtomicUsize::new(ref_count),
-            job: Arc::new(Mutex::new(move |val: i64| { println!("null ReadinessNode")})),
+            job: Arc::new(Mutex::new(move |_| { println!("null ReadinessNode")})),
         }
     }
     fn marker() -> ReadinessNode {
         ReadinessNode {
             state: AtomicState::new(Ready::empty(), PollOpt::empty()),
-            token_0: UnsafeCell::new(TokenEntry { token: Token(0), ttype: TokenType::TOKEN_EVENT}),
-            token_1: UnsafeCell::new(TokenEntry { token: Token(0), ttype: TokenType::TOKEN_EVENT}),
-            token_2: UnsafeCell::new(TokenEntry { token: Token(0), ttype: TokenType::TOKEN_EVENT}),
+            token_0: UnsafeCell::new(TokenEntry { token: Token(0), ttype: TokenType::TokenEvent}),
+            token_1: UnsafeCell::new(TokenEntry { token: Token(0), ttype: TokenType::TokenEvent}),
+            token_2: UnsafeCell::new(TokenEntry { token: Token(0), ttype: TokenType::TokenEvent}),
             next_readiness: AtomicPtr::new(ptr::null_mut()),
             update_lock: AtomicBool::new(false),
             readiness_queue: AtomicPtr::new(ptr::null_mut()),
             ref_count: AtomicUsize::new(0),
-            job: Arc::new(Mutex::new(move |val: i64| { println!("null ReadinessNode")})),
+            job: Arc::new(Mutex::new(move |_| { println!("null ReadinessNode")})),
         }
     }
     fn enqueue_with_wakeup(&self) -> io::Result::<()> { // node排入队列 队列一般是Poll中的
@@ -564,7 +556,7 @@ impl ReadinessQueue {
             if !readiness.is_empty() {
                 let token = unsafe { token(node, next.token_read_pos()) };
                 dst.push_event(Event::new(readiness, token), node.job.clone());
-                node.job = Arc::new(Mutex::new(move |val: i64| { println!("deref ReadinessNode")}));
+                node.job = Arc::new(Mutex::new(move |_| { println!("deref ReadinessNode")}));
             }
         }
     }
@@ -655,19 +647,18 @@ impl Poll {
         poll.readiness_queue.inner.awakener.register(
                 &poll,
                 TokenEntry {
-                    ttype: TokenType::NOTIFY_EVENT, 
+                    ttype: TokenType::NotifyEvent, 
                     token: Token(0)
                 }, 
                 Ready::readable(),
                 PollOpt::edge(),
-                Arc::new(Mutex::new(move |val: i64| {}))
+                Arc::new(Mutex::new(move |_| {}))
         )?;
         Ok(poll)
     }
     pub fn register<E: ?Sized>(&self, handle: &E, token: TokenEntry, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()>
         where E: Evented
     {
-        //validate_args(token.ttype)?;
         log::trace!("register poller");
         handle.register(self, token, interest, opts, job)?;      // 为何不直接用self.selector 要用参数handle的register?
                                                             // 依赖反转 只是提供一个接口而已 不同类型的Evented(eg: channel:ReceiverCtl eg: unix/eventedfd Io)有不同的register
@@ -676,7 +667,6 @@ impl Poll {
     pub fn reregister<E: ?Sized>(&self, handle: &E, token: TokenEntry, interest: Ready, opts: PollOpt) -> io::Result<()>
         where E: Evented
     {
-        //validate_args(token.ttype)?;
         log::trace!("reregister poller");
         handle.reregister(self, token, interest, opts)?;
         Ok(())
@@ -1081,16 +1071,10 @@ impl fmt::Debug for SetReadiness {
 unsafe impl Send for Registration {}
 unsafe impl Sync for Registration {}
 
-pub fn new_registration(poll: &Poll, token: TokenEntry, ready: Ready, opt: PollOpt) 
-        -> (Registration, SetReadiness)
-{
-    Registration::new_priv(poll, token, ready, opt)
-}
-
 impl Registration {
     pub fn new2() -> (Registration, SetReadiness) {
         let node = Box::into_raw(Box::new(ReadinessNode::new(
-                ptr::null_mut(), TokenEntry {token: Token(0), ttype: TokenType::TOKEN_EVENT}, Ready::empty(), PollOpt::empty(), 2)));
+                ptr::null_mut(), TokenEntry {token: Token(0), ttype: TokenType::TokenEvent}, Ready::empty(), PollOpt::empty(), 2)));
         let registration = Registration {
             inner: RegistrationInner {
                 node,
@@ -1135,8 +1119,8 @@ impl Registration {
         self.inner.update(poll, token, interest, opt, job)
     }
     pub fn deregister(&self, poll: &Poll) -> io::Result<()> {
-        let job = Arc::new(Mutex::new(move |val: i64| { println!("null1 deregister for Registration") }));
-        self.inner.update(poll, TokenEntry{ ttype: TokenType::TOKEN_EVENT, token: Token(0) }, Ready::empty(), PollOpt::empty(), job)
+        let job = Arc::new(Mutex::new(move |_| { println!("null1 deregister for Registration") }));
+        self.inner.update(poll, TokenEntry{ ttype: TokenType::TokenEvent, token: Token(0) }, Ready::empty(), PollOpt::empty(), job)
     }
 }
 
@@ -1145,12 +1129,12 @@ impl Evented for Registration {
         self.inner.update(poll, token, interest, opts, job)
     }
     fn reregister(&self, poll: &Poll, token: TokenEntry, interest: Ready, opts: PollOpt) -> io::Result<()> {
-        let job = Arc::new(Mutex::new(move |val: i64| { println!("null reregister for Registration") }));
+        let job = Arc::new(Mutex::new(move |_| { println!("null reregister for Registration") }));
         self.inner.update(poll, token, interest, opts, job)
     }
     fn deregister(&self, poll: &Poll) -> io::Result<()> {
-        let job = Arc::new(Mutex::new(move |val: i64| { println!("null deregister for Registration") }));
-        self.inner.update(poll, TokenEntry{ ttype: TokenType::TOKEN_EVENT, token: Token(0) }, Ready::empty(), PollOpt::empty(), job)
+        let job = Arc::new(Mutex::new(move |_| { println!("null deregister for Registration") }));
+        self.inner.update(poll, TokenEntry{ ttype: TokenType::TokenEvent, token: Token(0) }, Ready::empty(), PollOpt::empty(), job)
     }
 }
 

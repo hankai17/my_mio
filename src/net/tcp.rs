@@ -6,7 +6,7 @@ use std::time::Duration;
 use net2::TcpBuilder;
 use iovec::IoVec;
 
-use {io, sys, Ready, Poll, PollOpt, Token, Job, TokenEntry};
+use {io, sys, Ready, Poll, PollOpt, Job, TokenEntry};
 use event::Evented;
 use poll::SelectorId;
 
@@ -138,6 +138,7 @@ impl fmt::Debug for TcpStream {
     }
 }
 
+#[allow(dead_code)]
 fn inaddr_any(other: &SocketAddr) -> SocketAddr {
     match *other {
         SocketAddr::V4(..) => {

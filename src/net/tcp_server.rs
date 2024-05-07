@@ -1,7 +1,7 @@
 use bytes::{BytesMut};
-use {Poll, PollOpt, Ready, Token, TokenType, TokenEntry};
+use {PollOpt, Ready, Token, TokenType, TokenEntry};
 use net::{EventLoop, TcpStream, Acceptor, TcpConnection};
-use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::net::{SocketAddr};
 use std::sync::{Arc, Mutex};
 
@@ -59,11 +59,11 @@ fn default_accept_cb(stream: TcpStream, addr: SocketAddr) {
 unsafe impl Send for TcpServer {}
 unsafe impl Sync for TcpServer {}
 
-static SOCKET_TOKEN_ID: AtomicUsize = ATOMIC_USIZE_INIT;
+static SOCKET_TOKEN_ID: AtomicUsize = AtomicUsize::new(0);
 
 impl TcpServer {
     pub fn new(event_loop: Arc<Mutex<EventLoop>>, addr: &String) -> TcpServer {
-        let mut acceptor = Arc::new(Mutex::new(Acceptor::new(event_loop.clone(), addr)));
+        let acceptor = Arc::new(Mutex::new(Acceptor::new(event_loop.clone(), addr)));
         TcpServer {
             event_loop: event_loop,
             acceptor: acceptor,
@@ -71,9 +71,9 @@ impl TcpServer {
         }
     }
 
-    pub fn onAcceptConnection(&mut self, stream: TcpStream, addr: SocketAddr) {
-        let mut conn = Arc::new(Mutex::new(TcpConnection::new(self.event_loop.clone(), stream)));
-        let mut session = self.session_alloc.unwrap()();
+    pub fn onAcceptConnection(&mut self, stream: TcpStream, _addr: SocketAddr) {
+        let conn = Arc::new(Mutex::new(TcpConnection::new(self.event_loop.clone(), stream)));
+        let session = self.session_alloc.unwrap()();
         session.lock().unwrap().attachConnection(conn.clone());
 
         session.lock().unwrap().onAccept();
@@ -108,7 +108,7 @@ impl TcpServer {
         self.event_loop.lock().unwrap().register(
                 &conn.lock().unwrap().sock,
                 TokenEntry {
-                    ttype: TokenType::SOCKET_EVENT, 
+                    ttype: TokenType::SocketEvent, 
                     token: Token (
                         SOCKET_TOKEN_ID.fetch_add(1, Ordering::Relaxed) + 1
                     )
@@ -120,7 +120,7 @@ impl TcpServer {
     }
 
     pub fn start_internal(this: Arc<Mutex<Self>>) {
-        let mut acceptor = this.lock().unwrap().acceptor.clone();
+        let acceptor = this.lock().unwrap().acceptor.clone();
         this.lock().unwrap().acceptor.lock().unwrap().bind(
             Arc::new(Mutex::new(
                 move |val: i64| {
@@ -142,7 +142,7 @@ impl TcpServer {
 
     pub fn start<H: Sized + 'static + Send + Sync>(&mut self)
         where H: Handler {
-        let mut session_alloc = || -> Arc<Mutex<dyn Handler + 'static + Send + Sync>> {
+        let session_alloc = || -> Arc<Mutex<dyn Handler + 'static + Send + Sync>> {
             Arc::new(Mutex::new(<H as Handler>::new()))
         };
         self.session_alloc = Some(session_alloc);

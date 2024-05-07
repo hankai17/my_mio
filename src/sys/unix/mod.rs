@@ -23,12 +23,9 @@ use std::os::unix::io::FromRawFd;
 mod tcp;
 pub use self::tcp::{TcpStream, TcpListener};
 
-mod udp;
-pub use self::udp::UdpSocket;
+//pub use iovec::IoVec;
 
 mod uio;
-
-//pub use iovec::IoVec;
 
 trait IsMinusOne {
     fn is_minus_one(&self) -> bool;

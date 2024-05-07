@@ -63,8 +63,8 @@ impl<T> From<io::Error> for TrySendError<T> {
 }
 
 struct Inner {
-    pending: AtomicUsize,   // 发送成功的次数
-    senders: AtomicUsize,
+    pending: AtomicUsize,                                                       // 发送成功的次数
+    senders: AtomicUsize,                                                       // 记录上层clone了多少次
     set_readiness: AtomicLazyCell<SetReadiness>,
 }
 
@@ -73,11 +73,11 @@ pub struct SenderCtl {
 }
 
 impl SenderCtl {
-    pub fn inc(&self) -> io::Result<()> {   // 每send成功一次 调用该函数
+    pub fn inc(&self) -> io::Result<()> {                                       // 每send成功一次 调用该函数 // hankai1
         let cnt = self.inner.pending.fetch_add(1, Ordering::Acquire);
         if 0 == cnt {
-            if let Some(set_readiness) = self.inner.set_readiness.borrow() {    // Option类型 需用Some来接
-                set_readiness.set_readiness(Ready::readable())?;
+            if let Some(s) = self.inner.set_readiness.borrow() {
+                s.set_readiness(Ready::readable())?;                            // hankai2
             }
         }
         Ok(())
@@ -86,7 +86,7 @@ impl SenderCtl {
 
 impl Clone for SenderCtl {
     fn clone(&self) -> SenderCtl {
-        self.inner.senders.fetch_add(1, Ordering::Relaxed); // 多此一举? 不能读取use_count?
+        self.inner.senders.fetch_add(1, Ordering::Relaxed);
         SenderCtl { inner: self.inner.clone() }
     }
 }
@@ -105,17 +105,17 @@ pub struct ReceiverCtl {
 }
 
 impl ReceiverCtl {
-    pub fn dec(&self) -> io::Result<()> {
+    pub fn dec(&self) -> io::Result<()> {                                       // 每接受一次 调用之    // hankai3
         let first = self.inner.pending.load(Ordering::Acquire);
         if first == 1 {
-            if let Some(set_readiness) = self.inner.set_readiness.borrow() {
-                set_readiness.set_readiness(Ready::empty())?;
+            if let Some(s) = self.inner.set_readiness.borrow() {                // 如果是最后一次 则ready置空
+                s.set_readiness(Ready::empty())?;
             }
         }
         let second = self.inner.pending.fetch_sub(1, Ordering::AcqRel);
         if first == 1 && second > 1 {
-            if let Some(set_readiness) = self.inner.set_readiness.borrow() {
-                set_readiness.set_readiness(Ready::readable())?;
+            if let Some(s) = self.inner.set_readiness.borrow() {
+                s.set_readiness(Ready::readable())?;
             }
         }
         Ok(())
@@ -123,29 +123,40 @@ impl ReceiverCtl {
 }
 
 impl Evented for ReceiverCtl {
-    fn register(&self, poll: &Poll, token: TokenEntry, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {   // 接收端注册: 分配一个node // 如果有pending则立即入队
+    #[allow(unused_variables)]
+    fn register(&self, poll: &Poll, token: TokenEntry, interest: Ready,
+            opts: PollOpt, job: Job) -> io::Result<()> {                        // 只有接收端的注册 会分配一个node 如果已有任务在pending 则node立即入队
         if self.registration.borrow().is_some() {
-            return Err(io::Error::new(io::ErrorKind::Other, "receiver already registered"));
+            return Err(io::Error::new(io::ErrorKind::Other,
+                    "receiver already registered"));
         }
-        let (registration, set_readiness) = Registration::new(poll, token, interest, opts);
+        let (r, s) = Registration::new(poll, token, interest, opts);
         if self.inner.pending.load(Ordering::Relaxed) > 0 {
-            let _ = set_readiness.set_readiness(Ready::readable());
+            let _ = s.set_readiness(Ready::readable());
         }
-        self.registration.fill(registration).expect("unexpected state encountered");        // 接收端 保存node
-        self.inner.set_readiness.fill(set_readiness).expect("unexpected state encountered");    // hankai1初始化inner中的set_readiness
+        self.registration.fill(r).expect("unexpected state encountered");       // lazycell 保存node的r
+        self.inner.set_readiness.fill(s).expect("unexpected state encountered");// inner中 保存node的s  // hankai0.1
         Ok(())
     }
-    fn reregister(&self, poll: &Poll, token: TokenEntry, interest: Ready, opts: PollOpt) -> io::Result<()> {
-        let job = Arc::new(Mutex::new(move |val: i64| { println!("null reregister for ReceiverCtl") }));
+
+    fn reregister(&self, poll: &Poll, token: TokenEntry, interest: Ready, 
+            opts: PollOpt) -> io::Result<()> {
         match self.registration.borrow() {
-            Some(registration) => registration.update(poll, token, interest, opts, job),
-            None => Err(io::Error::new(io::ErrorKind::Other, "receiver not registered")),
+            Some(r) => r.update(poll, token, interest, opts, 
+                Arc::new(Mutex::new(move |_| {
+                    println!("null reregister for ReceiverCtl")
+                }))
+            ),
+            None => Err(io::Error::new(io::ErrorKind::Other,
+                    "receiver not registered")),
         }
     }
+
     fn deregister(&self, poll: &Poll) -> io::Result<()> {
         match self.registration.borrow() {
-            Some(registration) => registration.deregister(poll),
-            None => Err(io::Error::new(io::ErrorKind::Other, "receiver not registered")),
+            Some(r) => r.deregister(poll),
+            None => Err(io::Error::new(io::ErrorKind::Other,
+                    "receiver not registered")),
         }
     }
 }
@@ -159,7 +170,7 @@ impl<T> Sender<T> {
     pub fn send(&self, t: T) -> Result<(), SendError<T>> {
         self.tx.send(t)
             .map_err(SendError::from)
-            .and_then(|_|{
+            .and_then(|_| {
                 self.ctl.inc()?;
                 Ok(())
             })
@@ -189,6 +200,7 @@ impl<T> SyncSender<T> {
                 Ok(())
             })
     }
+
     pub fn try_send(&self, t: T) -> Result<(), TrySendError<T>> {
         self.tx.try_send(t)
             .map_err(From::from)
@@ -223,29 +235,35 @@ impl<T> Receiver<T> {
 }
 
 impl<T> Evented for Receiver<T> {
-    fn register(&self, poll: &Poll, token: TokenEntry, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
+    fn register(&self, poll: &Poll, token: TokenEntry, interest: Ready,
+            opts: PollOpt, job: Job) -> io::Result<()> {
         self.ctl.register(poll, token, interest, opts, job)
     }
-    fn reregister(&self, poll: &Poll, token: TokenEntry, interest: Ready, opts: PollOpt) -> io::Result<()> {
+
+    fn reregister(&self, poll: &Poll, token: TokenEntry, interest: Ready,
+            opts: PollOpt) -> io::Result<()> {
         self.ctl.reregister(poll, token, interest, opts)
     }
+
     fn deregister(&self, poll: &Poll) -> io::Result<()> {
         self.ctl.deregister(poll)
     }
 }
 
 pub fn ctl_pair() -> (SenderCtl, ReceiverCtl) {
-    let inner = Arc::new(Inner {
-        pending: AtomicUsize::new(0),
-        senders: AtomicUsize::new(1),
-        set_readiness: AtomicLazyCell::new(),
-    });
+    let inner = Arc::new(
+        Inner {
+            pending: AtomicUsize::new(0),
+            senders: AtomicUsize::new(1),
+            set_readiness: AtomicLazyCell::new(),                               // hankai0
+        }
+    );
     let tx = SenderCtl {
         inner: inner.clone(),
     };
     let rx = ReceiverCtl {
         registration: LazyCell::new(),
-        inner,  // 为何不clone?
+        inner,
     };
     (tx, rx)
 }
@@ -253,28 +271,28 @@ pub fn ctl_pair() -> (SenderCtl, ReceiverCtl) {
 pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
     let (tx_ctl, rx_ctl) = ctl_pair();
     let (tx, rx) = mpsc::channel();
-    let tx = Sender {
+    let s = Sender {
         tx,
         ctl: tx_ctl,
     };
-    let rx = Receiver {
+    let r = Receiver {
         rx,
         ctl: rx_ctl,
     };
-    (tx, rx)
+    (s, r)
 }
 
 pub fn sync_channel<T>(bound: usize) -> (SyncSender<T>, Receiver<T>) {
     let (tx_ctl, rx_ctl) = ctl_pair();
     let (tx, rx) = mpsc::sync_channel(bound);
-    let tx = SyncSender {
+    let s = SyncSender {
         tx,
         ctl: tx_ctl,
     };
-    let rx = Receiver {
+    let r = Receiver {
         rx,
         ctl: rx_ctl,
     };
-    (tx, rx)
+    (s, r)
 }
 

@@ -1,7 +1,6 @@
 #![allow(deprecated)]
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
-use std::sync::{Arc, Mutex, Condvar};
 use std::time::Duration;
 use std::{cmp, i32};
 
@@ -11,8 +10,8 @@ use libc::{EPOLLET, EPOLLOUT, EPOLLIN, EPOLLPRI}; // define in /usr/include/sys/
 
 //pub use poll::{TokenAllocator, TokenType};
 
-use {io, Ready, PollOpt, Token, Job, Poll, JobEntry, TokenEntry, TokenType};
-use event_imp::{Event, ready_as_usize};
+use {io, Ready, PollOpt, Job, JobEntry, TokenEntry, TokenType};
+use event_imp::{Event};
 use sys::unix::{cvt, UnixReady};
 use sys::unix::io::set_cloexec;
 use std::collections::HashMap;
@@ -65,9 +64,8 @@ impl Selector {
             for i in 0..cnt {
                 let fd = evts.events[i].u64 as usize as i32;
                 let fd_entry: &mut JobEntry = events_map.as_mut().unwrap().get_mut(&fd).unwrap();
-                let mut token_entry = fd_entry.token_entry;
-
-                if token_entry.ttype == TokenType::NOTIFY_EVENT {
+                let token_entry = fd_entry.token_entry;
+                if token_entry.ttype == TokenType::NotifyEvent {
                     evts.events.remove(i);
                     has_notify = true;
                     println!("token_entry: {:?}, found notify", token_entry);
@@ -118,12 +116,7 @@ impl Selector {
         let events_map = self.events_map();
         unsafe {
             cvt(libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_DEL, fd, &mut info))?;
-            let ret = events_map.as_mut().unwrap().remove(&fd as &i32);
-            if let Some(ret) = ret {
-                //println!("deregister fd: {} ok", fd);
-            } else {
-                //println!("deregister fd: {} failed", fd)
-            }
+            events_map.as_mut().unwrap().remove(&fd as &i32);
             Ok(())
         }
     }
@@ -150,27 +143,6 @@ fn ioevent_to_epoll(interest: Ready, opts: PollOpt) -> u32 {
         kind |= EPOLLONESHOT;
     }
     kind as u32
-}
-
-fn epoll_to_ioevent(event: u32) -> Ready {
-    let epoll = event as c_int;
-    let mut kind = Ready::empty();
-    if (epoll & EPOLLIN) != 0 {
-        kind = kind | Ready::readable();
-    }
-    if (epoll & EPOLLOUT) != 0 {
-        kind = kind | Ready::writable();
-    }
-    if (epoll & EPOLLPRI) != 0 {
-        kind = kind | Ready::readable() | UnixReady::priority();
-    }
-    if (epoll & EPOLLERR) != 0 {
-        kind = kind | UnixReady::error();
-    }
-    if (epoll & EPOLLHUP) != 0 {
-        kind = kind | UnixReady::hup();
-    }
-    kind
 }
 
 impl AsRawFd for Selector {

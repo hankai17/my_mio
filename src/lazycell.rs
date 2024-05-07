@@ -2,6 +2,7 @@ use std::cell::UnsafeCell;
 use std::mem;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+
 pub struct LazyCell<T> {                // 封装的是 一个编译期大小不能确定的枚举值
                                         // 目的是为了判断 在编译期这个值有无初始化?
     inner: UnsafeCell<Option<T>>,       // Option包装的是枚举(Some None) 
@@ -10,34 +11,42 @@ pub struct LazyCell<T> {                // 封装的是 一个编译期大小不
 
 impl<T> LazyCell<T> {
     pub fn new() -> LazyCell<T> {
-        LazyCell { inner: UnsafeCell::new(None) }       // 默认填入None值
+        LazyCell { inner: UnsafeCell::new(None) }
     }
 
-    pub fn fill(&self, value: T) -> Result<(), T> {     // 封装的是枚举Ok Err
-        let slot = unsafe { &mut *self.inner.get() };   // get()返回值为 *mut T
-        if slot.is_some() {                             // 确保是None
+    pub fn fill(&self, value: T) -> Result<(), T> {
+        let slot = unsafe { &mut *self.inner.get() };   // 解引用会 消除mut
+        if slot.is_some() {
             return Err(value);
         }
         *slot = Some(value);
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn replace(&mut self, value: T) -> Option<T> {
-        mem::replace(unsafe { &mut *self.inner.get() }, Some(value))
+        mem::replace(
+            //unsafe { &mut *self.inner.get() },
+            self.inner.get_mut(),
+            Some(value)
+        )
     }
 
     pub fn borrow(&self) -> Option<&T> {
-        unsafe { &*self.inner.get() }.as_ref()  //  converts from &Option<T> to Option<&T>
+        unsafe { &*self.inner.get() }.as_ref()          //  converts from &Option<T> to Option<&T>
     }
 
-    pub fn filled(&self) -> bool {              // 已经有值填充了
+    #[allow(dead_code)]
+    pub fn filled(&self) -> bool {
         self.borrow().is_some()
     }
 
+    #[allow(dead_code)]
     pub fn borrow_mut(&mut self) -> Option<&mut T> {
-        unsafe { &mut *self.inner.get() }.as_mut()  // converts from &mut Option<T> to Option<&mut T>
+        unsafe { &mut *self.inner.get() }.as_mut()      // converts from &mut Option<T> to Option<&mut T>
     }
 
+    #[allow(dead_code)]
     pub fn borrow_with<F: FnOnce() -> T>(&self, f: F) -> &T {
         if let Some(value) = self.borrow() {
             return value;
@@ -46,9 +55,10 @@ impl<T> LazyCell<T> {
         if self.fill(value).is_err() {
             panic!("borrow_with: cell was filled by closure")
         }
-        self.borrow().unwrap()  // 去掉Option 如果是None则报错
+        self.borrow().unwrap()
     }
 
+    #[allow(dead_code)]
     pub fn borrow_mut_with<F: FnOnce() -> T>(&mut self, f: F) -> &mut T {
         if !self.filled() {
             let value = f();
@@ -59,6 +69,7 @@ impl<T> LazyCell<T> {
         self.borrow_mut().unwrap()
     }
 
+    #[allow(dead_code)]
     pub fn try_borrow_with<E, F>(&self, f: F) -> Result<&T, E>
         where F: FnOnce() -> Result<T, E>
     {
@@ -72,6 +83,7 @@ impl<T> LazyCell<T> {
         Ok(self.borrow().unwrap())
     }
 
+    #[allow(dead_code)]
     pub fn try_borrow_mut_with<E, F>(&mut self, f: F) -> Result<&mut T, E>
         where F: FnOnce() -> Result<T, E>
     {
@@ -85,13 +97,15 @@ impl<T> LazyCell<T> {
         Ok(self.borrow_mut().unwrap())
     }
 
+    #[allow(dead_code)]
     pub fn into_inner(self) -> Option<T> {
-        unsafe { self.inner.into_inner() }  // 去掉UnsafeCell
+        self.inner.into_inner()
     }
 }
 
 impl<T: Copy> LazyCell<T> {
-    pub fn get(&self) -> Option<T> {
+    #[allow(dead_code)]
+    pub fn get(&self) -> Option<T> {                    // 打破了引用的两大定律?
         unsafe { *self.inner.get() }
     }
 }
@@ -113,6 +127,7 @@ impl<T> AtomicLazyCell<T> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn fill(&self, t: T) -> Result<(), T> {
         if NONE != self.state.compare_and_swap(NONE, LOCK, Ordering::Acquire) {
             return Err(t);
@@ -124,6 +139,7 @@ impl<T> AtomicLazyCell<T> {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn replace(&mut self, value: T) -> Option<T> {
         match mem::replace(self.state.get_mut(), SOME) {
             NONE | SOME => {}
@@ -132,6 +148,7 @@ impl<T> AtomicLazyCell<T> {
         mem::replace(unsafe { &mut *self.inner.get() }, Some(value))
     }
 
+    #[allow(dead_code)]
     pub fn filled(&self) -> bool {
         self.state.load(Ordering::Acquire) == SOME
     }
@@ -143,12 +160,14 @@ impl<T> AtomicLazyCell<T> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn into_inner(self) -> Option<T> {
-        unsafe { self.inner.into_inner() }
+        self.inner.into_inner()
     }
 }
 
 impl<T: Copy> AtomicLazyCell<T> {
+    #[allow(dead_code)]
     pub fn get(&self) -> Option<T> {
         match self.state.load(Ordering::Acquire) {
             SOME => unsafe { *self.inner.get() },
