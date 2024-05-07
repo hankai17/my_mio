@@ -16,7 +16,7 @@ pub struct Acceptor {
     acceptor_job: AcceptorJob
 }
 
-fn default_accept_cb(stream: TcpStream, _addr: SocketAddr) {}
+fn default_accept_cb(_stream: TcpStream, _addr: SocketAddr) {}
 
 impl Acceptor {
     pub fn new(event_loop: Arc<Mutex<EventLoop>>, addr: &String) -> Acceptor {
@@ -46,7 +46,7 @@ impl Acceptor {
         Ok((TcpStream::from_stream(s)?, a))
     }
     */
-    pub fn handleRead(&mut self, _val: i64) {
+    pub fn handle_read(&mut self, _val: i64) {
         use std::io::ErrorKind::WouldBlock;
         use std::io::ErrorKind::Interrupted;
         loop {
@@ -76,7 +76,7 @@ impl Acceptor {
                 Ready::readable(), 
                 PollOpt::edge(),
                 job
-        );
+        ).unwrap();
         self.is_listening = true;
     }
 }

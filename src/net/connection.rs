@@ -1,7 +1,6 @@
 use std::{io};
 use net::{TryRead, TryWrite};
 use bytes::{BufMut, BytesMut};
-use {Ready, Token};
 use event_imp::{ready_from_usize};
 use net::{EventLoop, TcpStream};
 use std::sync::{Arc, Mutex};
@@ -46,7 +45,7 @@ pub struct TcpConnection {
     //is_closed: bool
 }
 
-fn default_read_cb(bytes: &mut BytesMut) {}
+fn default_read_cb(_bytes: &mut BytesMut) {}
 fn default_written_cb() -> bool { false }
 fn default_err_cb() {}
 
@@ -94,7 +93,7 @@ impl TcpConnection {
         self.writ_job = job;
     }
 
-    fn handleRead(&mut self) -> io::Result<()> {
+    fn handle_read(&mut self) -> io::Result<()> {
         let mut buf = self.read_buffer.take().unwrap();
         match self.sock.try_read_buf(&mut buf) {
             Ok(None) => {
@@ -126,7 +125,7 @@ impl TcpConnection {
         Ok(())
     }
 
-    fn writeData(&mut self) -> io::Result<()> {
+    fn write_data(&mut self) -> io::Result<()> {
         let mut buf_tmp = Some(BytesMut::with_capacity(1024)).unwrap();
         let mut buf_snd = self.write_buffer_sending.take().unwrap();
         if buf_snd.len() > 0 {
@@ -155,7 +154,7 @@ impl TcpConnection {
                 //println!("client flushing buf; WouldBlock");
                 self.write_buffer_sending = Some(buf.split());
             }
-            Ok(Some(r)) => {
+            Ok(Some(_r)) => {
                 //println!("Conn {:?}: write2 {} bytes", self.sock, r);
                 if buf.len() > 0 {
                     self.write_buffer_sending = Some(buf.split());
@@ -186,11 +185,11 @@ impl TcpConnection {
         let mut buffer = self.write_buffer_waiting.take().unwrap();
         buffer.put(bytes);
         self.write_buffer_waiting = Some(buffer);
-        self.writeData();
+        self.write_data().unwrap();
         return Ok(len);
     }
 
-    fn handleWrite(&mut self) -> io::Result<()> {
+    fn handle_write(&mut self) -> io::Result<()> {
         let mut empty_waiting: bool = false;
         let mut empty_sending: bool = false;
         if self.write_buffer_waiting.as_ref().unwrap().len() == 0 {
@@ -201,41 +200,41 @@ impl TcpConnection {
         }
         if empty_waiting && empty_sending {
             // disable write
-            println!("handleWrite disable write TODO");
+            println!("handle_write disable write TODO");
         } else {
-            self.writeData();
+            self.write_data().unwrap();
         }
         return Ok(())
     }
 
-    fn handleError(&mut self) -> io::Result<()> {
+    fn handle_error(&mut self) -> io::Result<()> {
         Ok(())
     }
 
-    pub fn handleEvent(&mut self, event: i64) -> io::Result<()> {
+    pub fn handle_event(&mut self, event: i64) -> io::Result<()> {
         // check closed
         let ready = ready_from_usize(event as usize);
         if ready.is_readable() {
-           self.handleRead();
+           self.handle_read().unwrap();
         }
         if ready.is_writable() {
-           self.handleWrite();
+           self.handle_write().unwrap();
         }
         if ready.is_error() ||
                 ready.is_hup() {
-            self.handleError();
+            self.handle_error().unwrap();
         }
         Ok(())
     }
 
-    pub fn attachEvent(&mut self) {
-        //self.event_loop.register(&self, SERVER, r|w|e, self.handleEvent) 
+    pub fn attach_event(&mut self) {
+        //self.event_loop.register(&self, SERVER, r|w|e, self.handle_event) 
     }
 
     pub fn clone_stream(&mut self) {
     }
     pub fn close_stream(&mut self) {
-        self.event_loop.lock().unwrap().deregister(&self.sock);
+        self.event_loop.lock().unwrap().deregister(&self.sock).unwrap();
         //println!("close_stream deregister done");
     }
 }

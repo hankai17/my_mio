@@ -1,6 +1,6 @@
 use {channel, Poll, Events, Token, TokenAllocator, TokenType, TokenEntry};
 use event::Evented;
-use event_imp::{Event, Ready, PollOpt, Job, ready_as_usize, TimerJob};
+use event_imp::{Ready, PollOpt, Job, ready_as_usize, TimerJob};
 use timer::{self, Timer, Timeout};
 use std::{io, usize};
 use std::default::Default;
@@ -8,8 +8,7 @@ use std::time::Duration;
 use std::{fmt, error, any};
 use std::sync::{Arc, Mutex};
 use std::thread_local;
-use slab::Slab;
-use poll::current_token_allocator;
+use poll::CURRENT_TOKEN_ALLOCATOR;
 
 pub enum NotifyError<T> {
     Io(io::Error),
@@ -25,6 +24,7 @@ impl<M: any::Any> error::Error for NotifyError<M> {
             NotifyError::Full(..) => "Queue is full"
         }
     }
+
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             NotifyError::Io(ref err) => Some(err),
@@ -127,7 +127,7 @@ pub struct EventLoop {
 impl EventLoop {
     fn configured(config: Config) -> io::Result<EventLoop> {
         let token_allocator = Arc::new(Mutex::new(TokenAllocator::new()));
-        current_token_allocator.set(token_allocator);
+        CURRENT_TOKEN_ALLOCATOR.set(token_allocator);
         let poll = Poll::new()?;                                        // 分配一个poll // 监听无锁队列里pipe的读端
         let timer = timer::Builder::default()
             .tick_duration(config.timer_tick)
@@ -163,38 +163,51 @@ impl EventLoop {
             config,
         })
     }
+
     pub fn new() -> io::Result<EventLoop> {
         EventLoop::configured(Config::default())
     }
+
     pub fn channel(&self) -> Sender<i32> {
         Sender::new(self.notify_tx.clone())
     }
-    pub fn timeout(&mut self, delay: Duration, token: TimerJob) -> timer::Result<Timeout> {
+
+    pub fn timeout(&mut self, delay: Duration, token: TimerJob)
+            -> timer::Result<Timeout> {
         self.timer.set_timeout(delay, token)
     }
+
     pub fn clear_timeout(&mut self, timeout: &Timeout) -> bool {
         self.timer.cancel_timeout(&timeout).is_some()
     }
+
     pub fn shutdown(&mut self) { 
         self.run = false;
     }
+
     pub fn is_running(&self) -> bool { self.run }
-    //pub fn register<E: ?Sized>(&mut self, io: &E, token: Token, interest: Ready, opt: PollOpt) -> io::Result<()>
-    pub fn register<E>(&self, io: &E, token: TokenEntry, interest: Ready, opt: PollOpt, job: Job) -> io::Result<()> // 也可以
-        where E: Evented {
+
+    pub fn register<E>(&self, io: &E, token: TokenEntry, interest: Ready,
+            opt: PollOpt, job: Job) -> io::Result<()>
+            where E: Evented {
         self.poll.register(io, token, interest, opt, job)
     }
-    pub fn reregister<E: ?Sized>(&self, io: &E, token: TokenEntry, interest: Ready, opt: PollOpt) -> io::Result<()>
-        where E: Evented {
+
+    pub fn reregister<E: ?Sized>(&self, io: &E, token: TokenEntry,
+            interest: Ready, opt: PollOpt) -> io::Result<()>
+            where E: Evented {
         self.poll.reregister(io, token, interest, opt)
     }
+
     pub fn deregister<E: ?Sized>(&self, io: &E) -> io::Result<()>
         where E: Evented {
         self.poll.deregister(io)
     }
+
     fn io_poll(&mut self, timeout: Option<Duration>) -> io::Result<usize> {
         self.poll.poll(&mut self.events, timeout)
     }
+
     fn notify(&mut self) {
         for _ in 0..self.config.messages_per_tick {     // 每个周期尝试从pipe 最多读取256次
             match self.notify_rx.try_recv() {
@@ -211,13 +224,11 @@ impl EventLoop {
                                     PollOpt::edge() | PollOpt::oneshot()
         );
     }
-    // https://stackoverflow.com/questions/45116984/the-trait-cannot-be-made-into-an-object
+
     fn io_process(&mut self, cnt: usize) {
         let mut i = 0;
         log::trace!("io_process(..); cnt: {}; len: {}", cnt, self.events.len());
         while i < cnt {
-            //let evt = events.get(i).unwrap();  // epoll_event 转为 Ready
-            //log::trace!("event: {:?}; idx: {:?}", evt, i);
             /*
             match evt.token() {
                 NOTIFY => self.notify(),
@@ -249,6 +260,7 @@ impl EventLoop {
         }
         self.events.clear();
     }
+
     pub fn run_once(&mut self, timeout: Option<Duration>) -> io::Result<()> {
         let cnt = match self.io_poll(timeout) {
             Ok(e) => e,
@@ -262,9 +274,9 @@ impl EventLoop {
             }
         };
         self.io_process(cnt);
-        //handler.tick(self);     // 没有实现也能调?
         Ok(())
     }
+
     pub fn run(&mut self) -> io::Result<()> {
         self.run = true;
         while self.run {
@@ -281,62 +293,57 @@ pub struct EventLoopBuilder {
 
 use std::cell::RefCell;
 thread_local! {
-    pub static current_loop: RefCell<Arc<Mutex<EventLoop>>> = panic!("!"); //Arc::new(Mutex::new(EventLoop));
-    //pub static current_token_allocator: RefCell<Arc<Mutex<TokenAllocator>>> = panic!("!");
+    pub static CURRENT_LOOP: RefCell<Arc<Mutex<EventLoop>>> = panic!("!");
 }
 
 impl EventLoopBuilder {
     pub fn new() -> EventLoopBuilder {
         EventLoopBuilder::default()
     }
+
     pub fn notify_capacity(&mut self, capacity: usize) -> &mut Self {
         self.config.notify_capacity = capacity;
         self
     }
+
     pub fn messages_per_tick(&mut self, messages: usize) -> &mut Self {
         self.config.messages_per_tick = messages;
         self
     }
+
     pub fn timer_tick(&mut self, val: Duration) -> &mut Self {
         self.config.timer_tick = val;
         self
     }
+
     pub fn timer_wheel_size(&mut self, size: usize) -> &mut Self {
         self.config.timer_wheel_size = size;
         self
     }
+
     pub fn timer_capacity(&mut self, cap: usize) -> &mut Self {
         self.config.timer_capacity = cap;
         self
     }
+
 	pub fn build(self) -> io::Result<EventLoop> {
         EventLoop::configured(self.config)
     }
+
     pub fn get_build(self) -> io::Result<Arc<Mutex<EventLoop>>> {
-        /*
-        if current_loop.try_with() == panic!("!") {
-            println!("slkdfjlskdfjl");
-        }
-        */
         let event_loop = Arc::new(Mutex::new(self.build().unwrap()));
         let clone = event_loop.clone();
-        current_loop.set(clone);
+        CURRENT_LOOP.set(clone);
 
         Ok(event_loop)
     }
+
     pub fn get_current_loop() -> Arc<Mutex<EventLoop>> {
-        //current_loop.with(|poll| -> Arc<Mutex<EventLoop>> {return poll.into_inner()})
-        //current_loop.with(|poll| -> &'static mut Arc<Mutex<EventLoop>> {return poll.get_mut()})
-        let ptr = current_loop.with(|poll| -> *mut Arc<Mutex<EventLoop>> {return poll.as_ptr()});
+        let ptr = CURRENT_LOOP.with(|poll| -> *mut Arc<Mutex<EventLoop>> {return poll.as_ptr()});
         unsafe {
             let clone = (*ptr).clone();
             clone
         }
-        /*
-        let event_loop = current_loop.with(|poll| -> &mut Arc<Mutex<EventLoop>> {return poll.get_mut()});
-        let clone = event_loop.clone();
-        return clone;
-        */
     }
 }
 

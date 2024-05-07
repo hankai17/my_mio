@@ -623,12 +623,12 @@ pub fn selector(poll: &Poll) -> &sys::Selector {
 }
 
 thread_local! {
-    pub static current_token_allocator: RefCell<Arc<Mutex<TokenAllocator>>> = panic!("!");
+    pub static CURRENT_TOKEN_ALLOCATOR: RefCell<Arc<Mutex<TokenAllocator>>> = panic!("!");
 }
 
 impl Poll {
     pub fn get_current_token_allocator() -> Arc<Mutex<TokenAllocator>> {
-        let ptr = current_token_allocator.with(|allocator| -> *mut Arc<Mutex<TokenAllocator>> {return allocator.as_ptr()});
+        let ptr = CURRENT_TOKEN_ALLOCATOR.with(|allocator| -> *mut Arc<Mutex<TokenAllocator>> {return allocator.as_ptr()});
         unsafe {
             let clone = (*ptr).clone();
             clone

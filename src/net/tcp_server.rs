@@ -17,17 +17,18 @@ macro_rules! enclose {
 pub trait Handler {
     //type Connection;
     fn new() -> Self where Self: Sized;
-    fn attachConnection(&mut self, conn: Arc<Mutex<TcpConnection>>);
-    fn freeConnection(&mut self);
-    fn onAccept(&mut self);
-    fn onRecv(&mut self, bytes: &mut BytesMut);
-    fn onWritten(&mut self) -> bool;
-    fn onError(&mut self);
+    fn attach_connection(&mut self, conn: Arc<Mutex<TcpConnection>>);
+    fn free_connection(&mut self);
+    fn on_accept(&mut self);
+    fn on_recv(&mut self, bytes: &mut BytesMut);
+    fn on_written(&mut self) -> bool;
+    fn on_error(&mut self);
     //fn send(&mut self, bytes: &mut BytesMut) -> io::Result<()>;
     ////fn shutdown();
     ////fn safeShutdown();
 }
 
+/*
 pub struct SessionManager {
     // map<string, weak<Session>>
 }
@@ -41,6 +42,7 @@ impl SessionManager {
     }
     */
 }
+*/
 
 pub struct TcpServer {
     event_loop: Arc<Mutex<EventLoop>>, 
@@ -50,10 +52,6 @@ pub struct TcpServer {
     // on_read_cb
     // on_written_cb
     // on_err_cb
-}
-
-fn default_accept_cb(stream: TcpStream, addr: SocketAddr) {
-    //println!("move it into struct TODO");
 }
 
 unsafe impl Send for TcpServer {}
@@ -71,18 +69,17 @@ impl TcpServer {
         }
     }
 
-    pub fn onAcceptConnection(&mut self, stream: TcpStream, _addr: SocketAddr) {
+    pub fn on_accept_connection(&mut self, stream: TcpStream, _addr: SocketAddr) {
         let conn = Arc::new(Mutex::new(TcpConnection::new(self.event_loop.clone(), stream)));
         let session = self.session_alloc.unwrap()();
-        session.lock().unwrap().attachConnection(conn.clone());
-
-        session.lock().unwrap().onAccept();
+        session.lock().unwrap().attach_connection(conn.clone());
+        session.lock().unwrap().on_accept();
 
         conn.lock().unwrap().set_read_job(
             Box::new (enclose! { 
                 (session)
 				move |bytes: &mut BytesMut| {
-                    session.lock().unwrap().onRecv(bytes);
+                    session.lock().unwrap().on_recv(bytes);
                 }
             })
         );
@@ -91,7 +88,7 @@ impl TcpServer {
             Box::new (enclose! {
                 (session)
                 move || {
-                    session.lock().unwrap().onWritten()
+                    session.lock().unwrap().on_written()
                 }
             })
         );
@@ -100,7 +97,7 @@ impl TcpServer {
             enclose! {
                 (conn)
                 move |val: i64| {
-                    conn.lock().unwrap().handleEvent(val);
+                    conn.lock().unwrap().handle_event(val).unwrap();
                 }
             }
         ));
@@ -116,7 +113,7 @@ impl TcpServer {
                 Ready::readable() | Ready::writable(),
                 PollOpt::edge(), 
                 job
-        );
+        ).unwrap();
     }
 
     pub fn start_internal(this: Arc<Mutex<Self>>) {
@@ -124,7 +121,7 @@ impl TcpServer {
         this.lock().unwrap().acceptor.lock().unwrap().bind(
             Arc::new(Mutex::new(
                 move |val: i64| {
-                    acceptor.lock().unwrap().handleRead(val);
+                    acceptor.lock().unwrap().handle_read(val);
                 }
             ))
         );
@@ -133,7 +130,7 @@ impl TcpServer {
             enclose! {
                 (this)
                 move |stream: TcpStream, addr: SocketAddr| {
-                    this.lock().unwrap().onAcceptConnection(stream, addr);
+                    this.lock().unwrap().on_accept_connection(stream, addr);
                 }
             }
         );
