@@ -556,7 +556,7 @@ impl ReadinessQueue {
             if !readiness.is_empty() {
                 let token = unsafe { token(node, next.token_read_pos()) };
                 dst.push_event(Event::new(readiness, token), node.job.clone());
-                node.job = Arc::new(Mutex::new(move |_| { println!("deref ReadinessNode")}));
+                node.job = Arc::new(Mutex::new(|_| {}));
             }
         }
     }
@@ -628,12 +628,17 @@ thread_local! {
 
 impl Poll {
     pub fn get_current_token_allocator() -> Arc<Mutex<TokenAllocator>> {
-        let ptr = CURRENT_TOKEN_ALLOCATOR.with(|allocator| -> *mut Arc<Mutex<TokenAllocator>> {return allocator.as_ptr()});
+        let ptr = CURRENT_TOKEN_ALLOCATOR.with(
+            |allocator| -> *mut Arc<Mutex<TokenAllocator>> {
+                return allocator.as_ptr()
+            }
+        );
         unsafe {
             let clone = (*ptr).clone();
             clone
         }
     }
+
     pub fn new() -> io::Result<Poll> {
         is_send::<Poll>(); 
         is_sync::<Poll>(); 
@@ -656,21 +661,25 @@ impl Poll {
         )?;
         Ok(poll)
     }
-    pub fn register<E: ?Sized>(&self, handle: &E, token: TokenEntry, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()>
+
+    pub fn register<E: ?Sized>(&self, handle: &E, token: TokenEntry,
+            interest: Ready, opts: PollOpt, job: Job) -> io::Result<()>
         where E: Evented
     {
         log::trace!("register poller");
-        handle.register(self, token, interest, opts, job)?;      // 为何不直接用self.selector 要用参数handle的register?
-                                                            // 依赖反转 只是提供一个接口而已 不同类型的Evented(eg: channel:ReceiverCtl eg: unix/eventedfd Io)有不同的register
+        handle.register(self, token, interest, opts, job)?;
         Ok(())
     }
-    pub fn reregister<E: ?Sized>(&self, handle: &E, token: TokenEntry, interest: Ready, opts: PollOpt) -> io::Result<()>
+
+    pub fn reregister<E: ?Sized>(&self, handle: &E, token: TokenEntry,
+            interest: Ready, opts: PollOpt) -> io::Result<()>
         where E: Evented
     {
         log::trace!("reregister poller");
         handle.reregister(self, token, interest, opts)?;
         Ok(())
     }
+
     pub fn deregister<E: ?Sized>(&self, handle: &E) -> io::Result<()>
         where E: Evented
     {
@@ -678,13 +687,19 @@ impl Poll {
         handle.deregister(self)?;
         Ok(())
     }
-    pub fn poll(&self, events: &mut Events, timeout: Option<Duration>) -> io::Result<usize> {
+
+    pub fn poll(&self, events: &mut Events, timeout: Option<Duration>)
+            -> io::Result<usize> {
         self.poll1(events, timeout, false)
     }
-    pub fn poll_interruptible(&self, events: &mut Events, timeout: Option<Duration>) -> io::Result<usize> {
+
+    pub fn poll_interruptible(&self, events: &mut Events,
+            timeout: Option<Duration>) -> io::Result<usize> {
         self.poll1(events, timeout, true)
     }
-    fn poll2(&self, events: &mut Events, mut timeout: Option<Duration>, interruptible: bool) -> io::Result<usize> {
+
+    fn poll2(&self, events: &mut Events, mut timeout: Option<Duration>,
+            interruptible: bool) -> io::Result<usize> {
         if timeout == Some(Duration::from_millis(0)) {
         } else if self.readiness_queue.prepare_for_sleep() {
         } else {
@@ -699,7 +714,8 @@ impl Poll {
                     break;
                 }
                 Ok(false) => break,
-                Err(ref e) if e.kind() == io::ErrorKind::Interrupted && !interruptible => {
+                Err(ref e) if e.kind() == io::ErrorKind::Interrupted 
+                        && !interruptible => {
                     if let Some(to) = timeout {
                         let elapsed = now.elapsed();
                         if elapsed >= to {
@@ -713,10 +729,11 @@ impl Poll {
             }
         }
         self.readiness_queue.poll(&mut events.inner);
-        //println!("after queue poll len: {}", events.inner.len());
         Ok(events.inner.len())
     }
-    fn poll1(&self, events: &mut Events, mut timeout: Option<Duration>, interruptible: bool) -> io::Result<usize> {
+
+    fn poll1(&self, events: &mut Events, mut timeout: Option<Duration>,
+            interruptible: bool) -> io::Result<usize> {
         let zero = Some(Duration::from_millis(0));
         let mut curr = 0;
         let res = self.lock_state.compare_exchange(0, 1, SeqCst, SeqCst);
@@ -849,53 +866,6 @@ impl Events {
     }
 }
 
-/*
-impl fmt::Debug for Events<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Events")
-                .field("capacity", &self.capacity())
-                .finish()
-    }
-}
-
-impl IntoIterator for Events<'_> {
-    type Item = Event;
-    type IntoIter<'a> = IntoIter<'a>;
-    fn into_iter(self) -> Self::IntoIter {
-        IntoIter {
-            inner: self,
-            pos: 0,
-        }
-    }
-}
-
-impl<'a> IntoIterator for &'a Events<'_> {
-    type Item = Event;
-    type IntoIter = Iter<'a>;
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter()
-    }
-}
-
-impl<'a> Iterator for Iter<'a> {
-    type Item = Event;
-    fn next(&mut self) -> Option<Event> {
-        let ret = self.inner.inner.get(self.pos);
-        self.pos += 1;
-        ret
-    }
-}
-
-impl Iterator for IntoIter<'_> {
-    type Item = Event;
-    fn next(&mut self) -> Option<Event> {
-        let ret = self.inner.inner.get(self.pos);
-        self.pos += 1;
-        ret
-    }
-}
-*/
-
 struct RegistrationInner {
     node: *mut ReadinessNode,
 }
@@ -904,7 +874,8 @@ impl RegistrationInner {
     fn readiness(&self) -> Ready {
         self.state.load(Relaxed).readiness()
     }
-    fn set_readiness(&self, ready: Ready) -> io::Result<()> {   // 重置当前节点状态 如果有感兴趣的事件到来则入队
+
+    fn set_readiness(&self, ready: Ready) -> io::Result<()> {
         let mut state = self.state.load(Acquire);
         let mut next;
         loop {
@@ -914,7 +885,7 @@ impl RegistrationInner {
             }
             next.set_readiness(ready);
             if !next.effective_readiness().is_empty() {
-                next.set_queued(); // 如果next有事件到来  那么会排入队列中 在当poll时传出到event数组中
+                next.set_queued();
             }
             let actual = self.state.compare_and_swap(state, next, AcqRel);
             if state == actual {
@@ -927,31 +898,36 @@ impl RegistrationInner {
         }
         Ok(())
     }
-    fn update(&self, poll: &Poll, token: TokenEntry, interest: Ready, opt: PollOpt, job: Job) -> io::Result<()> {
+
+    fn update(&self, poll: &Poll, token: TokenEntry, interest: Ready,
+            opt: PollOpt, job: Job) -> io::Result<()> {
         let mut queue = self.readiness_queue.load(Relaxed);
         let other: &*mut () = unsafe {
-            &*(&poll.readiness_queue.inner as *const _ as *const *mut()) // inner: Arc<ReadinessQueueInner>,
+            &*(&poll.readiness_queue.inner as *const _ as *const *mut())
         };
         let other = *other;
         debug_assert!(mem::size_of::<Arc<ReadinessQueueInner>>() == mem::size_of::<*mut ()>());
         if queue.is_null() {
             let mut actual = other;
-            let res = self.readiness_queue.compare_exchange(queue, other, Release, Relaxed);      // node中的queue 指向poll中的queue
+            let res = self.readiness_queue.compare_exchange(queue, other,
+                    Release, Relaxed);                                                  // node中的queue 指向poll中的queue
             match res {
                 Ok(val) => actual = val,
                 Err(val) => actual = val,
             }
             if actual.is_null() {
                 self.ref_count.fetch_add(1, Relaxed);
-                mem::forget(poll.readiness_queue.clone());  // 平白无故让引用计数+1 // 为什么不设计一个强引用呢?
+                mem::forget(poll.readiness_queue.clone());                              // 平白无故让引用计数+1 // 为什么不设计一个强引用呢?
             } else {
                 if actual != other {
-                    return Err(io::Error::new(io::ErrorKind::Other, "Registration handle associated with another Poll instance"));
+                    return Err(io::Error::new(io::ErrorKind::Other,
+                            "Registration handle associated with another Poll instance"));
                 }
             }
             queue = other;
         } else if queue != other {
-            return Err(io::Error::new(io::ErrorKind::Other, "Registration handle associated with another Poll instance"));
+            return Err(io::Error::new(io::ErrorKind::Other,
+                    "Registration handle associated with another Poll instance"));
         }
         unsafe {
             let actual = &poll.readiness_queue.inner as *const _ as *const usize;
@@ -970,7 +946,7 @@ impl RegistrationInner {
         let mut state = self.state.load(Relaxed);
         let mut next;
         let curr_token_pos = state.token_write_pos();
-        let curr_token = unsafe { self::token(self, curr_token_pos) };
+        let curr_token = unsafe { self::token(self, curr_token_pos) };                  // 获取这个时刻的 写位置处的token值
         let mut next_token_pos = curr_token_pos;
         if token != curr_token {
             next_token_pos = state.next_token_pos();
@@ -1003,13 +979,6 @@ impl RegistrationInner {
                 (*self.node).job = job;
             }
             enqueue_with_wakeup(queue, self)?;
-            /*
-            let res = enqueue_with_wakeup(queue, self);
-            match res {
-                Ok(_) => println!("enqueue with wakeup ok"),
-                Err(e) => println!("wakeup failed"),
-            };
-            */
         }
         Ok(())
     }
@@ -1074,7 +1043,13 @@ unsafe impl Sync for Registration {}
 impl Registration {
     pub fn new2() -> (Registration, SetReadiness) {
         let node = Box::into_raw(Box::new(ReadinessNode::new(
-                ptr::null_mut(), TokenEntry {token: Token(0), ttype: TokenType::TokenEvent}, Ready::empty(), PollOpt::empty(), 2)));
+                ptr::null_mut(),
+                TokenEntry {
+                    token: Token(0),
+                    ttype: TokenType::TokenEvent
+                },
+                Ready::empty(),
+                PollOpt::empty(), 2)));
         let registration = Registration {
             inner: RegistrationInner {
                 node,
@@ -1087,12 +1062,14 @@ impl Registration {
         };
         (registration, set_readiness)
     }
+
     pub fn new(poll: &Poll, token: TokenEntry, interest: Ready, opt: PollOpt)
             -> (Registration, SetReadiness)
     {
         let (r, s) = Registration::new_priv(poll, token, interest, opt);
         (r, s)
     }
+
     fn new_priv(poll: &Poll, token: TokenEntry, interest: Ready, opt: PollOpt)
             -> (Registration, SetReadiness)
     {
@@ -1102,7 +1079,8 @@ impl Registration {
         is_sync::<SetReadiness>();
         let queue = poll.readiness_queue.inner.clone();
         let queue1: *mut () = unsafe { mem::transmute(queue) };
-        let node = Box::into_raw(Box::new(ReadinessNode::new(queue1, token, interest, opt, 3)));
+        let node = Box::into_raw(Box::new(ReadinessNode::new(queue1, token,
+                interest, opt, 3)));
         let registration = Registration {
             inner: RegistrationInner {
                 node,
@@ -1115,26 +1093,46 @@ impl Registration {
         };
         (registration, set_readiness)
     }
-    pub fn update(&self, poll: &Poll, token: TokenEntry, interest: Ready, opt: PollOpt, job: Job) -> io::Result<()> {
+
+    pub fn update(&self, poll: &Poll, token: TokenEntry, interest: Ready,
+            opt: PollOpt, job: Job) -> io::Result<()> {
         self.inner.update(poll, token, interest, opt, job)
     }
+
     pub fn deregister(&self, poll: &Poll) -> io::Result<()> {
-        let job = Arc::new(Mutex::new(move |_| { println!("null1 deregister for Registration") }));
-        self.inner.update(poll, TokenEntry{ ttype: TokenType::TokenEvent, token: Token(0) }, Ready::empty(), PollOpt::empty(), job)
+        self.inner.update(poll,
+            TokenEntry {
+                ttype: TokenType::TokenEvent,
+                token: Token(0)
+            },
+            Ready::empty(),
+            PollOpt::empty(),
+            Arc::new(Mutex::new(|_| {})))
     }
 }
 
 impl Evented for Registration {
-    fn register(&self, poll: &Poll, token: TokenEntry, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
+    fn register(&self, poll: &Poll, token: TokenEntry, interest: Ready,
+            opts: PollOpt, job: Job) -> io::Result<()> {
         self.inner.update(poll, token, interest, opts, job)
     }
-    fn reregister(&self, poll: &Poll, token: TokenEntry, interest: Ready, opts: PollOpt) -> io::Result<()> {
-        let job = Arc::new(Mutex::new(move |_| { println!("null reregister for Registration") }));
-        self.inner.update(poll, token, interest, opts, job)
+
+    fn reregister(&self, poll: &Poll, token: TokenEntry, interest: Ready,
+            opts: PollOpt) -> io::Result<()> {
+        self.inner.update(poll, token, 
+            interest, opts, Arc::new(Mutex::new(|_| {})))
     }
+
     fn deregister(&self, poll: &Poll) -> io::Result<()> {
-        let job = Arc::new(Mutex::new(move |_| { println!("null deregister for Registration") }));
-        self.inner.update(poll, TokenEntry{ ttype: TokenType::TokenEvent, token: Token(0) }, Ready::empty(), PollOpt::empty(), job)
+        self.inner.update(poll, 
+                TokenEntry {
+                    ttype: TokenType::TokenEvent,
+                    token: Token(0)
+                },
+                Ready::empty(),
+                PollOpt::empty(),
+                Arc::new(Mutex::new(|_| {}))
+        )
     }
 }
 

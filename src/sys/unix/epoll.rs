@@ -63,16 +63,15 @@ impl Selector {
             evts.events.set_len(cnt);
             for i in 0..cnt {
                 let fd = evts.events[i].u64 as usize as i32;
-                let fd_entry: &mut JobEntry = events_map.as_mut().unwrap().get_mut(&fd).unwrap();
-                let token_entry = fd_entry.token_entry;
-                if token_entry.ttype == TokenType::NotifyEvent {
+                let entry: &mut JobEntry = events_map.as_mut().unwrap().get_mut(&fd).unwrap();
+                let token = entry.token_entry;
+                if token.ttype == TokenType::NotifyEvent {
                     evts.events.remove(i);
                     has_notify = true;
-                    println!("token_entry: {:?}, found notify", token_entry);
                     continue;
                 }
-                fd_entry.ready = evts.get_ready(i).unwrap();
-                evts.entries.push(fd_entry.clone());
+                entry.ready = evts.get_ready(i).unwrap();
+                evts.entries.push(entry.clone());
             }
         }
         if has_notify {

@@ -135,13 +135,13 @@ impl EventLoop {
             .capacity(config.timer_capacity)
             .build();
         let (tx, rx) = channel::sync_channel(config.notify_capacity);   // 初始化pipe
-        poll.register(&rx, 
+        poll.register(&rx,
                     TokenEntry {
-                        ttype: TokenType::NotifyEvent, 
+                        ttype: TokenType::NotifyEvent,
                         token: Token(0)
-                    }, 
-                    Ready::readable(), 
-                    PollOpt::edge() | PollOpt::oneshot(), 
+                    },
+                    Ready::readable(),
+                    PollOpt::edge() | PollOpt::oneshot(),
                     Arc::new(Mutex::new(move |_| {}))
         )?;
         poll.register(&timer,
@@ -208,44 +208,23 @@ impl EventLoop {
         self.poll.poll(&mut self.events, timeout)
     }
 
-    fn notify(&mut self) {
-        for _ in 0..self.config.messages_per_tick {     // 每个周期尝试从pipe 最多读取256次
-            match self.notify_rx.try_recv() {
-                //Ok(msg) => handler.notify(self, msg),
-                _ => break,
-            }
-        }
-        let _ = self.poll.reregister(&self.notify_rx, 
-                                    TokenEntry {
-                                        ttype: TokenType::NotifyEvent, 
-                                        token: Token(0)
-                                    }, 
-                                    Ready::readable(),
-                                    PollOpt::edge() | PollOpt::oneshot()
-        );
-    }
-
     fn io_process(&mut self, cnt: usize) {
         let mut i = 0;
         log::trace!("io_process(..); cnt: {}; len: {}", cnt, self.events.len());
         while i < cnt {
-            /*
-            match evt.token() {
-                NOTIFY => self.notify(),
-            }
-            */
             match self.events.get_mut(i) {
-                Some(job_entry) => {
-                    let token_entry = job_entry.token_entry;
-                    match token_entry.ttype {
+                Some(entry) => {
+                    let token = entry.token_entry;
+                    println!("token: {:?}", token);
+                    match token.ttype {
                         TokenType::TimersEvent => {
                             while let Some(mut t) = self.timer.poll() {
                                 t();
                             }
                         },
                         _ => {
-                            let c = &mut job_entry.job;
-                            let ready = job_entry.ready;
+                            let c = &mut entry.job;
+                            let ready = entry.ready;
                             c
                             .lock()
                             .unwrap()(ready_as_usize(ready) as i64);
