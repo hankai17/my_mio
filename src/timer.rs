@@ -285,15 +285,15 @@ impl<T> Timer<T> {
                 if curr as Tick <= tick {
                     return;
                 }
-                let actual = inner
-                            .wakeup_state
-                            .compare_and_swap(curr, tick as usize,
-                                    Ordering::Release);
-                if actual == curr {
-                    inner.wakeup_thread.thread().unpark();          // 如果传入的时间小于stat定时时间 则唤醒线程
-                    return;
+                let res = inner.wakeup_state.compare_exchange(curr, tick as usize,
+                        Ordering::Release, Ordering::Relaxed);
+                match res {
+                    Ok(_) => {
+                        inner.wakeup_thread.thread().unpark();      // 如果传入的时间小于stat定时时间 则唤醒线程
+                        return;
+                    },
+                    Err(v) => curr = v,
                 }
-                curr = actual;
             }
         }
     }
@@ -339,13 +339,14 @@ fn spawn_wakeup_thread(state: WakeupState, s: SetReadiness,
                 }
                 sleep_until_tick = state.load(Ordering::Acquire) as Tick;               // 定时到 或 被唤醒 // 更新睡眠时间
             } else {                                                                    // 定时到
-                let actual = state.compare_and_swap(sleep_until_tick as usize,
-                        usize::MAX, Ordering::AcqRel) as Tick;
-                if actual == sleep_until_tick {
-                    let _ = s.set_readiness(Ready::readable());                         // 定时到 入队
-                    sleep_until_tick = usize::MAX as Tick;
-                } else {
-                    sleep_until_tick = actual as Tick;
+                let res = state.compare_exchange(sleep_until_tick as usize,
+                        usize::MAX, Ordering::AcqRel, Ordering::Acquire);
+                match res {
+                    Ok(_) => {
+                        let _ = s.set_readiness(Ready::readable());                     // 定时到 入队
+                        sleep_until_tick = usize::MAX as Tick;
+                    },
+                    Err(v) => sleep_until_tick = v as Tick,
                 }
             }
         }

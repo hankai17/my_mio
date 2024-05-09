@@ -512,7 +512,7 @@ impl ReadinessQueue {
         })
     }
 
-    fn poll(&self, dst: &mut sys::Events) {     // 从无锁队列弹出一个节点 排入到events中
+    fn poll(&self, dst: &mut sys::Events) {
         let mut until = ptr::null_mut();
         if dst.len() == dst.capacity() {
             self.inner.clear_sleep_marker();
@@ -750,12 +750,11 @@ impl Poll {
     fn poll1(&self, events: &mut Events, mut timeout: Option<Duration>,
             interruptible: bool) -> io::Result<usize> {
         let zero = Some(Duration::from_millis(0));
-        let mut curr = 0;
-        let res = self.lock_state.compare_exchange(0, 1, SeqCst, SeqCst);
-        match res {
-            Ok(val) => curr = val,
-            Err(val) => curr = val,
-        }
+        let mut curr = match self.lock_state.compare_exchange(0, 1,
+                SeqCst, SeqCst) {
+            Ok(val) => val,
+            Err(val) => val,
+        };
         if 0 != curr {      // 其它线程已对poll上锁 
             let mut lock = self.lock.lock().unwrap();
             let mut inc = false;
@@ -765,12 +764,11 @@ impl Poll {
                     if inc {
                         next -= 2;
                     }
-                    let mut actual = curr;
-                    let res = self.lock_state.compare_exchange(curr, next, SeqCst, SeqCst);
-                    match res {
-                        Ok(val) => actual = val,
-                        Err(val) => actual = val,
-                    }
+                    let actual = match self.lock_state.compare_exchange(curr, next,
+                            SeqCst, SeqCst) {
+                        Ok(val) => val,
+                        Err(val) => val,
+                    };
                     if actual != curr {
                         curr = actual;
                         continue;
@@ -785,12 +783,11 @@ impl Poll {
                 }
                 if !inc {
                     let next = curr.checked_add(2).expect("overflow");
-                    let mut actual = curr;
-                    let res = self.lock_state.compare_exchange(curr, next, SeqCst, SeqCst);  // 确保每个线程按序 +2
-                    match res {
-                        Ok(val) => actual = val,
-                        Err(val) => actual = val,
-                    }
+                    let actual = match self.lock_state.compare_exchange(curr, next,
+                            SeqCst, SeqCst) {                                           // 确保每个线程按序 +2
+                        Ok(val) => val,
+                        Err(val) => val,
+                    };
                     if actual != curr {
                         curr = actual;
                         continue;
@@ -842,16 +839,6 @@ pub struct Events {
     inner: sys::Events,
 }
 
-pub struct Iter<'a> {
-    inner: &'a Events,
-    pos: usize,
-}
-
-pub struct IntoIter {
-    inner: Events,
-    pos: usize,
-}
-
 impl Events {
     pub fn with_capacity(capacity: usize) -> Events {
         Events {
@@ -872,12 +859,6 @@ impl Events {
     }
     pub fn clear(&mut self) {
         self.inner.clear()
-    }
-    pub fn iter(&self) -> Iter {
-        Iter {
-            inner: self,
-            pos: 0
-        }
     }
 }
 
@@ -923,13 +904,11 @@ impl RegistrationInner {
         let other = *other;
         debug_assert!(mem::size_of::<Arc<ReadinessQueueInner>>() == mem::size_of::<*mut ()>());
         if queue.is_null() {
-            let mut actual = other;
-            let res = self.readiness_queue.compare_exchange(queue, other,
-                    Release, Relaxed);                                                  // node中的queue 指向poll中的queue
-            match res {
-                Ok(val) => actual = val,
-                Err(val) => actual = val,
-            }
+            let actual = match self.readiness_queue.compare_exchange(queue, other,
+                    Release, Relaxed) {                                                 // node中的queue 指向poll中的queue
+                Ok(val) => val,
+                Err(val) => val,
+            };
             if actual.is_null() {
                 self.ref_count.fetch_add(1, Relaxed);
                 mem::forget(poll.readiness_queue.clone());                              // 平白无故让引用计数+1 // 为什么不设计一个强引用呢?
@@ -948,16 +927,11 @@ impl RegistrationInner {
             let actual = &poll.readiness_queue.inner as *const _ as *const usize;
             debug_assert_eq!(queue as usize, *actual);
         }
-        if self.update_lock.compare_and_swap(false, true, Acquire) {
-            return Ok(());
-        }
-        /*
-        let res = self.update_lock.compare_and_swap(false, true, Acquire);
+        let res = self.update_lock.compare_exchange(false, true, Acquire, Acquire);
         match res {
-            Ok(val) => return Ok(()),
-            Err(val) => 
+            Ok(_) => return Ok(()),
+            Err(_) => {},
         }
-        */
         let mut state = self.state.load(Relaxed);
         let mut next;
         let curr_token_pos = state.token_write_pos();

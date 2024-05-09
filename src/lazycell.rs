@@ -129,12 +129,18 @@ impl<T> AtomicLazyCell<T> {
 
     #[allow(dead_code)]
     pub fn fill(&self, t: T) -> Result<(), T> {
-        if NONE != self.state.compare_and_swap(NONE, LOCK, Ordering::Acquire) {
-            return Err(t);
+        let res = self.state.compare_exchange(NONE, LOCK,
+                Ordering::Acquire, Ordering::Acquire);
+        match res {
+            Ok(_) => {},
+            Err(_) => return Err(t),
         }
         unsafe { *self.inner.get() = Some(t) };
-        if LOCK != self.state.compare_and_swap(LOCK, SOME, Ordering::Release) {
-            panic!("unable to release lock");
+        let res = self.state.compare_exchange(LOCK, SOME,
+                Ordering::Release, Ordering::Relaxed);
+        match res {
+            Ok(_) => {},
+            Err(_) => panic!("unable to release lock"),
         }
         Ok(())
     }

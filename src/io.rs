@@ -1,8 +1,9 @@
+
+#[warn(dead_code)]
 pub use std::io::{Result, Error, ErrorKind};
 pub trait MapNonBlock<T> {
     fn map_non_block(self) -> Result<Option<T>>;
 }
-
 impl<T> MapNonBlock<T> for Result<T> {
     fn map_non_block(self) -> Result<Option<T>> {
         use std::io::ErrorKind::WouldBlock;

@@ -48,6 +48,7 @@ impl Selector {
     }
     pub fn id(&self) -> usize { self.id }
     pub fn select(&self, evts: &mut Events, timeout: Option<Duration>) -> io::Result<bool> {
+        let mut notify_idx = 0;
         let timeout_ms = timeout
                 .map(|to| cmp::min(millis(to), i32::MAX as u64) as i32)
                 .unwrap_or(-1);
@@ -66,7 +67,7 @@ impl Selector {
                 let entry: &mut JobEntry = events_map.as_mut().unwrap().get_mut(&fd).unwrap();
                 let token = entry.token_entry;
                 if token.ttype == TokenType::NotifyEvent {
-                    evts.events.remove(i);
+                    notify_idx = i;
                     has_notify = true;
                     continue;
                 }
@@ -75,6 +76,7 @@ impl Selector {
             }
         }
         if has_notify {
+            evts.events.remove(notify_idx);
             Ok(true)
         } else {
             Ok(false)

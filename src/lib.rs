@@ -27,7 +27,7 @@ mod poll;
 pub use poll::{Poll, Registration, SetReadiness, TokenAllocator};
 
 pub mod event {
-    pub use super::poll::{Events, Iter}; 
+    pub use super::poll::{Events}; 
     pub use super::event_imp::{Event, Evented};
 }
 pub use event::{Events, Event, Evented};
