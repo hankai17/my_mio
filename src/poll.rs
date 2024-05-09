@@ -929,8 +929,8 @@ impl RegistrationInner {
         }
         let res = self.update_lock.compare_exchange(false, true, Acquire, Acquire);
         match res {
-            Ok(_) => return Ok(()),
-            Err(_) => {},
+            Ok(_) => {},
+            Err(_) => return Ok(()),
         }
         let mut state = self.state.load(Relaxed);
         let mut next;
