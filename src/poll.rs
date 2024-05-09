@@ -274,7 +274,7 @@ impl AtomicState {
     }
 }
 
-struct ReadinessNode {  // 三剑客 + next指针 + queue
+struct ReadinessNode {
     state: AtomicState,
     token_0: UnsafeCell<TokenEntry>,
     token_1: UnsafeCell<TokenEntry>,
@@ -295,10 +295,9 @@ enum Dequeue {
 fn enqueue_with_wakeup(queue: *mut(), node: &ReadinessNode) -> io::Result<()> {
     debug_assert!(!queue.is_null());
     let queue: &Arc<ReadinessQueueInner> = unsafe {
-        //&*(&queue as *const *mut () )                                     // expected reference `&Arc<ReadinessQueueInner>` found reference `&*mut ()`
         &*(&queue as *const *mut () as * const Arc<ReadinessQueueInner>)
     };
-    queue.enqueue_node_with_wakeup(node)                                    // 为何强转为&Arc<>类型?
+    queue.enqueue_node_with_wakeup(node)
 }
 
 impl ReadinessNode {
@@ -313,9 +312,10 @@ impl ReadinessNode {
             update_lock: AtomicBool::new(false),
             readiness_queue: AtomicPtr::new(queue),
             ref_count: AtomicUsize::new(ref_count),
-            job: Arc::new(Mutex::new(move |_| { println!("null ReadinessNode")})),
+            job: Arc::new(Mutex::new(move |_| {})),
         }
     }
+
     fn marker() -> ReadinessNode {
         ReadinessNode {
             state: AtomicState::new(Ready::empty(), PollOpt::empty()),
@@ -326,10 +326,11 @@ impl ReadinessNode {
             update_lock: AtomicBool::new(false),
             readiness_queue: AtomicPtr::new(ptr::null_mut()),
             ref_count: AtomicUsize::new(0),
-            job: Arc::new(Mutex::new(move |_| { println!("null ReadinessNode")})),
+            job: Arc::new(Mutex::new(move |_| {})),
         }
     }
-    fn enqueue_with_wakeup(&self) -> io::Result::<()> { // node排入队列 队列一般是Poll中的
+
+    fn enqueue_with_wakeup(&self) -> io::Result::<()> {
         let queue = self.readiness_queue.load(Acquire);
         if queue.is_null() {
             return Ok(())
@@ -338,7 +339,7 @@ impl ReadinessNode {
     }
 }
 
-struct ReadinessQueueInner {    // 无锁队列 三剑客
+struct ReadinessQueueInner {
     awakener: sys::Awakener,
     head_readiness: AtomicPtr<ReadinessNode>,
     tail_readiness: UnsafeCell<*mut ReadinessNode>,
@@ -362,26 +363,37 @@ fn release_node(ptr: *mut ReadinessNode) {
 }
 
 impl ReadinessQueueInner {
+    fn end_marker(&self) -> *mut ReadinessNode {
+        &*self.end_marker as *const ReadinessNode as *mut ReadinessNode
+    }
+
+    fn sleep_marker(&self) -> *mut ReadinessNode {
+        &*self.sleep_marker as *const ReadinessNode as *mut ReadinessNode
+    }
+
+    fn closed_marker(&self) -> *mut ReadinessNode {
+        &*self.closed_marker as *const ReadinessNode as *mut ReadinessNode
+    }
+
     fn wakeup(&self) -> io::Result<()> {
         self.awakener.wakeup()
     }
-    fn enqueue_node_with_wakeup(&self, node: &ReadinessNode) -> io::Result<()> {    // 跨线程
+
+    fn enqueue_node_with_wakeup(&self, node: &ReadinessNode) -> io::Result<()> {
         if self.enqueue_node(node) {
-            println!("enqueue_node_with_wakeup need wakeup");
+            println!("enqueue_node need wakeup");
             self.wakeup()?;
         } else {
-            println!("enqueue_node_with_wakeup need not wakeup");
+            println!("enqueue_node need not wakeup");
         }
         Ok(())
     }
+
     fn enqueue_node(&self, node: &ReadinessNode) -> bool {
-        let node_ptr = node as * const _ as * mut _;                // 拿到node裸指针
+        let node_ptr = node as * const _ as * mut _;
         node.next_readiness.store(ptr::null_mut(), Relaxed);
         unsafe {
-            //let mut prev: *mut ReadinessNode  = self.head_readiness.load(Acquire); // OK 但是太繁琐了 直接用let自动推导
-            let mut prev = self.head_readiness.load(Acquire);       // pub fn load(&self, order: Ordering) -> *mut T // 返回*mut ReadinessNode类型
-                                                                    // 下面要改变prev 所以加上mut  加上的这个mut跟 *mut ReadinessNode中的mut不是一个意思
-                                                                    // 这里加上mut后 即是mut *mut ReadinessNode
+            let mut prev = self.head_readiness.load(Acquire);                   // 这里加上mut后 是mut *mut ReadinessNode
             loop {
                 if prev == self.closed_marker() {
                     debug_assert!(node_ptr != self.closed_marker());
@@ -392,45 +404,50 @@ impl ReadinessQueueInner {
                     }
                     return false;
                 }
-                let res = self.head_readiness.compare_exchange(prev, node_ptr, AcqRel, Acquire);
+                let res = self.head_readiness.compare_exchange(prev, node_ptr,  // head_readiness的值为 新节点node_ptr
+                        AcqRel, Acquire);
                 match res {
                     Ok(_) => break,
                     Err(val) => prev = val,
                 }
             }
             debug_assert!((*prev).next_readiness.load(Relaxed).is_null());
-            (*prev).next_readiness.store(node_ptr, Release);        // 尾插 头在尾
+            (*prev).next_readiness.store(node_ptr, Release);
             prev == self.sleep_marker()
         }
     }
+
     fn clear_sleep_marker(&self) {
-        let end_marker = self.end_marker();
-        let sleep_marker = self.sleep_marker();
+        let e_marker = self.end_marker();
+        let s_marker = self.sleep_marker();
         unsafe {
             let tail = *self.tail_readiness.get();
             if tail != self.sleep_marker() {
                 return;
             }
             self.end_marker.next_readiness.store(ptr::null_mut(), Relaxed);
-            let res = self.head_readiness.compare_exchange(sleep_marker, end_marker, AcqRel, Acquire);
+            let res = self.head_readiness.compare_exchange(s_marker, e_marker,
+                    AcqRel, Acquire);
             match res {
                 Ok(val) => {
-                    debug_assert!(val != end_marker);
-                    *self.tail_readiness.get() = end_marker;
+                    debug_assert!(val != e_marker);
+                    *self.tail_readiness.get() = e_marker;
                 },
                 Err(val) => {
-                    debug_assert!(val != end_marker);
+                    debug_assert!(val != e_marker);
                     return;
                 },
             }
         }
     }
-    unsafe fn dequeue_node(&self, until: *mut ReadinessNode) -> Dequeue {
-        let mut tail = *(self.tail_readiness.get());    // pub const fn get(&self) -> *mut T // get得到的类型是*mut (*mut ReadinessNode)
-                                                        // tail是 *mut ReadinessNode类型
-        //let mut next = (tail).next_readiness.load(Acquire); // `(tail)` is a raw pointer; try dereferencing it:
-        let mut next = (*tail).next_readiness.load(Acquire);    // pub fn load(&self, order: Ordering) -> *mut T
-        if tail == self.end_marker() || tail == self.sleep_marker() || tail == self.closed_marker() {
+
+    unsafe fn dequeue_node(&self, until: *mut ReadinessNode)
+            -> Dequeue {
+        let mut tail = *(self.tail_readiness.get());                            // *mut ReadinessNode类型
+        let mut next = (*tail).next_readiness.load(Acquire);
+        if tail == self.end_marker()
+                || tail == self.sleep_marker()
+                || tail == self.closed_marker() {
             if next.is_null() {
                 self.clear_sleep_marker();
                 return Dequeue::Empty;
@@ -457,15 +474,6 @@ impl ReadinessQueueInner {
         }
         return Dequeue::Inconsistent;
     }
-    fn end_marker(&self) -> *mut ReadinessNode {
-        &*self.end_marker as *const ReadinessNode as *mut ReadinessNode
-    }
-    fn sleep_marker(&self) -> *mut ReadinessNode {
-        &*self.sleep_marker as *const ReadinessNode as *mut ReadinessNode
-    }
-    fn closed_marker(&self) -> *mut ReadinessNode {
-        &*self.closed_marker as *const ReadinessNode as *mut ReadinessNode
-    }
 }
 
 #[derive(Clone)]
@@ -485,7 +493,7 @@ unsafe fn token(node: &ReadinessNode, pos: usize) -> TokenEntry {
 }
 
 impl ReadinessQueue {
-    fn new() -> io::Result<ReadinessQueue> {    // 初始化无锁队列 + 三marker + poll
+    fn new() -> io::Result<ReadinessQueue> {
         is_send::<Self>();
         is_sync::<Self>();
         let end_marker = Box::new(ReadinessNode::marker());
@@ -503,6 +511,7 @@ impl ReadinessQueue {
             })
         })
     }
+
     fn poll(&self, dst: &mut sys::Events) {     // 从无锁队列弹出一个节点 排入到events中
         let mut until = ptr::null_mut();
         if dst.len() == dst.capacity() {
@@ -560,28 +569,34 @@ impl ReadinessQueue {
             }
         }
     }
+
     fn prepare_for_sleep(&self) -> bool {
-        let end_marker = self.inner.end_marker(); 
-        let sleep_marker = self.inner.sleep_marker(); 
+        let emarker = self.inner.end_marker(); 
+        let smarker = self.inner.sleep_marker(); 
         let tail = unsafe { *self.inner.tail_readiness.get() };
-        if tail == sleep_marker {
-            return self.inner.head_readiness.load(Acquire) == sleep_marker;
+        if tail == smarker {
+            return self.inner.head_readiness.load(Acquire) == smarker;
         }
-        if tail != end_marker {
+        if tail != emarker {
             return false;
         }
-        self.inner.sleep_marker.next_readiness.store(ptr::null_mut(), Relaxed);
-        let res = self.inner.head_readiness.compare_exchange(end_marker, sleep_marker, AcqRel, Acquire);
+        self.inner.sleep_marker.next_readiness
+                .store(ptr::null_mut(), Relaxed);
+        let res = self.inner.head_readiness
+                .compare_exchange(emarker, smarker, AcqRel, Acquire);
         match res {
-            Ok(val) => {
-                debug_assert!(val != sleep_marker);
-                debug_assert!(unsafe {*self.inner.tail_readiness.get() == end_marker});
-                debug_assert!(self.inner.end_marker.next_readiness.load(Relaxed).is_null());
-                unsafe { *self.inner.tail_readiness.get() = sleep_marker };
+            Ok(val) => {                                                    // hankai1 如果head/tail都指向了最初的end_marker 那么这里会重置head/tail指向为sleep_marker
+                debug_assert!(val != smarker);
+                debug_assert!(unsafe {
+                    *self.inner.tail_readiness.get() == emarker
+                });
+                debug_assert!(self.inner.end_marker.next_readiness
+                        .load(Relaxed).is_null());
+                unsafe { *self.inner.tail_readiness.get() = smarker };
                 true
             },
             Err(val) => {
-                debug_assert!(val != sleep_marker);
+                debug_assert!(val != smarker);
                 return false;
             },
         }
@@ -1025,6 +1040,7 @@ impl SetReadiness {
     pub fn readiness(&self) -> Ready {
         self.inner.readiness()
     }
+
     pub fn set_readiness(&self, ready: Ready) -> io::Result<()> {
         self.inner.set_readiness(ready)
     }
@@ -1050,17 +1066,17 @@ impl Registration {
                 },
                 Ready::empty(),
                 PollOpt::empty(), 2)));
-        let registration = Registration {
+        let r = Registration {
             inner: RegistrationInner {
                 node,
             },
         };
-        let set_readiness = SetReadiness {
+        let s = SetReadiness {
             inner: RegistrationInner {
                 node,
             },
         };
-        (registration, set_readiness)
+        (r, s)
     }
 
     pub fn new(poll: &Poll, token: TokenEntry, interest: Ready, opt: PollOpt)
@@ -1081,17 +1097,17 @@ impl Registration {
         let queue1: *mut () = unsafe { mem::transmute(queue) };
         let node = Box::into_raw(Box::new(ReadinessNode::new(queue1, token,
                 interest, opt, 3)));
-        let registration = Registration {
+        let r = Registration {
             inner: RegistrationInner {
                 node,
             },
         };
-        let set_readiness = SetReadiness {
+        let s = SetReadiness {
             inner: RegistrationInner {
                 node,
             },
         };
-        (registration, set_readiness)
+        (r, s)
     }
 
     pub fn update(&self, poll: &Poll, token: TokenEntry, interest: Ready,
