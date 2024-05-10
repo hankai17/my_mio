@@ -413,7 +413,8 @@ impl ReadinessQueueInner {
             }
             debug_assert!((*prev).next_readiness.load(Relaxed).is_null());
             (*prev).next_readiness.store(node_ptr, Release);
-            prev == self.sleep_marker()
+            prev == self.sleep_marker()                                         // hankai2 如果入队时 头节点是sleep_marker 那么需要notify pipe
+                                                                                //      业务层频繁调用enqueue_node 仅第一次排入node时 才会调用notify
         }
     }
 
@@ -426,7 +427,7 @@ impl ReadinessQueueInner {
                 return;
             }
             self.end_marker.next_readiness.store(ptr::null_mut(), Relaxed);
-            let res = self.head_readiness.compare_exchange(s_marker, e_marker,
+            let res = self.head_readiness.compare_exchange(s_marker, e_marker,  // hankai3.<1|2>.1 将标准节点从sleep 换成 end
                     AcqRel, Acquire);
             match res {
                 Ok(val) => {
@@ -449,7 +450,7 @@ impl ReadinessQueueInner {
                 || tail == self.sleep_marker()
                 || tail == self.closed_marker() {
             if next.is_null() {
-                self.clear_sleep_marker();
+                self.clear_sleep_marker();                                      // hankai3.1(ES引擎 hankai2是业务层) capacity特别大 弹出节点弹到了最后一个
                 return Dequeue::Empty;
             }
             *self.tail_readiness.get() = next;
@@ -515,7 +516,7 @@ impl ReadinessQueue {
     fn poll(&self, dst: &mut sys::Events) {
         let mut until = ptr::null_mut();
         if dst.len() == dst.capacity() {
-            self.inner.clear_sleep_marker();
+            self.inner.clear_sleep_marker();                                // hankai3.2 如果ES socket事件非常多
         }
         'outer:
         while dst.len() < dst.capacity() {
@@ -585,7 +586,7 @@ impl ReadinessQueue {
         let res = self.inner.head_readiness
                 .compare_exchange(emarker, smarker, AcqRel, Acquire);
         match res {
-            Ok(val) => {                                                    // hankai1 如果head/tail都指向了最初的end_marker 那么这里会重置head/tail指向为sleep_marker
+            Ok(val) => {                                                    // hankai1 如果传入的有超时时间 而且head/tail都指向了最初的end_marker 那么这里会重置head/tail指向为sleep_marker
                 debug_assert!(val != smarker);
                 debug_assert!(unsafe {
                     *self.inner.tail_readiness.get() == emarker
@@ -596,7 +597,7 @@ impl ReadinessQueue {
                 true
             },
             Err(val) => {
-                debug_assert!(val != smarker);
+                debug_assert!(val != smarker);                              // 如果已经是sleep了 那么让epoll 立即返回
                 return false;
             },
         }
