@@ -9,6 +9,7 @@ use std::{fmt, error, any};
 use std::sync::{Arc, Mutex};
 use std::thread_local;
 use poll::CURRENT_TOKEN_ALLOCATOR;
+use std::thread;
 
 pub enum NotifyError<T> {
     Io(io::Error),
@@ -71,6 +72,7 @@ impl<M> fmt::Display for NotifyError<M> {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
 struct Config {
     notify_capacity: usize,
     messages_per_tick: usize,
@@ -268,6 +270,7 @@ impl EventLoop {
 #[derive(Default)]
 pub struct EventLoopBuilder {
     config: Config,
+    event_loop: Option<Arc<Mutex<EventLoop>>>,
 }
 
 use std::cell::RefCell;
@@ -277,7 +280,10 @@ thread_local! {
 
 impl EventLoopBuilder {
     pub fn new() -> EventLoopBuilder {
-        EventLoopBuilder::default()
+        EventLoopBuilder {
+            config: Config::default(),
+            event_loop: None,
+        }
     }
 
     pub fn notify_capacity(&mut self, capacity: usize) -> &mut Self {
@@ -305,15 +311,15 @@ impl EventLoopBuilder {
         self
     }
 
-	pub fn build(self) -> io::Result<EventLoop> {
+	pub fn build(&mut self) -> io::Result<EventLoop> {
         EventLoop::configured(self.config)
     }
 
-    pub fn get_build(self) -> io::Result<Arc<Mutex<EventLoop>>> {
+    pub fn get_build(&mut self) -> io::Result<Arc<Mutex<EventLoop>>> {
         let event_loop = Arc::new(Mutex::new(self.build().unwrap()));
-        let clone = event_loop.clone();
-        CURRENT_LOOP.set(clone);
-
+        self.event_loop = Some(event_loop.clone());
+        //let clone = event_loop.clone();
+        //CURRENT_LOOP.set(clone);
         Ok(event_loop)
     }
 
@@ -324,5 +330,47 @@ impl EventLoopBuilder {
             clone
         }
     }
+}
+
+pub struct EventLoopPool {
+    loops: Vec<Arc<Mutex<EventLoop>>>
+}
+
+impl EventLoopPool {
+    pub fn new(size: i32) -> EventLoopPool {
+        let mut loops = Vec::with_capacity(32);
+        for _ in 0..size {
+            let mut b = EventLoopBuilder::new();
+            b.notify_capacity(1_048_576)
+                .messages_per_tick(64)
+                .timer_tick(Duration::from_millis(100))
+                .timer_wheel_size(1024)
+                .timer_capacity(65536);
+
+            thread::spawn( move || {
+                let mut event_loop = b.get_build().unwrap();
+                let clone = event_loop.clone();
+                CURRENT_LOOP.set(clone);
+
+                let ptr: *mut Mutex<EventLoop> = Arc::as_ptr(&mut event_loop) as *mut _;
+                unsafe {
+                    (*ptr).get_mut().unwrap().run().unwrap();
+                }
+            });
+
+            //loops.push(b.event_loop.unwrap());
+        }
+
+        EventLoopPool {
+            loops: loops,
+        }
+    }
+
+    /*
+    pub fn get_first_poller() -> EventLoop {
+    }
+    pub fn get_poller() -> EventLoop {
+    }
+    */
 }
 

@@ -179,9 +179,16 @@ OthersEvent   |        |
     head------------------------
 
     mpsc 出队
+
 - 240510
     ES层        如果epoll有超时时间 且队列消费完毕 那么就将标准节点换成sleep
     业务层      enqueue node时 则只通知一次 减少系统调用
     ES层        dequeue node时 当消费完了 则重新替换成end
                                如果enqueue的node非常多 本轮次消费不完 下一轮prepare_for_sleep 返回false 设置epoll立即返回
+    多线程支持: 主进程拉起多线程poll
+    log支持
+    handler细化
 
+- 240511
+    src/runtime/io/registration_set.rs:26:    pending_release: Vec<Arc<ScheduledIo>>,
+        ScheduleIo 没有&mut self
