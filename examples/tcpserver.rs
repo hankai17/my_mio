@@ -47,7 +47,7 @@ impl Handler for Test {
         self.conn = Some(conn);
         let event_loop = EventLoopBuilder::get_current_loop();
 
-        let timer = event_loop.lock().unwrap().timeout(
+        let timer = event_loop.timeout(
             Duration::from_millis(1000 * 3),
             Box::new(
                 move || {
@@ -69,7 +69,7 @@ impl Handler for Test {
         match &self.timer {
             Some(timer) => {
                 let event_loop = EventLoopBuilder::get_current_loop();
-                event_loop.lock().unwrap().clear_timeout(&timer);
+                event_loop.clear_timeout(&timer);
                 //println!("timeout cancel")
             },
             _ => {},
@@ -105,7 +105,7 @@ impl Handler for Test {
         let s_clone = s.clone();
         s_clone.set_readiness(Ready::readable()).unwrap();
 
-        event_loop.lock().unwrap().register(
+        event_loop.register(
                 &r_clone,
                 TokenEntry {
                     ttype: TokenType::OtherEvent,
@@ -155,6 +155,11 @@ fn sleep_ms(ms: u64) {
 
 fn main() {
     let pool = EventLoopPool::new(4);
+    let poller = pool.get_first_poller();
+
+    let tcp_server = Arc::new(Mutex::new(TcpServer::new(poller.clone(), &"0.0.0.0:9528".to_string())));
+    tcp_server.lock().unwrap().start::<Test>();
+    TcpServer::start_internal(tcp_server);
     sleep_ms(1000 * 1000);
 }
 

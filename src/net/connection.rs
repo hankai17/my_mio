@@ -25,7 +25,7 @@ pub type WritJob = Box<dyn FnMut()->bool + 'static + Send + Sync>;
 pub struct TcpConnection {
     //interest: Ready,
 
-    event_loop: Arc<Mutex<EventLoop>>,
+    event_loop: Arc<EventLoop>,
     pub sock: TcpStream,
     // timer
     read_buffer: Option<BytesMut>,
@@ -50,7 +50,7 @@ fn default_written_cb() -> bool { false }
 fn default_err_cb() {}
 
 impl TcpConnection {
-    pub fn new(event_loop: Arc<Mutex<EventLoop>>, sock: TcpStream) -> TcpConnection {
+    pub fn new(event_loop: Arc<EventLoop>, sock: TcpStream) -> TcpConnection {
         TcpConnection {
             event_loop: event_loop,
             sock: sock,
@@ -234,7 +234,7 @@ impl TcpConnection {
     pub fn clone_stream(&mut self) {
     }
     pub fn close_stream(&mut self) {
-        self.event_loop.lock().unwrap().deregister(&self.sock).unwrap();
+        self.event_loop.deregister(&self.sock).unwrap();
         //println!("close_stream deregister done");
     }
 }

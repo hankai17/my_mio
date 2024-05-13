@@ -45,7 +45,7 @@ impl SessionManager {
 */
 
 pub struct TcpServer {
-    event_loop: Arc<Mutex<EventLoop>>, 
+    event_loop: Arc<EventLoop>, 
     acceptor: Arc<Mutex<Acceptor>>,
     // timer
     session_alloc: Option<fn() -> Arc<Mutex<dyn Handler + 'static + Send + Sync>>>,
@@ -60,7 +60,7 @@ unsafe impl Sync for TcpServer {}
 static SOCKET_TOKEN_ID: AtomicUsize = AtomicUsize::new(0);
 
 impl TcpServer {
-    pub fn new(event_loop: Arc<Mutex<EventLoop>>, addr: &String) -> TcpServer {
+    pub fn new(event_loop: Arc<EventLoop>, addr: &String) -> TcpServer {
         let acceptor = Arc::new(Mutex::new(Acceptor::new(event_loop.clone(), addr)));
         TcpServer {
             event_loop: event_loop,
@@ -102,7 +102,7 @@ impl TcpServer {
             }
         ));
 
-        self.event_loop.lock().unwrap().register(
+        self.event_loop.register(
                 &conn.lock().unwrap().sock,
                 TokenEntry {
                     ttype: TokenType::SocketEvent, 

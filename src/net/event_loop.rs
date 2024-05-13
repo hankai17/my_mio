@@ -292,7 +292,7 @@ pub struct EventLoopBuilder {
 
 use std::cell::RefCell;
 thread_local! {
-    pub static CURRENT_LOOP: RefCell<Arc<Mutex<EventLoop>>> = panic!("!");
+    pub static CURRENT_LOOP: RefCell<Arc<EventLoop>> = panic!("!");
 }
 
 impl EventLoopBuilder {
@@ -335,19 +335,21 @@ impl EventLoopBuilder {
     pub fn get_build(&mut self) -> io::Result<Arc<Mutex<EventLoop>>> {
         let event_loop = Arc::new(Mutex::new(self.build().unwrap()));
         //self.event_loop = Some(event_loop.clone());
-        let clone = event_loop.clone();
-        CURRENT_LOOP.set(clone);
+        //let clone = event_loop.clone();
+        //CURRENT_LOOP.set(clone);
         Ok(event_loop)
     }
 
     pub fn get_build1(&mut self) -> io::Result<Arc<EventLoop>> {
         let event_loop = Arc::new(self.build().unwrap());
         self.event_loop = Some(event_loop.clone());
+        let clone = event_loop.clone();
+        CURRENT_LOOP.set(clone);
         Ok(event_loop)
     }
 
-    pub fn get_current_loop() -> Arc<Mutex<EventLoop>> {
-        let ptr = CURRENT_LOOP.with(|poll| -> *mut Arc<Mutex<EventLoop>> {return poll.as_ptr()});
+    pub fn get_current_loop() -> Arc<EventLoop> {
+        let ptr = CURRENT_LOOP.with(|poll| -> *mut Arc<EventLoop> {return poll.as_ptr()});
         unsafe {
             let clone = (*ptr).clone();
             clone
@@ -383,9 +385,10 @@ impl EventLoopPool {
         }
     }
 
-    /*
-    pub fn get_first_poller() -> EventLoop {
+    pub fn get_first_poller(&self) -> Arc<EventLoop> {
+        self.loops[0].clone()
     }
+    /*
     pub fn get_poller() -> EventLoop {
     }
     pub drop

@@ -10,7 +10,7 @@ unsafe impl Sync for Acceptor {}
 
 pub struct Acceptor {
     tcp_listener: TcpListener,
-    event_loop: Arc<Mutex<EventLoop>>,
+    event_loop: Arc<EventLoop>,
     is_listening: bool,
     accept_cb: fn(TcpStream, SocketAddr),
     acceptor_job: AcceptorJob
@@ -19,7 +19,7 @@ pub struct Acceptor {
 fn default_accept_cb(_stream: TcpStream, _addr: SocketAddr) {}
 
 impl Acceptor {
-    pub fn new(event_loop: Arc<Mutex<EventLoop>>, addr: &String) -> Acceptor {
+    pub fn new(event_loop: Arc<EventLoop>, addr: &String) -> Acceptor {
         Acceptor {
             tcp_listener: TcpListener::new(&(addr.parse().unwrap())),
             event_loop: event_loop,
@@ -67,7 +67,7 @@ impl Acceptor {
         }
     }
     pub fn bind(&mut self, job: Job) {
-        self.event_loop.lock().unwrap().register(
+        self.event_loop.register(
                 &self.tcp_listener, 
                 TokenEntry {
                     ttype: TokenType::AcceptEvent,
