@@ -207,11 +207,13 @@ impl TcpListener {
         Self::bind(addr).unwrap()
     }
     pub fn bind(addr: &SocketAddr) -> io::Result<TcpListener> {
+        use net2::unix::UnixTcpBuilderExt;
         let sock = match *addr {
             SocketAddr::V4(..) => TcpBuilder::new_v4(),
             SocketAddr::V6(..) => TcpBuilder::new_v6(),
         }?;
         sock.reuse_address(true)?;
+        sock.reuse_port(true)?;
         sock.bind(addr)?;
         let listener = sock.listen(1024)?;
         Ok(TcpListener {

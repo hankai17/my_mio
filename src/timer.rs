@@ -321,7 +321,9 @@ impl<T> Default for Timer<T> {
 
 fn spawn_wakeup_thread(state: WakeupState, s: SetReadiness, 
         start: Instant, tick_ms: u64) -> thread::JoinHandle<()> {                       // 线程循环判断 stat定时器 到期则入队 // hankai0
-    thread::spawn(move || {
+    thread::Builder::new()
+    .name("timer".to_string())
+    .spawn(move || {
         let mut sleep_until_tick = state.load(Ordering::Acquire) as Tick;
         loop {
             if sleep_until_tick == TERMINATE_THREAD as Tick {
@@ -350,7 +352,7 @@ fn spawn_wakeup_thread(state: WakeupState, s: SetReadiness,
                 }
             }
         }
-    })
+    }).unwrap()
 }
 
 impl<T> Evented for Timer<T> {

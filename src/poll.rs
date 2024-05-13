@@ -381,10 +381,10 @@ impl ReadinessQueueInner {
 
     fn enqueue_node_with_wakeup(&self, node: &ReadinessNode) -> io::Result<()> {
         if self.enqueue_node(node) {
-            println!("enqueue_node need wakeup");
+            //println!("enqueue_node need wakeup");
             self.wakeup()?;
         } else {
-            println!("enqueue_node need not wakeup");
+            //println!("enqueue_node need not wakeup");
         }
         Ok(())
     }

@@ -230,7 +230,7 @@ impl EventLoop {
             match events.get_mut(i) {
                 Some(entry) => {
                     let token = entry.token_entry;
-                    println!("token: {:?}", token);
+                    //println!("token: {:?}", token);
                     match token.ttype {
                         TokenType::TimersEvent => {
                             while let Some(mut t) = timer.poll() {
@@ -365,19 +365,22 @@ impl EventLoopPool {
     pub fn new(size: i32) -> EventLoopPool {
         let mut threads = vec![];
         let mut loops = Vec::with_capacity(1024);
-        for _ in 0..size {
+        for i in 0..size {
             let (tx, rx) = channel();
-            threads.push(thread::spawn( move || {
-                let mut b = EventLoopBuilder::new();
-                b.notify_capacity(1_048_576)
-                    .messages_per_tick(64)
-                    .timer_tick(Duration::from_millis(100))
-                    .timer_wheel_size(1024)
-                    .timer_capacity(65536);
-                let event_loop = b.get_build1().unwrap();
-                tx.send(event_loop.clone()).unwrap();
-                let _ = event_loop.run();
-            }));
+            threads.push(
+                thread::Builder::new()
+                .name(format!("{}{}", "thread_poller", i))
+                .spawn( move || {
+                    let mut b = EventLoopBuilder::new();
+                    b.notify_capacity(1_048_576)
+                        .messages_per_tick(64)
+                        .timer_tick(Duration::from_millis(100))
+                        .timer_wheel_size(1024)
+                        .timer_capacity(65536);
+                    let event_loop = b.get_build1().unwrap();
+                    tx.send(event_loop.clone()).unwrap();
+                    let _ = event_loop.run();
+                }));
             loops.push(rx.recv().unwrap());
         }
         EventLoopPool {
@@ -388,9 +391,10 @@ impl EventLoopPool {
     pub fn get_first_poller(&self) -> Arc<EventLoop> {
         self.loops[0].clone()
     }
-    /*
-    pub fn get_poller() -> EventLoop {
+    pub fn get_all_poller(&self) -> Vec<Arc<EventLoop>> {
+        self.loops.clone()
     }
+    /*
     pub drop
     let _: Vec<_> = threads.into_iter()
         .map(|th| th.join().unwrap())

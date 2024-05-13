@@ -47,6 +47,7 @@ impl Handler for Test {
         self.conn = Some(conn);
         let event_loop = EventLoopBuilder::get_current_loop();
 
+        /*
         let timer = event_loop.timeout(
             Duration::from_millis(1000 * 3),
             Box::new(
@@ -60,6 +61,7 @@ impl Handler for Test {
             Ok(timer) => self.timer = Some(timer),
             _ => return,
         }
+        */
     }
 
     fn on_recv(&mut self, bytes: &mut BytesMut) {
@@ -154,12 +156,17 @@ fn sleep_ms(ms: u64) {
 }
 
 fn main() {
-    let pool = EventLoopPool::new(4);
-    let poller = pool.get_first_poller();
-
-    let tcp_server = Arc::new(Mutex::new(TcpServer::new(poller.clone(), &"0.0.0.0:9528".to_string())));
-    tcp_server.lock().unwrap().start::<Test>();
-    TcpServer::start_internal(tcp_server);
+    let pool = EventLoopPool::new(2);
+    for poller in pool.get_all_poller().iter() {
+        let tcp_server = Arc::new(Mutex::new(
+                TcpServer::new(
+                    poller.clone(),
+                    &"0.0.0.0:9528".to_string()
+                )
+        ));
+        tcp_server.lock().unwrap().start::<Test>();
+        TcpServer::start_internal(tcp_server);
+    }
     sleep_ms(1000 * 1000);
 }
 
