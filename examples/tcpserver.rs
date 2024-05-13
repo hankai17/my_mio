@@ -4,7 +4,7 @@ extern crate bytes;
 use my_mio::{PollOpt, Ready, Token, Registration, TokenType, TokenEntry};
 use my_mio::timer::{Timeout};
 use bytes::{Buf, BytesMut};
-use my_mio::net::{EventLoop, EventLoopBuilder, TcpConnection, TcpServer, Handler};
+use my_mio::net::{EventLoop, EventLoopBuilder,  EventLoopPool, TcpConnection, TcpServer, Handler};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
@@ -127,8 +127,8 @@ impl Handler for Test {
     }
 }
 
+/*
 fn main() {
-
     let mut b = EventLoopBuilder::new();
     b.notify_capacity(1_048_576)
         .messages_per_tick(64)
@@ -145,5 +145,16 @@ fn main() {
     unsafe {
         (*ptr).get_mut().unwrap().run().unwrap();
     }
+}
+*/
+fn sleep_ms(ms: u64) {
+    use std::thread;
+    use std::time::Duration;
+    thread::sleep(Duration::from_millis(ms));
+}
+
+fn main() {
+    let pool = EventLoopPool::new(4);
+    sleep_ms(1000 * 1000);
 }
 

@@ -1,16 +1,19 @@
 use {channel, Poll, Events, Token, TokenAllocator, TokenType, TokenEntry};
 use event::Evented;
 use event_imp::{Ready, PollOpt, Job, ready_as_usize, TimerJob};
+use std::sync::atomic::{AtomicBool};
+use std::sync::atomic::Ordering::{self, Acquire, Release, AcqRel, Relaxed, SeqCst};
 use timer::{self, Timer, Timeout};
 use std::{io, usize};
 use std::default::Default;
 use std::time::Duration;
 use std::{fmt, error, any};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Barrier};
 use std::thread_local;
 use poll::CURRENT_TOKEN_ALLOCATOR;
 use std::thread;
 use std::cell::UnsafeCell;
+use std::sync::mpsc::channel;
 
 pub enum NotifyError<T> {
     Io(io::Error),
@@ -118,7 +121,7 @@ unsafe impl Send for EventLoop {}
 unsafe impl Sync for EventLoop {}
 
 pub struct EventLoop {
-    run: bool,
+    run: AtomicBool,
     pub poll: Poll,
     events: UnsafeCell<Events>,
     timer: UnsafeCell<Timer<TimerJob>>,
@@ -157,7 +160,7 @@ impl EventLoop {
                     Arc::new(Mutex::new(move |_| {}))
         )?;
         Ok(EventLoop {
-            run: true,
+            run: AtomicBool::new(false),
             poll,
             events: UnsafeCell::new(Events::with_capacity(1024)),
             timer: UnsafeCell::new(timer),
@@ -186,11 +189,15 @@ impl EventLoop {
         timer.cancel_timeout(&timeout).is_some()
     }
 
-    pub fn shutdown(&mut self) { 
-        self.run = false;
+    pub fn shutdown(&self) { 
+        let res = self.run.compare_exchange(true, false, Acquire, Acquire);
+        match res {
+            Ok(_) => return,
+            Err(_) => return,
+        }
     }
 
-    pub fn is_running(&self) -> bool { self.run }
+    pub fn is_running(&self) -> bool { self.run.load(Ordering::Relaxed) }
 
     pub fn register<E>(&self, io: &E, token: TokenEntry, interest: Ready,
             opt: PollOpt, job: Job) -> io::Result<()>
@@ -248,7 +255,7 @@ impl EventLoop {
         events.clear();
     }
 
-    pub fn run_once(&mut self, timeout: Option<Duration>) -> io::Result<()> {
+    pub fn run_once(&self, timeout: Option<Duration>) -> io::Result<()> {
         let cnt = match self.io_poll(timeout) {
             Ok(e) => e,
             Err(err) => {
@@ -264,9 +271,13 @@ impl EventLoop {
         Ok(())
     }
 
-    pub fn run(&mut self) -> io::Result<()> {
-        self.run = true;
-        while self.run {
+    pub fn run(&self) -> io::Result<()> {
+        let res = self.run.compare_exchange(false, true, Acquire, Acquire);
+        match res {
+            Ok(_) => {},
+            Err(_) => panic!("unable run EventLoop"),
+        }
+        while self.run.load(Ordering::Relaxed) {
             self.run_once(None)?;
         }
         Ok(())
@@ -276,7 +287,7 @@ impl EventLoop {
 #[derive(Default)]
 pub struct EventLoopBuilder {
     config: Config,
-    event_loop: Option<Arc<Mutex<EventLoop>>>,
+    event_loop: Option<Arc<EventLoop>>,
 }
 
 use std::cell::RefCell;
@@ -323,9 +334,15 @@ impl EventLoopBuilder {
 
     pub fn get_build(&mut self) -> io::Result<Arc<Mutex<EventLoop>>> {
         let event_loop = Arc::new(Mutex::new(self.build().unwrap()));
+        //self.event_loop = Some(event_loop.clone());
+        let clone = event_loop.clone();
+        CURRENT_LOOP.set(clone);
+        Ok(event_loop)
+    }
+
+    pub fn get_build1(&mut self) -> io::Result<Arc<EventLoop>> {
+        let event_loop = Arc::new(self.build().unwrap());
         self.event_loop = Some(event_loop.clone());
-        //let clone = event_loop.clone();
-        //CURRENT_LOOP.set(clone);
         Ok(event_loop)
     }
 
@@ -339,34 +356,28 @@ impl EventLoopBuilder {
 }
 
 pub struct EventLoopPool {
-    loops: Vec<Arc<Mutex<EventLoop>>>
+    loops: Vec<Arc<EventLoop>>
 }
 
 impl EventLoopPool {
     pub fn new(size: i32) -> EventLoopPool {
-        let mut loops = Vec::with_capacity(32);
+        let mut threads = vec![];
+        let mut loops = Vec::with_capacity(1024);
         for _ in 0..size {
-            let mut b = EventLoopBuilder::new();
-            b.notify_capacity(1_048_576)
-                .messages_per_tick(64)
-                .timer_tick(Duration::from_millis(100))
-                .timer_wheel_size(1024)
-                .timer_capacity(65536);
-
-            thread::spawn( move || {
-                let mut event_loop = b.get_build().unwrap();
-                let clone = event_loop.clone();
-                CURRENT_LOOP.set(clone);
-
-                let ptr: *mut Mutex<EventLoop> = Arc::as_ptr(&mut event_loop) as *mut _;
-                unsafe {
-                    (*ptr).get_mut().unwrap().run().unwrap();
-                }
-            });
-
-            //loops.push(b.event_loop.unwrap());
+            let (tx, rx) = channel();
+            threads.push(thread::spawn( move || {
+                let mut b = EventLoopBuilder::new();
+                b.notify_capacity(1_048_576)
+                    .messages_per_tick(64)
+                    .timer_tick(Duration::from_millis(100))
+                    .timer_wheel_size(1024)
+                    .timer_capacity(65536);
+                let event_loop = b.get_build1().unwrap();
+                tx.send(event_loop.clone()).unwrap();
+                let _ = event_loop.run();
+            }));
+            loops.push(rx.recv().unwrap());
         }
-
         EventLoopPool {
             loops: loops,
         }
@@ -377,6 +388,11 @@ impl EventLoopPool {
     }
     pub fn get_poller() -> EventLoop {
     }
+    pub drop
+    let _: Vec<_> = threads.into_iter()
+        .map(|th| th.join().unwrap())
+        .collect();
+
     */
 }
 
