@@ -192,3 +192,8 @@ OthersEvent   |        |
 - 240511
     src/runtime/io/registration_set.rs:26:    pending_release: Vec<Arc<ScheduledIo>>,
         ScheduleIo 没有&mut self
+    模仿timer: inner 把EventLoop变成Arc 而非Arc<Mutex>
+    https://zhuanlan.zhihu.com/p/598708941
+        UnsafeCell返回了可变裸指针，这影响了共享引用的不变性保证，但是可变引用的唯一性保证不受影响，你没有合法的方法获得别名&mut
+
+

@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::thread_local;
 use poll::CURRENT_TOKEN_ALLOCATOR;
 use std::thread;
+use std::cell::UnsafeCell;
 
 pub enum NotifyError<T> {
     Io(io::Error),
@@ -119,8 +120,8 @@ unsafe impl Sync for EventLoop {}
 pub struct EventLoop {
     run: bool,
     pub poll: Poll,
-    events: Events,
-    timer: Timer<TimerJob>,
+    events: UnsafeCell<Events>,
+    timer: UnsafeCell<Timer<TimerJob>>,
     notify_tx: channel::SyncSender<i32>,
     notify_rx: channel::Receiver<i32>,
     config: Config,
@@ -158,8 +159,8 @@ impl EventLoop {
         Ok(EventLoop {
             run: true,
             poll,
-            events: Events::with_capacity(1024),
-            timer,
+            events: UnsafeCell::new(Events::with_capacity(1024)),
+            timer: UnsafeCell::new(timer),
             notify_tx: tx,
             notify_rx: rx,
             config,
@@ -174,13 +175,15 @@ impl EventLoop {
         Sender::new(self.notify_tx.clone())
     }
 
-    pub fn timeout(&mut self, delay: Duration, token: TimerJob)
+    pub fn timeout(&self, delay: Duration, token: TimerJob)
             -> timer::Result<Timeout> {
-        self.timer.set_timeout(delay, token)
+        let timer = unsafe { &mut *self.timer.get() };
+        timer.set_timeout(delay, token)
     }
 
-    pub fn clear_timeout(&mut self, timeout: &Timeout) -> bool {
-        self.timer.cancel_timeout(&timeout).is_some()
+    pub fn clear_timeout(&self, timeout: &Timeout) -> bool {
+        let timer = unsafe { &mut *self.timer.get() };
+        timer.cancel_timeout(&timeout).is_some()
     }
 
     pub fn shutdown(&mut self) { 
@@ -206,21 +209,24 @@ impl EventLoop {
         self.poll.deregister(io)
     }
 
-    fn io_poll(&mut self, timeout: Option<Duration>) -> io::Result<usize> {
-        self.poll.poll(&mut self.events, timeout)
+    fn io_poll(&self, timeout: Option<Duration>) -> io::Result<usize> {
+        let events = unsafe { &mut *self.events.get() };
+        self.poll.poll(events, timeout)
     }
 
-    fn io_process(&mut self, cnt: usize) {
+    fn io_process(&self, cnt: usize) {
         let mut i = 0;
-        log::trace!("io_process(..); cnt: {}; len: {}", cnt, self.events.len());
+        let timer = unsafe { &mut *self.timer.get() };
+        let events = unsafe { &mut *self.events.get() };
+        log::trace!("io_process(..); cnt: {}; len: {}", cnt, events.len());
         while i < cnt {
-            match self.events.get_mut(i) {
+            match events.get_mut(i) {
                 Some(entry) => {
                     let token = entry.token_entry;
                     println!("token: {:?}", token);
                     match token.ttype {
                         TokenType::TimersEvent => {
-                            while let Some(mut t) = self.timer.poll() {
+                            while let Some(mut t) = timer.poll() {
                                 t();
                             }
                         },
@@ -239,7 +245,7 @@ impl EventLoop {
             }
             i += 1;
         }
-        self.events.clear();
+        events.clear();
     }
 
     pub fn run_once(&mut self, timeout: Option<Duration>) -> io::Result<()> {
