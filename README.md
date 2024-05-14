@@ -196,4 +196,10 @@ OthersEvent   |        |
     https://zhuanlan.zhihu.com/p/598708941
         UnsafeCell返回了可变裸指针，这影响了共享引用的不变性保证，但是可变引用的唯一性保证不受影响，你没有合法的方法获得别名&mut
 
+- 240513
+    设计出 poller竞争的场景   很难
+        分配一个全局event_loop 起4个线程公用之 四个线程中死循环调用event_loop.poll
+    connection 的设计是否有缺陷 全双工?
 
+- 240514
+    logger

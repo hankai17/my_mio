@@ -1,5 +1,7 @@
 extern crate my_mio;
 extern crate bytes;
+extern crate log;
+extern crate env_logger;
 
 use my_mio::{PollOpt, Ready, Token, Registration, TokenType, TokenEntry};
 use my_mio::timer::{Timeout};
@@ -7,6 +9,8 @@ use bytes::{Buf, BytesMut};
 use my_mio::net::{EventLoop, EventLoopBuilder,  EventLoopPool, TcpConnection, TcpServer, Handler};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
+use std::thread;
+use log::debug;
 
 struct Test {
     timer: Option<Timeout>, //pub type TimerJob = Box<dyn FnMut() + 'static + Send + Sync>;
@@ -125,7 +129,7 @@ impl Handler for Test {
     }
 
     fn on_error(&mut self) {
-        println!("Test onError");
+        debug!("Test onError");
     }
 }
 
@@ -155,6 +159,7 @@ fn sleep_ms(ms: u64) {
     thread::sleep(Duration::from_millis(ms));
 }
 
+/*
 fn main() {
     let pool = EventLoopPool::new(2);
     for poller in pool.get_all_poller().iter() {
@@ -169,4 +174,34 @@ fn main() {
     }
     sleep_ms(1000 * 1000);
 }
+*/
 
+fn main() {
+    let _ = ::env_logger::init();
+    debug!("Starting main");
+    let mut b = EventLoopBuilder::new();
+    b.notify_capacity(1_048_576)
+        .messages_per_tick(64)
+        .timer_tick(Duration::from_millis(100))
+        .timer_wheel_size(1024)
+        .timer_capacity(65536);
+    
+    let event_loop = b.get_build1().unwrap();
+
+    let tcp_server = Arc::new(Mutex::new(TcpServer::new(event_loop.clone(), &"0.0.0.0:9528".to_string())));
+    tcp_server.lock().unwrap().start::<Test>();
+    TcpServer::start_internal(tcp_server);
+
+    for i in 0..4 {
+        let clone = event_loop.clone();
+        thread::spawn(move || {
+            EventLoopBuilder::set_current_loop(clone.clone());
+            clone.run();
+            debug!("clone run done");
+        });
+        debug!("spawn thread done");
+    }
+    sleep_ms(1000 * 1000);
+}
+
+// RUST_LOG=debug target/debug/examples/tcpserver 

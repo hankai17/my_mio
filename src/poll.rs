@@ -9,6 +9,7 @@ use std::sync::atomic::Ordering::{self, Acquire, Release, AcqRel, Relaxed, SeqCs
 use std::time::{Duration, Instant};
 use std::collections::HashMap;
 use std::cell::RefCell;
+use log::trace;
 
 use event_imp::{self as event, Ready, Event, Evented, PollOpt, Job, JobEntry, TokenEntry, TokenType};
 use {Token, sys};
@@ -381,10 +382,10 @@ impl ReadinessQueueInner {
 
     fn enqueue_node_with_wakeup(&self, node: &ReadinessNode) -> io::Result<()> {
         if self.enqueue_node(node) {
-            //println!("enqueue_node need wakeup");
+            trace!("enqueue_node need wakeup");
             self.wakeup()?;
         } else {
-            //println!("enqueue_node need not wakeup");
+            trace!("enqueue_node need not wakeup");
         }
         Ok(())
     }

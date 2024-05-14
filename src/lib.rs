@@ -5,7 +5,6 @@ extern crate net2;
 extern crate iovec;
 extern crate bytes;
 
-
 mod event_imp;
 pub use event_imp:: {
     PollOpt,

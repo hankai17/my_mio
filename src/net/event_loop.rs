@@ -275,7 +275,8 @@ impl EventLoop {
         let res = self.run.compare_exchange(false, true, Acquire, Acquire);
         match res {
             Ok(_) => {},
-            Err(_) => panic!("unable run EventLoop"),
+            //Err(_) => panic!("unable run EventLoop"),
+            Err(_) => {},
         }
         while self.run.load(Ordering::Relaxed) {
             self.run_once(None)?;
@@ -346,6 +347,10 @@ impl EventLoopBuilder {
         let clone = event_loop.clone();
         CURRENT_LOOP.set(clone);
         Ok(event_loop)
+    }
+
+    pub fn set_current_loop(event_loop: Arc<EventLoop>) {
+        CURRENT_LOOP.set(event_loop);
     }
 
     pub fn get_current_loop() -> Arc<EventLoop> {
