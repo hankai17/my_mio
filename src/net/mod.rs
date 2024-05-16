@@ -17,6 +17,11 @@ pub use self::acceptor::{
     Acceptor
 };
 
+mod connector;
+pub use self::connector::{
+    Connector
+};
+
 mod connection;
 pub use self::connection::{
     TcpConnection

@@ -14,6 +14,7 @@ use poll::CURRENT_TOKEN_ALLOCATOR;
 use std::thread;
 use std::cell::UnsafeCell;
 use std::sync::mpsc::channel;
+use log::debug;
 
 pub enum NotifyError<T> {
     Io(io::Error),
@@ -230,7 +231,7 @@ impl EventLoop {
             match events.get_mut(i) {
                 Some(entry) => {
                     let token = entry.token_entry;
-                    //println!("token: {:?}", token);
+                    debug!("token: {:?}", token);
                     match token.ttype {
                         TokenType::TimersEvent => {
                             while let Some(mut t) = timer.poll() {

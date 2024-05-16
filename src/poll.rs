@@ -9,7 +9,7 @@ use std::sync::atomic::Ordering::{self, Acquire, Release, AcqRel, Relaxed, SeqCs
 use std::time::{Duration, Instant};
 use std::collections::HashMap;
 use std::cell::RefCell;
-use log::trace;
+use log::{debug, trace};
 
 use event_imp::{self as event, Ready, Event, Evented, PollOpt, Job, JobEntry, TokenEntry, TokenType};
 use {Token, sys};
@@ -382,10 +382,10 @@ impl ReadinessQueueInner {
 
     fn enqueue_node_with_wakeup(&self, node: &ReadinessNode) -> io::Result<()> {
         if self.enqueue_node(node) {
-            trace!("enqueue_node need wakeup");
+            //println!("enqueue_node need wakeup");
             self.wakeup()?;
         } else {
-            trace!("enqueue_node need not wakeup");
+            //println!("enqueue_node need not wakeup");
         }
         Ok(())
     }
@@ -752,22 +752,22 @@ impl Poll {
     fn poll1(&self, events: &mut Events, mut timeout: Option<Duration>,
             interruptible: bool) -> io::Result<usize> {
         let zero = Some(Duration::from_millis(0));
-        let mut curr = match self.lock_state.compare_exchange(0, 1,
-                SeqCst, SeqCst) {
+        let mut curr = match self.lock_state
+                .compare_exchange(0, 1, SeqCst, SeqCst) {
             Ok(val) => val,
             Err(val) => val,
         };
-        if 0 != curr {      // 其它线程已对poll上锁 
+        if 0 != curr {
             let mut lock = self.lock.lock().unwrap();
             let mut inc = false;
-            loop {                          // 这个loop确保polling 顺序执行
-                if curr & 1 == 0 {
+            loop {
+                if curr & 1 == 0 {                      // 最先执行poll2函数的线程执行完毕 (-1 变成偶数了)
                     let mut next = curr | 1;
                     if inc {
                         next -= 2;
                     }
-                    let actual = match self.lock_state.compare_exchange(curr, next,
-                            SeqCst, SeqCst) {
+                    let actual = match self.lock_state
+                            .compare_exchange(curr, next, SeqCst, SeqCst) {
                         Ok(val) => val,
                         Err(val) => val,
                     };
@@ -775,9 +775,9 @@ impl Poll {
                         curr = actual;
                         continue;
                     }
-                    break;              // 唯一出路
+                    break;
                 }
-                if timeout == zero {    // 是个很紧急的poll 但是拿不到锁 直接返回Ok // 这个设计不合理
+                if timeout == zero {                    // 是个很紧急的poll 但是拿不到锁 直接返回Ok // 这个设计不合理
                     if inc {
                         self.lock_state.fetch_sub(2, SeqCst);
                     }
@@ -785,8 +785,8 @@ impl Poll {
                 }
                 if !inc {
                     let next = curr.checked_add(2).expect("overflow");
-                    let actual = match self.lock_state.compare_exchange(curr, next,
-                            SeqCst, SeqCst) {                                           // 确保每个线程按序 +2
+                    let actual = match self.lock_state
+                            .compare_exchange(curr, next, SeqCst, SeqCst) {     // 确保每个线程按序 +2 eg: 3 5 7最后得到7
                         Ok(val) => val,
                         Err(val) => val,
                     };
@@ -803,21 +803,21 @@ impl Poll {
                         let elapsed = now.elapsed();
                         if elapsed >= to {
                             timeout = zero;
-                        } else {    // 虚假超时
+                        } else {                        // 虚假超时
                             timeout = Some(to - elapsed);
                         }
                         l
                     }
                     None => {
-                        self.condvar.wait(lock).unwrap()    // 4个线程 0线程一直polling 1~3线程wait
+                        self.condvar.wait(lock).unwrap()// 4个线程 0线程一直polling 1~3线程wait
                     }
                 };
                 curr = self.lock_state.load(SeqCst);
             }
         }
         let ret = self.poll2(events, timeout, interruptible);
-        if 1 != self.lock_state.fetch_and(!1, Release) {    // 老值不为1 说明polling有竞争 // lock_stat & fff1110 
-            let _lock = self.lock.lock().unwrap();
+        if 1 != self.lock_state.fetch_and(!1, Release) {// poll - 1
+            let _lock = self.lock.lock().unwrap();      // 老值不为1 说明poll有竞争 poll被其它线程inc了 // lock_stat & fff1110 
             self.condvar.notify_one();
         }
         ret
