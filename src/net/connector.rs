@@ -5,13 +5,17 @@ use net::{EventLoop, TcpStream, Acceptor, TcpConnection};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::net::{SocketAddr};
 use std::sync::{Arc, Mutex};
+use event_imp::ready_from_usize;
 use log::debug;
+
+pub type WritJob = Box<dyn FnMut(TcpStream)->bool + 'static + Send + Sync>;
 
 pub struct Connector {
     //addr: String,
     connector: Option<TcpStream>,
     event_loop: Arc<EventLoop>,
     is_connected: bool,
+    writ_job: WritJob,
 }
 
 macro_rules! enclose {
@@ -31,19 +35,30 @@ impl Connector {
             connector: None,
             event_loop,
             is_connected: false,
+            writ_job: Box::new(move |_| { true }),
         }
     }
 
-    fn handleRead(&mut self) -> io::Result<()> {
+    pub fn set_writ_job(&mut self, job: WritJob) {
+        self.writ_job = job;
+    }
+
+    fn handle_write(&mut self) -> io::Result<()> {
         // check connect ret
         // del event
-        // cb (new connection ?)
-        println!("handleRead...");
+        let _ = (self.writ_job)(self.connector.take().unwrap());
         Ok(())
     }
 
-    pub fn handleEvent(&mut self, event: i64) -> io::Result<()> {
-        self.handleRead()
+    pub fn handle_event(&mut self, event: i64) -> io::Result<()> {
+        let ready = ready_from_usize(event as usize);
+        if ready.is_writable() {
+            self.handle_write();
+        }
+        if ready.is_error() ||
+                ready.is_hup() {
+        }
+        Ok(())
     }
 
     pub fn connect(this: Arc<Mutex<Self>>, addr: &String) {
@@ -53,7 +68,7 @@ impl Connector {
             enclose! {
                 (this)
                 move |val: i64| {
-                    this.lock().unwrap().handleEvent(val);
+                    this.lock().unwrap().handle_event(val);
                 }
             }
         ));
