@@ -47,6 +47,13 @@ impl Connector {
         // check connect ret
         // del event
         let _ = (self.writ_job)(self.connector.take().unwrap());
+        //let conn = Arc::new(Mutex::new(
+        //        TcpConnection::new(
+        //            self.event_loop.clone(),
+        //            self.connector.take().unwrap()
+        //        )
+        //));
+
         Ok(())
     }
 

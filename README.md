@@ -203,3 +203,12 @@ OthersEvent   |        |
 
 - 240514
     logger
+
+- 240517
+    tcp_client
+    1.虚函数 onRecv ...
+    2.调用conn的set_read/write_job 在conn读取底层数据后 调用job里的onRecv 将数据传到上层
+        onSocketConnect 里的 setOnReadCB setOnWrittenCB 即set_read/write_job
+    3.connector 就写的粗一点 里面仅有一个job闭包即可 一旦建立成功则暴力调用该job闭包并将stream传递进去
+        这个闭包里要做的内容是 将构造一个conn 即2的内容
+

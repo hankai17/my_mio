@@ -58,6 +58,26 @@ fn main() {
                 println!("stream: {:?}", stream);
                 let event_loop = EventLoopBuilder::get_current_loop();
                 let conn = Arc::new(Mutex::new(TcpConnection::new(event_loop.clone(), stream)));
+                let conn_clone = conn.clone();
+
+                let job = Arc::new(Mutex::new(
+                        move |val: i64| {
+                            conn_clone.lock().unwrap().handle_event(val).unwrap();
+                        }
+                ));
+
+                event_loop.deregister(&conn.lock().unwrap().sock).unwrap();
+                event_loop.register(
+                        &conn.lock().unwrap().sock,
+                        TokenEntry {
+                            ttype: TokenType::SocketEvent, 
+                            token: Token (0)
+                        },
+                        Ready::readable() | Ready::writable(),
+                        PollOpt::edge(), 
+                        job
+                ).unwrap();
+
                 false
             }));
             Connector::connect(connector, &"127.0.0.1:90".to_string());
