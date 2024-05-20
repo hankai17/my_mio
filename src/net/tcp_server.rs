@@ -146,3 +146,58 @@ impl TcpServer {
     }
 }
 
+pub trait ClientHandler {
+    //fn start_connect(&mut self, conn: Arc<Mutex<TcpConnection>>);
+    //fn free_connection(&mut self);
+    fn shutdown(&mut self);
+
+    fn on_connect(&mut self);
+    fn on_recv(&mut self, bytes: &mut BytesMut);
+    fn on_written(&mut self) -> bool;
+    fn on_error(&mut self);
+}
+
+pub struct TcpClient {
+    event_loop: Arc<EventLoop>, 
+    connector: Arc<Mutex<Connector>>,
+    connection: Option<Arc<Mutex<TcpConnection>>>,
+}
+
+unsafe impl Send for TcpServer {}
+unsafe impl Sync for TcpServer {}
+
+impl TcpClient {
+    fn new(event_loop: Arc<EventLoop>, addr: &String) -> TcpClient {
+        TcpClient {
+            event_loop,
+            connector = Connector::new(event_loop.clone()),
+            connection = None,
+        }
+    }
+
+    fn start_connect(&mut self, addr: &String) {
+        self.connector.lock().unwrap().connect(addr)
+        let job = Box::new( move |stream :TcpStream| {
+            self.connection = stream; 
+            // self.on_connect()
+            let read_job = || {
+                self.on_recv()
+            }
+            let writ_job = || }
+                self.on_Written()
+            |
+            self.connection.set_read_job();
+            self.connection.set_writ_job();
+
+        });
+        self.connector.lock().unwrap().set_writ_job();
+    }
+
+    /*
+    fn on_connect(&mut self) {
+        read_job/write_job
+    }
+    */
+
+}
+
