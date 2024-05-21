@@ -1,6 +1,6 @@
 use bytes::{BytesMut};
 use {PollOpt, Ready, Token, TokenType, TokenEntry};
-use net::{EventLoop, TcpStream, Acceptor, TcpConnection};
+use net::{EventLoop, TcpStream, Acceptor, TcpConnection, Connector};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::net::{SocketAddr};
 use std::sync::{Arc, Mutex};
@@ -147,11 +147,11 @@ impl TcpServer {
 }
 
 pub trait ClientHandler {
-    //fn start_connect(&mut self, conn: Arc<Mutex<TcpConnection>>);
+    //fn start_connect(&mut self, );
     //fn free_connection(&mut self);
     fn shutdown(&mut self);
 
-    fn on_connect(&mut self);
+    fn on_connect(&mut self, conn: Arc<Mutex<TcpConnection>>);
     fn on_recv(&mut self, bytes: &mut BytesMut);
     fn on_written(&mut self) -> bool;
     fn on_error(&mut self);
@@ -163,41 +163,65 @@ pub struct TcpClient {
     connection: Option<Arc<Mutex<TcpConnection>>>,
 }
 
-unsafe impl Send for TcpServer {}
-unsafe impl Sync for TcpServer {}
+unsafe impl Send for TcpClient {}
+unsafe impl Sync for TcpClient {}
 
 impl TcpClient {
-    fn new(event_loop: Arc<EventLoop>, addr: &String) -> TcpClient {
+    pub fn new(event_loop: Arc<EventLoop>) -> TcpClient {
         TcpClient {
-            event_loop,
-            connector = Connector::new(event_loop.clone()),
-            connection = None,
+            event_loop: event_loop.clone(),
+            connector: Arc::new(Mutex::new(Connector::new(event_loop.clone()))),
+            connection: None,
         }
     }
 
-    fn start_connect(&mut self, addr: &String) {
-        self.connector.lock().unwrap().connect(addr)
-        let job = Box::new( move |stream :TcpStream| {
-            self.connection = stream; 
-            // self.on_connect()
-            let read_job = || {
-                self.on_recv()
-            }
-            let writ_job = || }
-                self.on_Written()
-            |
-            self.connection.set_read_job();
-            self.connection.set_writ_job();
+    pub fn start_connect(this: Arc<Mutex<Self>>, addr: &String, handler: Arc<Mutex<dyn ClientHandler + 'static + Send + Sync>>) {
+        let this_clone = this.clone();
+
+        let conn_job = Box::new(move |stream: TcpStream| {
+            let conn = Arc::new(Mutex::new(TcpConnection::new(this.lock().unwrap().event_loop.clone(), stream)));
+            let conn_clone = conn.clone();
+            this.lock().unwrap().connection = Some(conn);
+
+            let handler = handler.clone();
+
+            handler.lock().unwrap().on_connect(conn_clone);
+
+            /*
+            this.lock().unwrap().connection
+                .unwrap()
+                .lock()
+                .unwrap()
+                .set_read_job(
+                    Box::new (enclose! { 
+                        (handler)
+			        	move |bytes: &mut BytesMut| {
+                            handler.lock().unwrap().on_recv(bytes);
+                        }
+                    })
+            );
+            this.lock().unwrap().connection
+                .unwrap()
+                .lock()
+                .unwrap()
+                .set_writ_job(
+                    Box::new (enclose! {
+                        (handler)
+                        move || {
+                            handler.lock().unwrap().on_written()
+                        }
+                    })
+            );
+            */
+            true
 
         });
-        self.connector.lock().unwrap().set_writ_job();
-    }
 
-    /*
-    fn on_connect(&mut self) {
-        read_job/write_job
+        let mut this = this_clone.clone();
+        this.lock().unwrap().connector.lock().unwrap().set_conn_job(conn_job);
+
+        Connector::connect(this.lock().unwrap().connector.clone(), addr);
     }
-    */
 
 }
 

@@ -212,3 +212,17 @@ OthersEvent   |        |
     3.connector 就写的粗一点 里面仅有一个job闭包即可 一旦建立成功则暴力调用该job闭包并将stream传递进去
         这个闭包里要做的内容是 将构造一个conn 即2的内容
 
+- 240520
+    怎么设计TcpClient 与 其虚函数的关系?
+
+- 240521
+    首先有trait
+    TcpClient的实例必须实现trait 且能调用该trait
+    如何约束 TcpClient的实例 必须实现trait? 模仿depre/event_loop.rs ?
+        让实例(Handler)作为参数?
+
+    test/trait1.rs 中的动物与羊:
+    traitHandler与TcpClient:
+        TcpClient中需要调用 traitHandler实例的函数 用以处理上层(trait)业务
+        TcpClient 与 traitHandler是相互独立的
+

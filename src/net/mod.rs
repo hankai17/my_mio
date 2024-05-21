@@ -31,6 +31,8 @@ mod tcp_server;
 pub use self::tcp_server::{
     Handler,
     TcpServer,
+    ClientHandler,
+    TcpClient,
 };
 
 use std::{io};

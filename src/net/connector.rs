@@ -8,14 +8,14 @@ use std::sync::{Arc, Mutex};
 use event_imp::ready_from_usize;
 use log::debug;
 
-pub type WritJob = Box<dyn FnMut(TcpStream)->bool + 'static + Send + Sync>;
+pub type ConnJob = Box<dyn FnMut(TcpStream)->bool + 'static + Send + Sync>;
 
 pub struct Connector {
     //addr: String,
     connector: Option<TcpStream>,
     event_loop: Arc<EventLoop>,
     is_connected: bool,
-    writ_job: WritJob,
+    on_conn_job: ConnJob,
 }
 
 macro_rules! enclose {
@@ -35,18 +35,18 @@ impl Connector {
             connector: None,
             event_loop,
             is_connected: false,
-            writ_job: Box::new(move |_| { true }),
+            on_conn_job: Box::new(move |_| { true }),
         }
     }
 
-    pub fn set_writ_job(&mut self, job: WritJob) {
-        self.writ_job = job;
+    pub fn set_conn_job(&mut self, job: ConnJob) {
+        self.on_conn_job = job;
     }
 
-    fn handle_write(&mut self) -> io::Result<()> {
+    fn handle_on_connect(&mut self) -> io::Result<()> {
         // check connect ret
         // del event
-        let _ = (self.writ_job)(self.connector.take().unwrap());
+        let _ = (self.on_conn_job)(self.connector.take().unwrap());
         //let conn = Arc::new(Mutex::new(
         //        TcpConnection::new(
         //            self.event_loop.clone(),
@@ -60,7 +60,7 @@ impl Connector {
     pub fn handle_event(&mut self, event: i64) -> io::Result<()> {
         let ready = ready_from_usize(event as usize);
         if ready.is_writable() {
-            self.handle_write();
+            self.handle_on_connect();
         }
         if ready.is_error() ||
                 ready.is_hup() {
