@@ -180,19 +180,14 @@ impl TcpClient {
 
         let conn_job = Box::new(move |stream: TcpStream| {
             let conn = Arc::new(Mutex::new(TcpConnection::new(this.lock().unwrap().event_loop.clone(), stream)));
-            let conn_clone = conn.clone();
-            this.lock().unwrap().connection = Some(conn);
 
             let handler = handler.clone();
+            let conn_clone = conn.clone();
 
             handler.lock().unwrap().on_connect(conn_clone);
 
-            /*
-            this.lock().unwrap().connection
-                .unwrap()
-                .lock()
-                .unwrap()
-                .set_read_job(
+            let conn_clone = conn.clone();
+            conn_clone.lock().unwrap().set_read_job(
                     Box::new (enclose! { 
                         (handler)
 			        	move |bytes: &mut BytesMut| {
@@ -200,11 +195,9 @@ impl TcpClient {
                         }
                     })
             );
-            this.lock().unwrap().connection
-                .unwrap()
-                .lock()
-                .unwrap()
-                .set_writ_job(
+
+            let conn_clone = conn.clone();
+            conn_clone.lock().unwrap().set_writ_job(
                     Box::new (enclose! {
                         (handler)
                         move || {
@@ -212,9 +205,33 @@ impl TcpClient {
                         }
                     })
             );
-            */
-            true
 
+            let job = Arc::new(Mutex::new(
+                enclose! {
+                    (conn)
+                    move |val: i64| {
+                        conn.lock().unwrap().handle_event(val).unwrap();
+                    }
+                }
+            ));
+
+            this.lock().unwrap().event_loop.deregister(&conn.lock().unwrap().sock).unwrap();
+
+            this.lock().unwrap().event_loop.register(
+                    &conn.lock().unwrap().sock,
+                    TokenEntry {
+                        ttype: TokenType::SocketEvent, 
+                        token: Token (
+                            SOCKET_TOKEN_ID.fetch_add(1, Ordering::Relaxed) + 1
+                        )
+                    },
+                    Ready::readable() | Ready::writable(),
+                    PollOpt::edge(), 
+                    job
+            ).unwrap();
+
+            this.lock().unwrap().connection = Some(conn);
+            true
         });
 
         let mut this = this_clone.clone();

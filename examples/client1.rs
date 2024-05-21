@@ -106,6 +106,10 @@ impl ClientHandler for TestClient {
 
     fn on_connect(&mut self, conn: Arc<Mutex<TcpConnection>>) {
         println!("conn connected ?");
+        let mut conn = conn.lock().unwrap();
+        conn.send(
+            BytesMut::from(&b"GET /klsdjf HTTP/1.1\r\nHost: 0.0.0.0:90\r\nUser-Agent: curl/7.61.1\r\nAccept: */*\r\n"[..])
+        ).unwrap();
     }
 
     fn on_recv(&mut self, bytes: &mut BytesMut) {
@@ -114,7 +118,7 @@ impl ClientHandler for TestClient {
 
     fn on_written(&mut self) -> bool {
         println!("write done");
-        false
+        true
     }
 
     fn on_error(&mut self) {
@@ -124,6 +128,8 @@ impl ClientHandler for TestClient {
 
 
 fn main() {
+    let _ = ::env_logger::init();
+    debug!("Starting main");
     let pool = EventLoopPool::new(1);
     for poller in pool.get_all_poller().iter() {
         let mut cli = TcpClient::new(poller.clone());
