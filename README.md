@@ -226,3 +226,18 @@ OthersEvent   |        |
         TcpClient中需要调用 traitHandler实例的函数 用以处理上层(trait)业务
         TcpClient 与 traitHandler是相互独立的
 
+- 240522
+    生命周期
+    TcpClient
+        connector
+           |
+           +--> job -> <job1 | TcpConnection | handler>
+                         |           |                      
+                         |           +-> (read/writ_job中引用) handler
+                         |
+                         +-> TcpConnection
+
+        conn -> TcpConnection
+
+        conn_job -> TcpClient
+

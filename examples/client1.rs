@@ -100,9 +100,21 @@ impl TestClient {
     } 
 }
 
+impl Drop for TestClient {
+    fn drop(&mut self) {
+        println!("-------------------------dropping for TestClient")
+    }
+}
+
 impl ClientHandler for TestClient {
     fn shutdown(&mut self) {
     }
+
+    /*
+    fn attach_connection(&mut self, conn: Arc<Mutex<TcpConnection>>) {
+        self.conn = Some(Arc::downgrade(&conn));
+    }
+    */
 
     fn on_connect(&mut self, conn: Arc<Mutex<TcpConnection>>) {
         println!("conn connected ?");
@@ -114,6 +126,9 @@ impl ClientHandler for TestClient {
 
     fn on_recv(&mut self, bytes: &mut BytesMut) {
         println!("on_recv: {:?}", bytes);
+        bytes.advance(bytes.len());
+        if bytes.len() == 0 {
+        }
     }
 
     fn on_written(&mut self) -> bool {

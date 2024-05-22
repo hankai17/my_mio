@@ -150,6 +150,8 @@ pub trait ClientHandler {
     //fn start_connect(&mut self, );
     //fn free_connection(&mut self);
     fn shutdown(&mut self);
+    //fn attach_connection(&mut self, conn: Arc<Mutex<TcpConnection>>);
+    //fn free_connection(&mut self);
 
     fn on_connect(&mut self, conn: Arc<Mutex<TcpConnection>>);
     fn on_recv(&mut self, bytes: &mut BytesMut);
