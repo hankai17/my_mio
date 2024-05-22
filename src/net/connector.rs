@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use event_imp::ready_from_usize;
 use log::debug;
 
-pub type ConnJob = Box<dyn FnMut(TcpStream)->bool + 'static + Send + Sync>;
+pub type ConnJob = Arc<Mutex<dyn FnMut(TcpStream)->bool + 'static + Send + Sync>>;
 
 pub struct Connector {
     //addr: String,
@@ -35,7 +35,7 @@ impl Connector {
             connector: None,
             event_loop,
             is_connected: false,
-            on_conn_job: Box::new(move |_| { true }),
+            on_conn_job: Arc::new(Mutex::new((move |_| { true }))),
         }
     }
 
@@ -46,7 +46,7 @@ impl Connector {
     fn handle_on_connect(&mut self) -> io::Result<()> {
         // check connect ret
         // del event
-        let _ = (self.on_conn_job)(self.connector.take().unwrap());
+        let _ = (self.on_conn_job.lock().unwrap())(self.connector.take().unwrap());
         //let conn = Arc::new(Mutex::new(
         //        TcpConnection::new(
         //            self.event_loop.clone(),

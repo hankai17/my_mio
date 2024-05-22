@@ -48,46 +48,6 @@ fn enqueue_job(poller: Arc<EventLoop>, cb: Job) {
     ).unwrap();
 }
 
-fn main1() {
-    let pool = EventLoopPool::new(1);
-    for poller in pool.get_all_poller().iter() {
-        let job = Arc::new(Mutex::new(|| {
-            let event_loop = EventLoopBuilder::get_current_loop();
-            let connector = Arc::new(Mutex::new(Connector::new(event_loop.clone())));
-            connector.lock().unwrap().set_conn_job(Box::new(|stream: TcpStream| {
-                println!("stream: {:?}", stream);
-                let event_loop = EventLoopBuilder::get_current_loop();
-                let conn = Arc::new(Mutex::new(TcpConnection::new(event_loop.clone(), stream)));
-                let conn_clone = conn.clone();
-
-                let job = Arc::new(Mutex::new(
-                        move |val: i64| {
-                            conn_clone.lock().unwrap().handle_event(val).unwrap();
-                        }
-                ));
-
-                event_loop.deregister(&conn.lock().unwrap().sock).unwrap();
-                event_loop.register(
-                        &conn.lock().unwrap().sock,
-                        TokenEntry {
-                            ttype: TokenType::SocketEvent, 
-                            token: Token (0)
-                        },
-                        Ready::readable() | Ready::writable(),
-                        PollOpt::edge(), 
-                        job
-                ).unwrap();
-
-                false
-            }));
-            Connector::connect(connector, &"127.0.0.1:90".to_string());
-        }));
-        enqueue_job(poller.clone(), job);
-    }
-    sleep_ms(1000 * 1000);
-}
-
-
 struct TestClient {
     timer: Option<Timeout>,
 }
@@ -148,10 +108,9 @@ fn main() {
     let pool = EventLoopPool::new(1);
     for poller in pool.get_all_poller().iter() {
         let mut cli = TcpClient::new(poller.clone());
-        TcpClient::start_connect(
-                Arc::new(Mutex::new(cli)),
-                &"127.0.0.1:90".to_string(),
-                Arc::new(Mutex::new(TestClient::new()))
+        cli.start_connect(
+            &"127.0.0.1:90".to_string(),
+            Arc::new(Mutex::new(TestClient::new()))
         );
     }
     sleep_ms(1000 * 1000);

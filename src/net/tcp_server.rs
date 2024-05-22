@@ -76,7 +76,7 @@ impl TcpServer {
         session.lock().unwrap().on_accept();
 
         conn.lock().unwrap().set_read_job(
-            Box::new (enclose! { 
+            Box::new (enclose! {
                 (session)
 				move |bytes: &mut BytesMut| {
                     session.lock().unwrap().on_recv(bytes);
@@ -162,7 +162,6 @@ pub trait ClientHandler {
 pub struct TcpClient {
     event_loop: Arc<EventLoop>, 
     connector: Arc<Mutex<Connector>>,
-    connection: Option<Arc<Mutex<TcpConnection>>>,
 }
 
 unsafe impl Send for TcpClient {}
@@ -173,17 +172,18 @@ impl TcpClient {
         TcpClient {
             event_loop: event_loop.clone(),
             connector: Arc::new(Mutex::new(Connector::new(event_loop.clone()))),
-            connection: None,
         }
     }
 
-    pub fn start_connect(this: Arc<Mutex<Self>>, addr: &String, handler: Arc<Mutex<dyn ClientHandler + 'static + Send + Sync>>) {
-        let this_clone = this.clone();
+    pub fn start_connect(&mut self, addr: &String, handler: Arc<Mutex<dyn ClientHandler + 'static + Send + Sync>>) {
+        let event_loop = self.event_loop.clone();
 
-        let conn_job = Box::new(move |stream: TcpStream| {
-            let conn = Arc::new(Mutex::new(TcpConnection::new(this.lock().unwrap().event_loop.clone(), stream)));
-
+        let conn_job = Arc::new(Mutex::new(move |stream: TcpStream| {
             let handler = handler.clone();
+            let event_loop = event_loop.clone();
+            let event_loop_clone = event_loop.clone();
+
+            let conn = Arc::new(Mutex::new(TcpConnection::new(event_loop_clone.clone(), stream)));
             let conn_clone = conn.clone();
 
             handler.lock().unwrap().on_connect(conn_clone);
@@ -217,9 +217,11 @@ impl TcpClient {
                 }
             ));
 
-            this.lock().unwrap().event_loop.deregister(&conn.lock().unwrap().sock).unwrap();
+            let event_loop_clone = event_loop.clone();
+            event_loop_clone.deregister(&conn.lock().unwrap().sock).unwrap();
 
-            this.lock().unwrap().event_loop.register(
+            let event_loop_clone = event_loop.clone();
+            event_loop_clone.register(
                     &conn.lock().unwrap().sock,
                     TokenEntry {
                         ttype: TokenType::SocketEvent, 
@@ -232,14 +234,12 @@ impl TcpClient {
                     job
             ).unwrap();
 
-            this.lock().unwrap().connection = Some(conn);
             true
-        });
+        }));
 
-        let mut this = this_clone.clone();
-        this.lock().unwrap().connector.lock().unwrap().set_conn_job(conn_job);
+        self.connector.lock().unwrap().set_conn_job(conn_job);
 
-        Connector::connect(this.lock().unwrap().connector.clone(), addr);
+        Connector::connect(self.connector.clone(), addr);
     }
 
 }

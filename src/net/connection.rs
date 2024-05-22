@@ -242,7 +242,7 @@ impl TcpConnection {
 impl Drop for TcpConnection {
     fn drop(&mut self) {
         //self.event_loop.lock().unwrap().deregister(&self.sock);
-        println!("---------------------drop for tcpconnection {:?}", self.sock)
+        //println!("---------------------drop for tcpconnection {:?}", self.sock)
     }
 }
 
