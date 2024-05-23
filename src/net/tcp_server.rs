@@ -184,9 +184,9 @@ impl TcpClient {
             let event_loop_clone = event_loop.clone();
 
             let conn = Arc::new(Mutex::new(TcpConnection::new(event_loop_clone.clone(), stream)));
-            let conn_clone = conn.clone();
 
-            handler.lock().unwrap().on_connect(conn_clone);
+            //let conn_clone = conn.clone();
+            //handler.lock().unwrap().on_connect(conn_clone);
 
             let conn_clone = conn.clone();
             conn_clone.lock().unwrap().set_read_job(
@@ -207,6 +207,9 @@ impl TcpClient {
                         }
                     })
             );
+
+            //let conn_clone = conn.clone();
+            //handler.lock().unwrap().on_connect(conn_clone);
 
             let job = Arc::new(Mutex::new(
                 enclose! {
@@ -233,6 +236,9 @@ impl TcpClient {
                     PollOpt::edge(), 
                     job
             ).unwrap();
+
+            let conn_clone = conn.clone();
+            handler.lock().unwrap().on_connect(conn_clone);
 
             true
         }));

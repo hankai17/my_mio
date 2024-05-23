@@ -94,34 +94,39 @@ impl TcpConnection {
     }
 
     fn handle_read(&mut self) -> io::Result<()> {
-        let mut buf = self.read_buffer.take().unwrap();
-        match self.sock.try_read_buf(&mut buf) {
-            Ok(None) => {
-                println!("Conn: spurious read wakeup");
-                self.read_buffer = Some(buf);
-            }
-            Ok(Some(r)) => {
-                //println!("Conn: read {} bytes, {:?}", r, buf);
-                // buf toto
-                //(self.read_cb)(&mut buf);
-                if r > 0 {
-                    (self.read_job)(&mut buf);
+        while true {
+            let mut buf = self.read_buffer.take().unwrap();
+            match self.sock.try_read_buf(&mut buf) {
+                Ok(None) => {
+                    println!("Conn: spurious read wakeup");
                     self.read_buffer = Some(buf);
-                } else {
-                    //println!("r == 0");
-                    (self.read_job)(&mut buf);
-                    self.read_buffer = Some(buf);
-                    self.close_stream();
+                    break;
                 }
-                //self.interest.remove(Ready::readable());
-                //self.interest.insert(Ready::writable());
-            }
-            Err(e) => {
-                println!("not implemented client err: {:?}", e);
-                // deregister
-                self.close_stream();
-            }
-        };
+                Ok(Some(r)) => {
+                    //println!("Conn: read {} bytes, {:?}", r, buf);
+                    // buf toto
+                    //(self.read_cb)(&mut buf);
+                    if r > 0 {
+                        (self.read_job)(&mut buf);
+                        self.read_buffer = Some(buf);
+                    } else {
+                        //println!("r == 0");
+                        (self.read_job)(&mut buf);
+                        self.read_buffer = Some(buf);
+                        self.close_stream();
+                        break;
+                    }
+                    //self.interest.remove(Ready::readable());
+                    //self.interest.insert(Ready::writable());
+                }
+                Err(e) => {
+                    println!("not implemented client err: {:?}", e);
+                    // deregister
+                    self.close_stream();
+                    break;
+                }
+            };
+        }
         Ok(())
     }
 
@@ -242,7 +247,7 @@ impl TcpConnection {
 impl Drop for TcpConnection {
     fn drop(&mut self) {
         //self.event_loop.lock().unwrap().deregister(&self.sock);
-        //println!("---------------------drop for tcpconnection {:?}", self.sock)
+        println!("---------------------drop for tcpconnection {:?}", self.sock)
     }
 }
 

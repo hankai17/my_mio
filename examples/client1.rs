@@ -77,18 +77,19 @@ impl ClientHandler for TestClient {
     */
 
     fn on_connect(&mut self, conn: Arc<Mutex<TcpConnection>>) {
-        println!("conn connected ?");
-        let mut conn = conn.lock().unwrap();
-        conn.send(
-            BytesMut::from(&b"GET /klsdjf HTTP/1.1\r\nHost: 0.0.0.0:90\r\nUser-Agent: curl/7.61.1\r\nAccept: */*\r\n"[..])
-        ).unwrap();
+        let poller = EventLoopBuilder::get_current_loop();
+        let job = Arc::new(Mutex::new(move|| {
+            let mut conn = conn.lock().unwrap();
+            conn.send(
+                BytesMut::from(&b"GET /klsdjf HTTP/1.1\r\nHost: 0.0.0.0:90\r\nUser-Agent: curl/7.61.1\r\nAccept: */*\r\n"[..])
+            ).unwrap(); // 由于已经调用过conn->set_writ_job 且writ_job也是ClientHandler 所以死锁
+        }));
+        enqueue_job(poller.clone(), job);
     }
 
     fn on_recv(&mut self, bytes: &mut BytesMut) {
         println!("on_recv: {:?}", bytes);
         bytes.advance(bytes.len());
-        if bytes.len() == 0 {
-        }
     }
 
     fn on_written(&mut self) -> bool {
@@ -107,11 +108,13 @@ fn main() {
     debug!("Starting main");
     let pool = EventLoopPool::new(1);
     for poller in pool.get_all_poller().iter() {
-        let mut cli = TcpClient::new(poller.clone());
-        cli.start_connect(
-            &"127.0.0.1:90".to_string(),
-            Arc::new(Mutex::new(TestClient::new()))
-        );
+        for  i in 0..40 {
+            let mut cli = TcpClient::new(poller.clone());
+            cli.start_connect(
+                &"127.0.0.1:90".to_string(),
+                Arc::new(Mutex::new(TestClient::new()))
+            );
+        }
     }
     sleep_ms(1000 * 1000);
 }
