@@ -64,7 +64,15 @@ impl Selector {
             evts.events.set_len(cnt);
             for i in 0..cnt {
                 let fd = evts.events[i].u64 as usize as i32;
-                let entry: &mut JobEntry = events_map.as_mut().unwrap().get_mut(&fd).unwrap();
+                //let entry: &mut JobEntry = events_map.as_mut().unwrap().get_mut(&fd).unwrap();
+                let entry: &mut JobEntry = match events_map.as_mut().unwrap().get_mut(&fd) {
+                    Some(entry) => entry,
+                    None => {
+                        println!("fd: {}, None", fd);
+                        assert_eq!(0, 1);
+                        continue;
+                    },
+                };
                 let token = entry.token_entry;
                 if token.ttype == TokenType::NotifyEvent {
                     notify_idx = i;
@@ -86,6 +94,7 @@ impl Selector {
         &self.events_map as *const HashMap<i32, JobEntry>  as *mut HashMap<i32, JobEntry>
     }
     pub fn register(&self, fd: RawFd, token: TokenEntry, interests: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
+        println!("register1 fd: {:?} len: {}", fd, self.events_map.len());
         let mut info = libc::epoll_event {
             events: ioevent_to_epoll(interests, opts),
             u64: fd as u64
@@ -94,11 +103,13 @@ impl Selector {
         unsafe {
             events_map.as_mut().unwrap().insert(fd as i32, JobEntry { token_entry: token, job, ready: Ready::empty()});
             cvt(libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_ADD, fd, &mut info))?;
+            println!("register2 fd: {:?} len: {}", fd, self.events_map.len());
             Ok(())
         }
     }
     pub fn reregister(&self, fd: RawFd, token: TokenEntry, interests: Ready, opts: PollOpt) -> io::Result<()> {
         // TODO
+        println!("reregister {:?}", fd);
         let t = token.token;
         let mut info = libc::epoll_event {
             events: ioevent_to_epoll(interests, opts),
@@ -110,6 +121,7 @@ impl Selector {
         }
     }
     pub fn deregister(&self, fd: RawFd) -> io::Result<()> {
+        println!("deregister1 fd: {:?} len: {}", fd, self.events_map.len());
         let mut info = libc::epoll_event {
             events: 0,
             u64: 0,
@@ -118,6 +130,7 @@ impl Selector {
         unsafe {
             cvt(libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_DEL, fd, &mut info))?;
             events_map.as_mut().unwrap().remove(&fd as &i32);
+            println!("deregister2 fd: {:?} len: {}", fd, self.events_map.len());
             Ok(())
         }
     }

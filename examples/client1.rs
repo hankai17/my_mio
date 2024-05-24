@@ -62,7 +62,7 @@ impl TestClient {
 
 impl Drop for TestClient {
     fn drop(&mut self) {
-        println!("-------------------------dropping for TestClient")
+        //println!("-------------------------dropping for TestClient")
     }
 }
 
@@ -88,12 +88,12 @@ impl ClientHandler for TestClient {
     }
 
     fn on_recv(&mut self, bytes: &mut BytesMut) {
-        println!("on_recv: {:?}", bytes);
+        //println!("on_recv: {:?}", bytes);
         bytes.advance(bytes.len());
     }
 
     fn on_written(&mut self) -> bool {
-        println!("write done");
+        //println!("write done");
         true
     }
 
@@ -108,7 +108,7 @@ fn main() {
     debug!("Starting main");
     let pool = EventLoopPool::new(1);
     for poller in pool.get_all_poller().iter() {
-        for  i in 0..40 {
+        for  i in 0..80 {
             let mut cli = TcpClient::new(poller.clone());
             cli.start_connect(
                 &"127.0.0.1:90".to_string(),

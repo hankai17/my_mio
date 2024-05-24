@@ -12,7 +12,7 @@ pub type ConnJob = Arc<Mutex<dyn FnMut(TcpStream)->bool + 'static + Send + Sync>
 
 pub struct Connector {
     //addr: String,
-    connector: Option<TcpStream>,
+    tcp_stream: Option<TcpStream>,
     event_loop: Arc<EventLoop>,
     is_connected: bool,
     on_conn_job: ConnJob,
@@ -32,7 +32,7 @@ fn default_connected_cb(stream: &mut TcpStream) {}
 impl Connector {
     pub fn new(event_loop: Arc<EventLoop>) -> Connector {
         Connector {
-            connector: None,
+            tcp_stream: None,
             event_loop,
             is_connected: false,
             on_conn_job: Arc::new(Mutex::new((move |_| { true }))),
@@ -46,19 +46,35 @@ impl Connector {
     fn handle_on_connect(&mut self) -> io::Result<()> {
         // check connect ret
         // del event
-        let _ = (self.on_conn_job.lock().unwrap())(self.connector.take().unwrap());
-        //let conn = Arc::new(Mutex::new(
-        //        TcpConnection::new(
-        //            self.event_loop.clone(),
-        //            self.connector.take().unwrap()
-        //        )
-        //));
+        //let _ = (self.on_conn_job.lock().unwrap())(self.tcp_stream.take().unwrap());
+        /*
+        let cb = match self.on_conn_job.lock() {
+            Some(cb) => cb,
+            None => {
+                println!("cb is None");
+                assert_eq!(0, 1);
+            },
+        };
+        */
+        let mut cb = self.on_conn_job.lock().unwrap();
+
+        let stream = match self.tcp_stream.take() {
+            Some(stream) => stream,
+            None => {
+                println!("stream is None");
+                assert_eq!(0, 1);
+                return Ok(());
+            },
+        };
+
+        cb(stream);
 
         Ok(())
     }
 
     pub fn handle_event(&mut self, event: i64) -> io::Result<()> {
         let ready = ready_from_usize(event as usize);
+        println!("ready: {:?}", ready);
         if ready.is_writable() {
             self.handle_on_connect();
         }
@@ -69,8 +85,9 @@ impl Connector {
     }
 
     pub fn connect(this: Arc<Mutex<Self>>, addr: &String) {
-        let sock = TcpStream::connect(&(addr.parse().unwrap())).unwrap();
-        this.lock().unwrap().connector = Some(sock);
+        let stream = TcpStream::connect(&(addr.parse().unwrap())).unwrap();
+        println!("connect stream: {:?}", stream);
+        this.lock().unwrap().tcp_stream = Some(stream);
         let job = Arc::new(Mutex::new(
             enclose! {
                 (this)
@@ -80,7 +97,7 @@ impl Connector {
             }
         ));
         let event_loop = this.lock().unwrap().event_loop.clone();
-        event_loop.register(this.lock().unwrap().connector.as_ref().unwrap(),
+        event_loop.register(this.lock().unwrap().tcp_stream.as_ref().unwrap(),
                 TokenEntry {
                     ttype: TokenType::SocketEvent,
                     token: Token(0),

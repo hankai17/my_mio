@@ -213,6 +213,7 @@ impl TcpConnection {
     }
 
     fn handle_error(&mut self) -> io::Result<()> {
+        println!("handle_error TODO");
         Ok(())
     }
 
