@@ -51,7 +51,7 @@ impl Connector {
         let cb = match self.on_conn_job.lock() {
             Some(cb) => cb,
             None => {
-                println!("cb is None");
+                debug!("cb is None");
                 assert_eq!(0, 1);
             },
         };
@@ -61,7 +61,7 @@ impl Connector {
         let stream = match self.tcp_stream.take() {
             Some(stream) => stream,
             None => {
-                println!("stream is None");
+                debug!("stream is None");
                 assert_eq!(0, 1);
                 return Ok(());
             },
@@ -74,7 +74,7 @@ impl Connector {
 
     pub fn handle_event(&mut self, event: i64) -> io::Result<()> {
         let ready = ready_from_usize(event as usize);
-        println!("ready: {:?}", ready);
+        debug!("ready: {:?}", ready);
         if ready.is_writable() {
             self.handle_on_connect();
         }
@@ -86,7 +86,7 @@ impl Connector {
 
     pub fn connect(this: Arc<Mutex<Self>>, addr: &String) {
         let stream = TcpStream::connect(&(addr.parse().unwrap())).unwrap();
-        println!("connect stream: {:?}", stream);
+        debug!("connect stream: {:?}", stream);
         this.lock().unwrap().tcp_stream = Some(stream);
         let job = Arc::new(Mutex::new(
             enclose! {

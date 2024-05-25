@@ -2,6 +2,7 @@ extern crate my_mio;
 extern crate bytes;
 extern crate log;
 extern crate env_logger;
+extern crate chrono;
 
 use my_mio::{PollOpt, Ready, Token, Registration, TokenType, TokenEntry};
 use my_mio::timer::{Timeout};
@@ -12,7 +13,12 @@ use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 use std::thread;
 use log::debug;
+use std::io::Write;
+use std::fs::File;
+use chrono::Local;
 
+use log::LevelFilter;
+use env_logger::{Builder, WriteStyle};
 
 fn sleep_ms(ms: u64) {
     use std::thread;
@@ -62,7 +68,7 @@ impl TestClient {
 
 impl Drop for TestClient {
     fn drop(&mut self) {
-        //println!("-------------------------dropping for TestClient")
+        debug!("-------------------------dropping for TestClient")
     }
 }
 
@@ -98,13 +104,52 @@ impl ClientHandler for TestClient {
     }
 
     fn on_error(&mut self) {
-        println!("connect error");
+        debug!("connect error");
     }
 }
 
 
 fn main() {
-    let _ = ::env_logger::init();
+    //let _ = ::env_logger::init();
+    /*
+	let mut builder = Builder::new();
+	builder
+    	.filter(None, LevelFilter::Info)
+    	.write_style(WriteStyle::Always)
+    	.init();
+    */
+
+    /*
+    let _ = ::env_logger::builder()
+        //.format_timestamp_millis()
+        .format(|buf, record| {
+            writeln!(buf, "{} {:?} {}: {}",
+                buf.timestamp_millis(),
+                thread::current().id(),
+                record.level(),
+                record.args()
+            )
+        })
+        .init();
+    */
+    let target = Box::new(File::create("/tmp/test.txt").expect("Can't create file"));
+	Builder::new()
+        .format(|buf, record| {
+            writeln!(
+                buf,
+                "{} {:?} {}:{} [{}] - {}",
+                Local::now().format("%Y-%m-%dT%H:%M:%S%.3f"),
+                thread::current().id(),
+                record.file().unwrap_or("unknown"),
+                record.line().unwrap_or(0),
+                record.level(),
+                record.args()
+            )
+        })
+        .target(env_logger::Target::Pipe(target))
+        .filter(None, LevelFilter::Debug)
+        .init();
+
     debug!("Starting main");
     let pool = EventLoopPool::new(1);
     for poller in pool.get_all_poller().iter() {

@@ -15,6 +15,7 @@ use event_imp::{Event};
 use sys::unix::{cvt, UnixReady};
 use sys::unix::io::set_cloexec;
 use std::collections::HashMap;
+ use log::debug;
 
 static NEXT_ID: AtomicUsize = ATOMIC_USIZE_INIT;
 
@@ -68,7 +69,7 @@ impl Selector {
                 let entry: &mut JobEntry = match events_map.as_mut().unwrap().get_mut(&fd) {
                     Some(entry) => entry,
                     None => {
-                        println!("fd: {}, None", fd);
+                        debug!("fd: {}, None", fd);
                         assert_eq!(0, 1);
                         continue;
                     },
@@ -94,7 +95,7 @@ impl Selector {
         &self.events_map as *const HashMap<i32, JobEntry>  as *mut HashMap<i32, JobEntry>
     }
     pub fn register(&self, fd: RawFd, token: TokenEntry, interests: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
-        println!("register1 fd: {:?} len: {}", fd, self.events_map.len());
+        debug!("register1 fd: {:?} len: {} token: {:?}", fd, self.events_map.len(), token.token);
         let mut info = libc::epoll_event {
             events: ioevent_to_epoll(interests, opts),
             u64: fd as u64
@@ -103,13 +104,13 @@ impl Selector {
         unsafe {
             events_map.as_mut().unwrap().insert(fd as i32, JobEntry { token_entry: token, job, ready: Ready::empty()});
             cvt(libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_ADD, fd, &mut info))?;
-            println!("register2 fd: {:?} len: {}", fd, self.events_map.len());
+            debug!("register2 fd: {:?} len: {} token: {:?}", fd, self.events_map.len(), token.token);
             Ok(())
         }
     }
     pub fn reregister(&self, fd: RawFd, token: TokenEntry, interests: Ready, opts: PollOpt) -> io::Result<()> {
         // TODO
-        println!("reregister {:?}", fd);
+        debug!("reregister {:?}", fd);
         let t = token.token;
         let mut info = libc::epoll_event {
             events: ioevent_to_epoll(interests, opts),
@@ -121,7 +122,7 @@ impl Selector {
         }
     }
     pub fn deregister(&self, fd: RawFd) -> io::Result<()> {
-        println!("deregister1 fd: {:?} len: {}", fd, self.events_map.len());
+        debug!("deregister1 fd: {:?} len: {} ", fd, self.events_map.len());
         let mut info = libc::epoll_event {
             events: 0,
             u64: 0,
@@ -129,8 +130,8 @@ impl Selector {
         let events_map = self.events_map();
         unsafe {
             cvt(libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_DEL, fd, &mut info))?;
-            events_map.as_mut().unwrap().remove(&fd as &i32);
-            println!("deregister2 fd: {:?} len: {}", fd, self.events_map.len());
+            let v = events_map.as_mut().unwrap().remove(&fd as &i32);
+            debug!("deregister2 fd: {:?} len: {} token: {:?}", fd, self.events_map.len(), v.unwrap().token_entry.token);
             Ok(())
         }
     }

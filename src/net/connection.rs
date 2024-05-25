@@ -4,6 +4,7 @@ use bytes::{BufMut, BytesMut};
 use event_imp::{ready_from_usize};
 use net::{EventLoop, TcpStream};
 use std::sync::{Arc, Mutex};
+use log::debug;
 
 unsafe impl Send for TcpConnection {}
 unsafe impl Sync for TcpConnection {}
@@ -62,8 +63,8 @@ impl TcpConnection {
             read_cb: default_read_cb,
             write_cb: default_written_cb,
             error_cb: default_err_cb,
-            read_job: Box::new(move |_| { println!("default read job"); }),
-            writ_job: Box::new(move || { println!("default write job"); true }),
+            read_job: Box::new(move |_| { debug!("default read job"); }),
+            writ_job: Box::new(move || { debug!("default write job"); true }),
 
             //read_enable: false,
             //write_enable: false,
@@ -98,19 +99,19 @@ impl TcpConnection {
             let mut buf = self.read_buffer.take().unwrap();
             match self.sock.try_read_buf(&mut buf) {
                 Ok(None) => {
-                    println!("Conn: spurious read wakeup");
+                    debug!("Conn: spurious read wakeup");
                     self.read_buffer = Some(buf);
                     break;
                 }
                 Ok(Some(r)) => {
-                    //println!("Conn: read {} bytes, {:?}", r, buf);
+                    //debug!("Conn: read {} bytes, {:?}", r, buf);
                     // buf toto
                     //(self.read_cb)(&mut buf);
                     if r > 0 {
                         (self.read_job)(&mut buf);
                         self.read_buffer = Some(buf);
                     } else {
-                        //println!("r == 0");
+                        //debug!("r == 0");
                         (self.read_job)(&mut buf);
                         self.read_buffer = Some(buf);
                         self.close_stream();
@@ -120,7 +121,7 @@ impl TcpConnection {
                     //self.interest.insert(Ready::writable());
                 }
                 Err(e) => {
-                    println!("not implemented client err: {:?}", e);
+                    debug!("not implemented client err: {:?}", e);
                     // deregister
                     self.close_stream();
                     break;
@@ -144,7 +145,7 @@ impl TcpConnection {
                     self.write_buffer_waiting = Some(buf);
                     break;
                 }
-                //println!("?-------------------------");
+                //debug!("?-------------------------");
                 // onWritten() // all data consumed done
                 self.write_buffer_waiting = Some(buf);
                 self.write_buffer_sending = Some(buf_snd);
@@ -153,14 +154,14 @@ impl TcpConnection {
         }
 
         let mut buf = buf_tmp;
-        //println!("Conn {:?}: write1 ", self.sock);
+        //debug!("Conn {:?}: write1 ", self.sock);
         match self.sock.try_write_buf(&mut buf) {
             Ok(None) => {
-                //println!("client flushing buf; WouldBlock");
+                //debug!("client flushing buf; WouldBlock");
                 self.write_buffer_sending = Some(buf.split());
             }
             Ok(Some(_r)) => {
-                //println!("Conn {:?}: write2 {} bytes", self.sock, r);
+                //debug!("Conn {:?}: write2 {} bytes", self.sock, r);
                 if buf.len() > 0 {
                     self.write_buffer_sending = Some(buf.split());
                     return Ok(());
@@ -169,12 +170,12 @@ impl TcpConnection {
                 let ret = (self.writ_job)();
                 self.write_buffer_sending = Some(buf.split());
                 if ret == false {
-                    //println!("close stream1");
+                    //debug!("close stream1");
                     self.close_stream();
                 }
             }
             Err(e) => {
-                println!("not implemented; client err: {:?}", e);
+                debug!("not implemented; client err: {:?}", e);
                 //self.close_stream();
             }
         }
@@ -205,7 +206,7 @@ impl TcpConnection {
         }
         if empty_waiting && empty_sending {
             // disable write
-            //println!("handle_write disable write TODO");
+            //debug!("handle_write disable write TODO");
         } else {
             self.write_data().unwrap();
         }
@@ -213,7 +214,7 @@ impl TcpConnection {
     }
 
     fn handle_error(&mut self) -> io::Result<()> {
-        println!("handle_error TODO");
+        debug!("handle_error TODO");
         Ok(())
     }
 
@@ -241,14 +242,14 @@ impl TcpConnection {
     }
     pub fn close_stream(&mut self) {
         self.event_loop.deregister(&self.sock).unwrap();
-        //println!("close_stream deregister done");
+        //debug!("close_stream deregister done");
     }
 }
 
 impl Drop for TcpConnection {
     fn drop(&mut self) {
         //self.event_loop.lock().unwrap().deregister(&self.sock);
-        println!("---------------------drop for tcpconnection {:?}", self.sock)
+        debug!("---------------------drop for tcpconnection {:?}", self.sock)
     }
 }
 

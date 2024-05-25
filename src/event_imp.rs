@@ -1,6 +1,7 @@
 use {Poll, Token};
 use std::{fmt, io, ops};
 use std::sync::{Arc, Mutex};
+use log::debug;
 
 const READABLE: usize = 0b00001;
 const WRITABLE: usize = 0b00010;
@@ -265,7 +266,7 @@ pub struct JobEntry {
 
 impl Drop for JobEntry {
     fn drop(&mut self) {
-        // TODO
+        debug!("Droping JobEntr token: {:?}", self.token_entry.token);
     }
 }
 
