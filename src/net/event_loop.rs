@@ -14,7 +14,7 @@ use poll::CURRENT_TOKEN_ALLOCATOR;
 use std::thread;
 use std::cell::UnsafeCell;
 use std::sync::mpsc::channel;
-use log::debug;
+use log::{debug, warn};
 
 pub enum NotifyError<T> {
     Io(io::Error),
@@ -226,7 +226,7 @@ impl EventLoop {
         let mut i = 0;
         let timer = unsafe { &mut *self.timer.get() };
         let events = unsafe { &mut *self.events.get() };
-        log::trace!("io_process(..); cnt: {}; len: {}", cnt, events.len());
+        debug!("io_process(..); cnt: {}; len: {}", cnt, events.len());
         while i < cnt {
             match events.get_mut(i) {
                 Some(entry) => {
@@ -248,7 +248,7 @@ impl EventLoop {
                     }
                 },
                 None => {
-                    println!("get_mut none");
+                    warn!("get_mut none");
                 }
             }
             i += 1;

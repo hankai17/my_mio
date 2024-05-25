@@ -15,7 +15,7 @@ use event_imp::{Event};
 use sys::unix::{cvt, UnixReady};
 use sys::unix::io::set_cloexec;
 use std::collections::HashMap;
- use log::debug;
+use log::{debug, error};
 
 static NEXT_ID: AtomicUsize = ATOMIC_USIZE_INIT;
 
@@ -69,7 +69,7 @@ impl Selector {
                 let entry: &mut JobEntry = match events_map.as_mut().unwrap().get_mut(&fd) {
                     Some(entry) => entry,
                     None => {
-                        debug!("fd: {}, None", fd);
+                        error!("fd: {}, None", fd);
                         assert_eq!(0, 1);
                         continue;
                     },

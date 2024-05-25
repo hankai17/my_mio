@@ -74,7 +74,7 @@ impl Connector {
 
     pub fn handle_event(&mut self, event: i64) -> io::Result<()> {
         let ready = ready_from_usize(event as usize);
-        debug!("ready: {:?}", ready);
+        //debug!("ready: {:?}", ready);
         if ready.is_writable() {
             self.handle_on_connect();
         }

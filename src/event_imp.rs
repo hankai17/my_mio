@@ -266,7 +266,7 @@ pub struct JobEntry {
 
 impl Drop for JobEntry {
     fn drop(&mut self) {
-        debug!("Droping JobEntr token: {:?}", self.token_entry.token);
+        debug!("Droping JobEntry token: {:?}", self.token_entry.token);
     }
 }
 

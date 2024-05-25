@@ -12,7 +12,7 @@ use my_mio::net::{EventLoop, EventLoopBuilder,  EventLoopPool, TcpConnection, Tc
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 use std::thread;
-use log::debug;
+use log::{debug, info};
 use std::io::Write;
 use std::fs::File;
 use chrono::Local;
@@ -68,7 +68,7 @@ impl TestClient {
 
 impl Drop for TestClient {
     fn drop(&mut self) {
-        debug!("-------------------------dropping for TestClient")
+        debug!("dropping for TestClient")
     }
 }
 
@@ -94,44 +94,22 @@ impl ClientHandler for TestClient {
     }
 
     fn on_recv(&mut self, bytes: &mut BytesMut) {
-        //println!("on_recv: {:?}", bytes);
+        info!("on_recv: {:?}", bytes);
         bytes.advance(bytes.len());
     }
 
     fn on_written(&mut self) -> bool {
-        //println!("write done");
+        info!("write done");
         true
     }
 
     fn on_error(&mut self) {
-        debug!("connect error");
+        info!("connect error");
     }
 }
 
 
 fn main() {
-    //let _ = ::env_logger::init();
-    /*
-	let mut builder = Builder::new();
-	builder
-    	.filter(None, LevelFilter::Info)
-    	.write_style(WriteStyle::Always)
-    	.init();
-    */
-
-    /*
-    let _ = ::env_logger::builder()
-        //.format_timestamp_millis()
-        .format(|buf, record| {
-            writeln!(buf, "{} {:?} {}: {}",
-                buf.timestamp_millis(),
-                thread::current().id(),
-                record.level(),
-                record.args()
-            )
-        })
-        .init();
-    */
     let target = Box::new(File::create("/tmp/test.txt").expect("Can't create file"));
 	Builder::new()
         .format(|buf, record| {
@@ -147,18 +125,23 @@ fn main() {
             )
         })
         .target(env_logger::Target::Pipe(target))
-        .filter(None, LevelFilter::Debug)
+        .filter(None, LevelFilter::Info)
         .init();
 
     debug!("Starting main");
     let pool = EventLoopPool::new(1);
     for poller in pool.get_all_poller().iter() {
         for  i in 0..80 {
-            let mut cli = TcpClient::new(poller.clone());
-            cli.start_connect(
-                &"127.0.0.1:90".to_string(),
-                Arc::new(Mutex::new(TestClient::new()))
-            );
+            let poller_clone = poller.clone();
+            let job = Arc::new(Mutex::new(move|| {
+                let mut cli = TcpClient::new(poller_clone.clone());
+                cli.start_connect(
+                    &"127.0.0.1:90".to_string(),
+                    Arc::new(Mutex::new(TestClient::new()))
+                );
+            }));
+            let poller_clone = poller.clone();
+            enqueue_job(poller_clone.clone(), job);
         }
     }
     sleep_ms(1000 * 1000);

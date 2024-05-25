@@ -4,7 +4,7 @@ use bytes::{BufMut, BytesMut};
 use event_imp::{ready_from_usize};
 use net::{EventLoop, TcpStream};
 use std::sync::{Arc, Mutex};
-use log::debug;
+use log::{debug, info, warn, error};
 
 unsafe impl Send for TcpConnection {}
 unsafe impl Sync for TcpConnection {}
@@ -99,19 +99,18 @@ impl TcpConnection {
             let mut buf = self.read_buffer.take().unwrap();
             match self.sock.try_read_buf(&mut buf) {
                 Ok(None) => {
-                    debug!("Conn: spurious read wakeup");
+                    warn!("Conn: spurious read wakeup");
                     self.read_buffer = Some(buf);
                     break;
                 }
                 Ok(Some(r)) => {
-                    //debug!("Conn: read {} bytes, {:?}", r, buf);
+                    debug!("Conn: read {} bytes, {:?}", r, buf);
                     // buf toto
                     //(self.read_cb)(&mut buf);
                     if r > 0 {
                         (self.read_job)(&mut buf);
                         self.read_buffer = Some(buf);
                     } else {
-                        //debug!("r == 0");
                         (self.read_job)(&mut buf);
                         self.read_buffer = Some(buf);
                         self.close_stream();
@@ -121,7 +120,7 @@ impl TcpConnection {
                     //self.interest.insert(Ready::writable());
                 }
                 Err(e) => {
-                    debug!("not implemented client err: {:?}", e);
+                    warn!("not implemented client err: {:?}", e);
                     // deregister
                     self.close_stream();
                     break;
@@ -145,7 +144,6 @@ impl TcpConnection {
                     self.write_buffer_waiting = Some(buf);
                     break;
                 }
-                //debug!("?-------------------------");
                 // onWritten() // all data consumed done
                 self.write_buffer_waiting = Some(buf);
                 self.write_buffer_sending = Some(buf_snd);
@@ -214,7 +212,7 @@ impl TcpConnection {
     }
 
     fn handle_error(&mut self) -> io::Result<()> {
-        debug!("handle_error TODO");
+        info!("handle_error TODO");
         Ok(())
     }
 
@@ -248,8 +246,7 @@ impl TcpConnection {
 
 impl Drop for TcpConnection {
     fn drop(&mut self) {
-        //self.event_loop.lock().unwrap().deregister(&self.sock);
-        debug!("---------------------drop for tcpconnection {:?}", self.sock)
+        debug!("drop for tcpconnection {:?}", self.sock)
     }
 }
 
