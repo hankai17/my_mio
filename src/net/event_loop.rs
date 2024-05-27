@@ -143,22 +143,22 @@ impl EventLoop {
             .build();
         let (tx, rx) = channel::sync_channel(config.notify_capacity);   // 初始化pipe
         poll.register(&rx,
-                    TokenEntry {
-                        ttype: TokenType::NotifyEvent,
-                        token: Token(0)
-                    },
-                    Ready::readable(),
-                    PollOpt::edge() | PollOpt::oneshot(),
-                    Arc::new(Mutex::new(move |_| {}))
+            TokenEntry {
+                ttype: TokenType::NotifyEvent,
+                token: Token(0)
+            },
+            Ready::readable(),
+            PollOpt::edge() | PollOpt::oneshot(),
+            Arc::new(Mutex::new(move |_| {}))
         )?;
         poll.register(&timer,
-                    TokenEntry {
-                        ttype: TokenType::TimersEvent,
-                        token: Token(0)
-                    },
-                    Ready::readable(),
-                    PollOpt::edge(),
-                    Arc::new(Mutex::new(move |_| {}))
+            TokenEntry {
+                ttype: TokenType::TimersEvent,
+                token: Token(0)
+            },
+            Ready::readable(),
+            PollOpt::edge(),
+            Arc::new(Mutex::new(move |_| {}))
         )?;
         Ok(EventLoop {
             run: AtomicBool::new(false),
@@ -213,7 +213,7 @@ impl EventLoop {
     }
 
     pub fn deregister<E: ?Sized>(&self, io: &E) -> io::Result<()>
-        where E: Evented {
+            where E: Evented {
         self.poll.deregister(io)
     }
 
@@ -355,7 +355,9 @@ impl EventLoopBuilder {
     }
 
     pub fn get_current_loop() -> Arc<EventLoop> {
-        let ptr = CURRENT_LOOP.with(|poll| -> *mut Arc<EventLoop> {return poll.as_ptr()});
+        let ptr = CURRENT_LOOP.with(|poll|-> *mut Arc<EventLoop> {
+            return poll.as_ptr()
+        });
         unsafe {
             let clone = (*ptr).clone();
             clone
@@ -376,7 +378,7 @@ impl EventLoopPool {
             threads.push(
                 thread::Builder::new()
                 .name(format!("{}{}", "thread_poller", i))
-                .spawn( move || {
+                .spawn(move || {
                     let mut b = EventLoopBuilder::new();
                     b.notify_capacity(1_048_576)
                         .messages_per_tick(64)
@@ -397,6 +399,7 @@ impl EventLoopPool {
     pub fn get_first_poller(&self) -> Arc<EventLoop> {
         self.loops[0].clone()
     }
+
     pub fn get_all_poller(&self) -> Vec<Arc<EventLoop>> {
         self.loops.clone()
     }

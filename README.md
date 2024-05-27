@@ -241,3 +241,8 @@ OthersEvent   |        |
 
         conn_job -> TcpClient
 
+- 240525
+    Connection 优化
+    TcpClient + 定时器设计
+    TcpClient + 多线程polling
+

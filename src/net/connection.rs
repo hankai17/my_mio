@@ -24,8 +24,6 @@ pub type ReadJob = Box<dyn FnMut(&mut BytesMut) + 'static + Send + Sync>;
 pub type WritJob = Box<dyn FnMut()->bool + 'static + Send + Sync>;
 
 pub struct TcpConnection {
-    //interest: Ready,
-
     event_loop: Arc<EventLoop>,
     pub sock: TcpStream,
     // timer
@@ -33,25 +31,13 @@ pub struct TcpConnection {
     write_buffer_sending: Option<BytesMut>,
     write_buffer_waiting: Option<BytesMut>,
 
-    read_cb: fn(&mut BytesMut),
-    write_cb: fn() -> bool,
-    error_cb: fn(),
     read_job: ReadJob,
     writ_job: WritJob,
-
-    //read_enable: bool,
-    //write_enable: bool,
-    //read_triggered: bool,
-    //write_triggered: bool,
-    //is_closed: bool
 }
 
-fn default_read_cb(_bytes: &mut BytesMut) {}
-fn default_written_cb() -> bool { false }
-fn default_err_cb() {}
-
 impl TcpConnection {
-    pub fn new(event_loop: Arc<EventLoop>, sock: TcpStream) -> TcpConnection {
+    pub fn new(event_loop: Arc<EventLoop>, sock: TcpStream)
+            -> TcpConnection {
         TcpConnection {
             event_loop: event_loop,
             sock: sock,
@@ -60,30 +46,9 @@ impl TcpConnection {
             write_buffer_sending: Some(BytesMut::with_capacity(1024)),
             write_buffer_waiting: Some(BytesMut::with_capacity(1024)),
 
-            read_cb: default_read_cb,
-            write_cb: default_written_cb,
-            error_cb: default_err_cb,
             read_job: Box::new(move |_| { debug!("default read job"); }),
             writ_job: Box::new(move || { debug!("default write job"); true }),
-
-            //read_enable: false,
-            //write_enable: false,
-            //read_triggered: false,
-            //write_triggered: true,
-            //is_closed: false
         }
-    }
-
-    pub fn set_read_cb(&mut self, cb: fn(bytes: &mut BytesMut)) {
-        self.read_cb = cb;
-    }
-
-    pub fn set_write_cb(&mut self, cb: fn() -> bool) {
-        self.write_cb = cb;
-    }
-
-    pub fn set_error_cb(&mut self, cb: fn()) {
-        self.error_cb = cb;
     }
 
     pub fn set_read_job(&mut self, job: ReadJob) {
@@ -105,8 +70,6 @@ impl TcpConnection {
                 }
                 Ok(Some(r)) => {
                     debug!("Conn: read {} bytes, {:?}", r, buf);
-                    // buf toto
-                    //(self.read_cb)(&mut buf);
                     if r > 0 {
                         (self.read_job)(&mut buf);
                         self.read_buffer = Some(buf);
@@ -116,12 +79,9 @@ impl TcpConnection {
                         self.close_stream();
                         break;
                     }
-                    //self.interest.remove(Ready::readable());
-                    //self.interest.insert(Ready::writable());
                 }
                 Err(e) => {
                     warn!("not implemented client err: {:?}", e);
-                    // deregister
                     self.close_stream();
                     break;
                 }
@@ -164,7 +124,6 @@ impl TcpConnection {
                     self.write_buffer_sending = Some(buf.split());
                     return Ok(());
                 }
-                //(self.write_cb)();
                 let ret = (self.writ_job)();
                 self.write_buffer_sending = Some(buf.split());
                 if ret == false {
@@ -232,15 +191,9 @@ impl TcpConnection {
         Ok(())
     }
 
-    pub fn attach_event(&mut self) {
-        //self.event_loop.register(&self, SERVER, r|w|e, self.handle_event) 
-    }
-
-    pub fn clone_stream(&mut self) {
-    }
     pub fn close_stream(&mut self) {
         self.event_loop.deregister(&self.sock).unwrap();
-        //debug!("close_stream deregister done");
+        debug!("close_stream deregister done");
     }
 }
 

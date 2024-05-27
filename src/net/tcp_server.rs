@@ -58,6 +58,7 @@ unsafe impl Send for TcpServer {}
 unsafe impl Sync for TcpServer {}
 
 static SOCKET_TOKEN_ID: AtomicUsize = AtomicUsize::new(0);
+static CSOCKET_TOKEN_ID: AtomicUsize = AtomicUsize::new(0);
 
 impl TcpServer {
     pub fn new(event_loop: Arc<EventLoop>, addr: &String) -> TcpServer {
@@ -103,16 +104,16 @@ impl TcpServer {
         ));
 
         self.event_loop.register(
-                &conn.lock().unwrap().sock,
-                TokenEntry {
-                    ttype: TokenType::SocketEvent, 
-                    token: Token (
-                        SOCKET_TOKEN_ID.fetch_add(1, Ordering::Relaxed) + 1
-                    )
-                },
-                Ready::readable() | Ready::writable(),
-                PollOpt::edge(), 
-                job
+            &conn.lock().unwrap().sock,
+            TokenEntry {
+                ttype: TokenType::SocketEvent, 
+                token: Token (
+                    SOCKET_TOKEN_ID.fetch_add(1, Ordering::Relaxed) + 1
+                )
+            },
+            Ready::readable() | Ready::writable(),
+            PollOpt::edge(), 
+            job
         ).unwrap();
     }
 
@@ -175,41 +176,32 @@ impl TcpClient {
         }
     }
 
-    pub fn start_connect(&mut self, addr: &String, handler: Arc<Mutex<dyn ClientHandler + 'static + Send + Sync>>) {
+    pub fn start_connect(&mut self, addr: &String,
+            handler: Arc<Mutex<dyn ClientHandler + 'static + Send + Sync>>) {
         let event_loop = self.event_loop.clone();
 
         let conn_job = Arc::new(Mutex::new(move |stream: TcpStream| {
-            let handler = handler.clone();
-            let event_loop = event_loop.clone();
-            let event_loop_clone = event_loop.clone();
+            let conn = Arc::new(Mutex::new(
+                TcpConnection::new(event_loop.clone(), stream)
+            ));
 
-            let conn = Arc::new(Mutex::new(TcpConnection::new(event_loop_clone.clone(), stream)));
-
-            //let conn_clone = conn.clone();
-            //handler.lock().unwrap().on_connect(conn_clone);
-
-            let conn_clone = conn.clone();
-            conn_clone.lock().unwrap().set_read_job(
-                    Box::new (enclose! { 
-                        (handler)
-			        	move |bytes: &mut BytesMut| {
-                            handler.lock().unwrap().on_recv(bytes);
-                        }
-                    })
+            conn.lock().unwrap().set_read_job(
+                Box::new (enclose! { 
+                    (handler)
+			    	move |bytes: &mut BytesMut| {
+                        handler.lock().unwrap().on_recv(bytes);
+                    }
+                })
             );
 
-            let conn_clone = conn.clone();
-            conn_clone.lock().unwrap().set_writ_job(
-                    Box::new (enclose! {
-                        (handler)
-                        move || {
-                            handler.lock().unwrap().on_written()
-                        }
-                    })
+            conn.lock().unwrap().set_writ_job(
+                Box::new (enclose! {
+                    (handler)
+                    move || {
+                        handler.lock().unwrap().on_written()
+                    }
+                })
             );
-
-            //let conn_clone = conn.clone();
-            //handler.lock().unwrap().on_connect(conn_clone);
 
             let job = Arc::new(Mutex::new(
                 enclose! {
@@ -220,25 +212,22 @@ impl TcpClient {
                 }
             ));
 
-            let event_loop_clone = event_loop.clone();
-            event_loop_clone.deregister(&conn.lock().unwrap().sock).unwrap();
+            event_loop.deregister(&conn.lock().unwrap().sock).unwrap();
 
-            let event_loop_clone = event_loop.clone();
-            event_loop_clone.register(
-                    &conn.lock().unwrap().sock,
-                    TokenEntry {
-                        ttype: TokenType::SocketEvent, 
-                        token: Token (
-                            SOCKET_TOKEN_ID.fetch_add(1, Ordering::Relaxed) + 1
-                        )
-                    },
-                    Ready::readable() | Ready::writable(),
-                    PollOpt::edge(), 
-                    job
+            event_loop.register(
+                &conn.lock().unwrap().sock,
+                TokenEntry {
+                    ttype: TokenType::SocketEvent, 
+                    token: Token (
+                        CSOCKET_TOKEN_ID.fetch_add(1, Ordering::Relaxed) + 1
+                    )
+                },
+                Ready::readable() | Ready::writable(),
+                PollOpt::edge(), 
+                job
             ).unwrap();
 
-            let conn_clone = conn.clone();
-            handler.lock().unwrap().on_connect(conn_clone);
+            handler.lock().unwrap().on_connect(conn);
 
             true
         }));

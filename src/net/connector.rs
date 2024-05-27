@@ -27,8 +27,6 @@ macro_rules! enclose {
     };
 }
 
-fn default_connected_cb(stream: &mut TcpStream) {}
-
 impl Connector {
     pub fn new(event_loop: Arc<EventLoop>) -> Connector {
         Connector {
@@ -74,10 +72,12 @@ impl Connector {
 
     pub fn handle_event(&mut self, event: i64) -> io::Result<()> {
         let ready = ready_from_usize(event as usize);
-        //debug!("ready: {:?}", ready);
+        debug!("ready: {:?}", ready);
+
         if ready.is_writable() {
             self.handle_on_connect();
         }
+
         if ready.is_error() ||
                 ready.is_hup() {
         }
@@ -87,6 +87,7 @@ impl Connector {
     pub fn connect(this: Arc<Mutex<Self>>, addr: &String) {
         let stream = TcpStream::connect(&(addr.parse().unwrap())).unwrap();
         debug!("connect stream: {:?}", stream);
+
         this.lock().unwrap().tcp_stream = Some(stream);
         let job = Arc::new(Mutex::new(
             enclose! {
@@ -96,6 +97,7 @@ impl Connector {
                 }
             }
         ));
+
         let event_loop = this.lock().unwrap().event_loop.clone();
         event_loop.register(this.lock().unwrap().tcp_stream.as_ref().unwrap(),
                 TokenEntry {
