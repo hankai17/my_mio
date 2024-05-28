@@ -1,17 +1,20 @@
 use std::{io};
 use bytes::{BytesMut};
 use {PollOpt, Ready, Token, TokenType, TokenEntry};
-use net::{EventLoop, TcpStream, Acceptor, TcpConnection};
+use net::{EventLoop, EventLoopBuilder, TcpStream, Acceptor, TcpConnection};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::net::{SocketAddr};
 use std::sync::{Arc, Mutex};
 use event_imp::ready_from_usize;
-use log::debug;
+use log::{debug, info, warn};
+use timer::{Timeout};
+use std::time::Duration;
 
 pub type ConnJob = Arc<Mutex<dyn FnMut(TcpStream)->bool + 'static + Send + Sync>>;
 
 pub struct Connector {
     //addr: String,
+    timer: Option<Timeout>,
     tcp_stream: Option<TcpStream>,
     event_loop: Arc<EventLoop>,
     is_connected: bool,
@@ -30,6 +33,7 @@ macro_rules! enclose {
 impl Connector {
     pub fn new(event_loop: Arc<EventLoop>) -> Connector {
         Connector {
+            timer: None,
             tcp_stream: None,
             event_loop,
             is_connected: false,
@@ -74,6 +78,15 @@ impl Connector {
         let ready = ready_from_usize(event as usize);
         debug!("ready: {:?}", ready);
 
+        match &self.timer {
+            Some(timer) => {
+                let event_loop = EventLoopBuilder::get_current_loop();
+                event_loop.clear_timeout(&timer);
+                info!("timeout cancel")
+            },
+            _ => {},
+        }
+
         if ready.is_writable() {
             self.handle_on_connect();
         }
@@ -84,7 +97,7 @@ impl Connector {
         Ok(())
     }
 
-    pub fn connect(this: Arc<Mutex<Self>>, addr: &String) {
+    pub fn connect(this: Arc<Mutex<Self>>, addr: &String, timeout_ms: usize) {
         let stream = TcpStream::connect(&(addr.parse().unwrap())).unwrap();
         debug!("connect stream: {:?}", stream);
 
@@ -99,6 +112,33 @@ impl Connector {
         ));
 
         let event_loop = this.lock().unwrap().event_loop.clone();
+
+        if timeout_ms != usize::MAX {
+            let this = this.clone();
+            let timer = event_loop.timeout(
+                Duration::from_millis(timeout_ms as u64),
+                Box::new(
+                    enclose! {
+                        (this)
+                        move || {
+                            let event_loop = this.lock().unwrap().event_loop.clone();
+                            event_loop.clear_timeout(this.lock().unwrap().timer.as_ref().unwrap());
+                            event_loop.deregister(this.lock().unwrap().tcp_stream.as_ref().unwrap());
+                            // close
+                        }
+                    }
+                )
+            );
+            match timer {
+                Ok(timer) => this.lock().unwrap().timer = Some(timer),
+                _ => {
+                    warn!("connect set timeout failed");
+                    // close stream
+                    return;
+                },
+            }
+        }
+
         event_loop.register(this.lock().unwrap().tcp_stream.as_ref().unwrap(),
                 TokenEntry {
                     ttype: TokenType::SocketEvent,

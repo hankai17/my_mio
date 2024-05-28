@@ -234,7 +234,7 @@ impl TcpClient {
 
         self.connector.lock().unwrap().set_conn_job(conn_job);
 
-        Connector::connect(self.connector.clone(), addr);
+        Connector::connect(self.connector.clone(), addr, 1000);
     }
 
 }
