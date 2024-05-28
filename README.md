@@ -246,3 +246,7 @@ OthersEvent   |        |
     TcpClient + 定时器设计
     TcpClient + 多线程polling
 
+- 240528
+    export RUST_BACKTRACE=full
+    export RUST_LOG=debug
+

@@ -25,7 +25,7 @@ pub type WritJob = Box<dyn FnMut()->bool + 'static + Send + Sync>;
 
 pub struct TcpConnection {
     event_loop: Arc<EventLoop>,
-    pub sock: TcpStream,
+    pub tcp_stream: TcpStream,
     // timer
     read_buffer: Option<BytesMut>,
     write_buffer_sending: Option<BytesMut>,
@@ -36,11 +36,11 @@ pub struct TcpConnection {
 }
 
 impl TcpConnection {
-    pub fn new(event_loop: Arc<EventLoop>, sock: TcpStream)
+    pub fn new(event_loop: Arc<EventLoop>, tcp_stream: TcpStream)
             -> TcpConnection {
         TcpConnection {
             event_loop: event_loop,
-            sock: sock,
+            tcp_stream: tcp_stream,
 
             read_buffer: Some(BytesMut::with_capacity(1024)),
             write_buffer_sending: Some(BytesMut::with_capacity(1024)),
@@ -62,7 +62,7 @@ impl TcpConnection {
     fn handle_read(&mut self) -> io::Result<()> {
         while true {
             let mut buf = self.read_buffer.take().unwrap();
-            match self.sock.try_read_buf(&mut buf) {
+            match self.tcp_stream.try_read_buf(&mut buf) {
                 Ok(None) => {
                     warn!("Conn: spurious read wakeup");
                     self.read_buffer = Some(buf);
@@ -112,14 +112,14 @@ impl TcpConnection {
         }
 
         let mut buf = buf_tmp;
-        //debug!("Conn {:?}: write1 ", self.sock);
-        match self.sock.try_write_buf(&mut buf) {
+        //debug!("Conn {:?}: write1 ", self.tcp_stream);
+        match self.tcp_stream.try_write_buf(&mut buf) {
             Ok(None) => {
                 //debug!("client flushing buf; WouldBlock");
                 self.write_buffer_sending = Some(buf.split());
             }
             Ok(Some(_r)) => {
-                //debug!("Conn {:?}: write2 {} bytes", self.sock, r);
+                //debug!("Conn {:?}: write2 {} bytes", self.tcp_stream, r);
                 if buf.len() > 0 {
                     self.write_buffer_sending = Some(buf.split());
                     return Ok(());
@@ -192,14 +192,14 @@ impl TcpConnection {
     }
 
     pub fn close_stream(&mut self) {
-        self.event_loop.deregister(&self.sock).unwrap();
+        self.event_loop.deregister(&self.tcp_stream).unwrap();
         debug!("close_stream deregister done");
     }
 }
 
 impl Drop for TcpConnection {
     fn drop(&mut self) {
-        debug!("drop for tcpconnection {:?}", self.sock)
+        debug!("drop for tcpconnection {:?}", self.tcp_stream)
     }
 }
 

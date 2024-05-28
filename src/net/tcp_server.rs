@@ -104,7 +104,7 @@ impl TcpServer {
         ));
 
         self.event_loop.register(
-            &conn.lock().unwrap().sock,
+            &conn.lock().unwrap().tcp_stream,
             TokenEntry {
                 ttype: TokenType::SocketEvent, 
                 token: Token (
@@ -212,10 +212,10 @@ impl TcpClient {
                 }
             ));
 
-            event_loop.deregister(&conn.lock().unwrap().sock).unwrap();
+            event_loop.deregister(&conn.lock().unwrap().tcp_stream).unwrap();
 
             event_loop.register(
-                &conn.lock().unwrap().sock,
+                &conn.lock().unwrap().tcp_stream,
                 TokenEntry {
                     ttype: TokenType::SocketEvent, 
                     token: Token (

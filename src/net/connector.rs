@@ -121,6 +121,7 @@ impl Connector {
                     enclose! {
                         (this)
                         move || {
+                            info!("connect timeout");
                             let event_loop = this.lock().unwrap().event_loop.clone();
                             event_loop.clear_timeout(this.lock().unwrap().timer.as_ref().unwrap());
                             event_loop.deregister(this.lock().unwrap().tcp_stream.as_ref().unwrap());

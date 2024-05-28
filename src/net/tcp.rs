@@ -33,6 +33,7 @@ impl TcpStream {
     }
     pub fn connect_stream(stream: net::TcpStream, 
             addr: &SocketAddr) -> io::Result<TcpStream> {
+        set_nonblocking(&stream)?;
         Ok(TcpStream {
             sys: sys::TcpStream::connect(stream, addr)?,
             selector_id: SelectorId::new(),
