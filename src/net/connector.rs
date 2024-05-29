@@ -37,7 +37,7 @@ impl Connector {
             tcp_stream: None,
             event_loop,
             is_connected: false,
-            on_conn_job: Arc::new(Mutex::new((move |_| { true }))),
+            on_conn_job: Arc::new(Mutex::new(move |_| { true })),
         }
     }
 

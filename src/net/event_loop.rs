@@ -217,15 +217,16 @@ impl EventLoop {
         self.poll.deregister(io)
     }
 
-    fn io_poll(&self, timeout: Option<Duration>) -> io::Result<usize> {
-        let events = unsafe { &mut *self.events.get() };
+    fn io_poll(&self, events: &mut Events, timeout: Option<Duration>) -> io::Result<usize> {
+        //let events = unsafe { &mut *self.events.get() };
+        //self.poll.poll(events, timeout)
         self.poll.poll(events, timeout)
     }
 
-    fn io_process(&self, cnt: usize) {
+    fn io_process(&self, events: &mut Events, cnt: usize) {
         let mut i = 0;
         let timer = unsafe { &mut *self.timer.get() };
-        let events = unsafe { &mut *self.events.get() };
+        //let events = unsafe { &mut *self.events.get() };
         debug!("io_process(..); cnt: {}; len: {}", cnt, events.len());
         while i < cnt {
             match events.get_mut(i) {
@@ -257,7 +258,8 @@ impl EventLoop {
     }
 
     pub fn run_once(&self, timeout: Option<Duration>) -> io::Result<()> {
-        let cnt = match self.io_poll(timeout) {
+        let mut events = Events::with_capacity(1024);
+        let cnt = match self.io_poll(&mut events, timeout) {
             Ok(e) => e,
             Err(err) => {
                 if err.kind() == io::ErrorKind::Interrupted {
@@ -268,7 +270,7 @@ impl EventLoop {
                 }
             }
         };
-        self.io_process(cnt);
+        self.io_process(&mut events, cnt);
         Ok(())
     }
 

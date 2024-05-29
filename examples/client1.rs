@@ -129,7 +129,7 @@ fn main() {
         .init();
 
     debug!("Starting main");
-    let pool = EventLoopPool::new(1);
+    let pool = EventLoopPool::new(2);
     for poller in pool.get_all_poller().iter() {
         for  i in 0..80 {
             let poller_clone = poller.clone();
