@@ -193,7 +193,7 @@ impl TcpConnection {
 
     pub fn close_stream(&mut self) {
         self.event_loop.deregister(&self.tcp_stream).unwrap();
-        debug!("close_stream deregister done");
+        debug!("close_stream {:?} deregister done", self.tcp_stream);
     }
 }
 

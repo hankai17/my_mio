@@ -4,6 +4,7 @@ use net::{EventLoop, TcpStream, Acceptor, TcpConnection, Connector};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::net::{SocketAddr};
 use std::sync::{Arc, Mutex};
+use log::{debug, info, warn, error};
 
 macro_rules! enclose {
     ( ($( $x:ident ),*) $y:expr ) => {
@@ -214,12 +215,16 @@ impl TcpClient {
 
             event_loop.deregister(&conn.lock().unwrap().tcp_stream).unwrap();
 
+            use std::os::fd::AsRawFd;
+            let fd = conn.lock().unwrap().tcp_stream.as_raw_fd();
+
             event_loop.register(
                 &conn.lock().unwrap().tcp_stream,
                 TokenEntry {
                     ttype: TokenType::SocketEvent, 
                     token: Token (
-                        CSOCKET_TOKEN_ID.fetch_add(1, Ordering::Relaxed) + 1
+                        //CSOCKET_TOKEN_ID.fetch_add(1, Ordering::Relaxed) + 1
+                        fd as usize
                     )
                 },
                 Ready::readable() | Ready::writable(),

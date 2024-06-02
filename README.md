@@ -164,14 +164,14 @@ OthersEvent   |        |
     +__+
     head/tail指向本身 本身在源码中即是end_marker
 
-    +--+
+    +--+          1
     +__+ -nxt->  +--+
      ^           +--+
      |            ^
     tail          |
     head----------+
 
-    +--+
+    +--+          1            2
     +__+ -nxt->  +--+  -nxt-> +--+
      ^           +--+         +--+
      |                         ^
@@ -179,6 +179,22 @@ OthersEvent   |        |
     head------------------------
 
     mpsc 出队
+
+    +--+          1            2
+    +__+ -nxt->  +--+  -nxt-> +--+
+     ^           +--+         +--+
+     |                         ^
+    1tail       1next          |
+    head------------------------
+                2tail         2next
+                              2tail
+    变成:
+    +--+          2
+    +__+ -nxt->  +--+
+                 +--+
+                  ^ 
+    tail----------+
+    head----------+
 
 - 240510
     ES层        如果epoll有超时时间 且队列消费完毕 那么就将标准节点换成sleep
@@ -249,4 +265,14 @@ OthersEvent   |        |
 - 240528
     export RUST_BACKTRACE=full
     export RUST_LOG=debug
+
+- 240529
+    多线程 bugfix
+    reregister 重置job
+
+- 240601
+    开启debug日志 分析bug 研究生命周期
+
+    1. poll/ES暂且认为是线程安全的
+    2. 如何确保 ES返回的events 也是线程安全的? 像my_sylar那样?
 

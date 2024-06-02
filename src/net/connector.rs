@@ -82,7 +82,7 @@ impl Connector {
             Some(timer) => {
                 let event_loop = EventLoopBuilder::get_current_loop();
                 event_loop.clear_timeout(&timer);
-                info!("timeout cancel")
+                debug!("timeout cancel")
             },
             _ => {},
         }
@@ -143,7 +143,7 @@ impl Connector {
         event_loop.register(this.lock().unwrap().tcp_stream.as_ref().unwrap(),
                 TokenEntry {
                     ttype: TokenType::SocketEvent,
-                    token: Token(0),
+                    token: Token(9999999),
                 },
                 Ready::writable() | Ready::readable(),
                 PollOpt::edge() | PollOpt::oneshot(),

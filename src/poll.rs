@@ -9,7 +9,7 @@ use std::sync::atomic::Ordering::{self, Acquire, Release, AcqRel, Relaxed, SeqCs
 use std::time::{Duration, Instant};
 use std::collections::HashMap;
 use std::cell::RefCell;
-use log::{debug, trace};
+use log::{debug, info, trace};
 
 use event_imp::{self as event, Ready, Event, Evented, PollOpt, Job, JobEntry, TokenEntry, TokenType};
 use {Token, sys};
@@ -382,10 +382,10 @@ impl ReadinessQueueInner {
 
     fn enqueue_node_with_wakeup(&self, node: &ReadinessNode) -> io::Result<()> {
         if self.enqueue_node(node) {
-            //println!("enqueue_node need wakeup");
+            //debug!("enqueue_node need wakeup");
             self.wakeup()?;
         } else {
-            //println!("enqueue_node need not wakeup");
+            //debug!("enqueue_node need not wakeup");
         }
         Ok(())
     }
@@ -573,8 +573,8 @@ impl ReadinessQueue {
     }
 
     fn prepare_for_sleep(&self) -> bool {
-        let emarker = self.inner.end_marker(); 
-        let smarker = self.inner.sleep_marker(); 
+        let emarker = self.inner.end_marker();
+        let smarker = self.inner.sleep_marker();
         let tail = unsafe { *self.inner.tail_readiness.get() };
         if tail == smarker {
             return self.inner.head_readiness.load(Acquire) == smarker;
@@ -587,7 +587,7 @@ impl ReadinessQueue {
         let res = self.inner.head_readiness
                 .compare_exchange(emarker, smarker, AcqRel, Acquire);
         match res {
-            Ok(val) => {                                                    // hankai1 如果传入的有超时时间 而且head/tail都指向了最初的end_marker 那么这里会重置head/tail指向为sleep_marker
+            Ok(val) => {                                                    // hankai1 如果传入超时时间>0/或传入空 而且head/tail都指向了最初的end_marker 那么这里会重置head/tail指向为sleep_marker
                 debug_assert!(val != smarker);
                 debug_assert!(unsafe {
                     *self.inner.tail_readiness.get() == emarker
@@ -595,7 +595,7 @@ impl ReadinessQueue {
                 debug_assert!(self.inner.end_marker.next_readiness
                         .load(Relaxed).is_null());
                 unsafe { *self.inner.tail_readiness.get() = smarker };
-                true
+                true                                                        // epoll则有超时时间或恒阻塞
             },
             Err(val) => {
                 debug_assert!(val != smarker);                              // 如果已经是sleep了 那么让epoll 立即返回
@@ -717,11 +717,14 @@ impl Poll {
 
     fn poll2(&self, events: &mut Events, mut timeout: Option<Duration>,
             interruptible: bool) -> io::Result<usize> {
+        debug!("poll2 begin -------------->");
+        //debug!("poll2 timeout1: {:?}", timeout);
         if timeout == Some(Duration::from_millis(0)) {
         } else if self.readiness_queue.prepare_for_sleep() {
         } else {
             timeout = Some(Duration::from_millis(0))
         }
+        //debug!("poll2 timeout2: {:?}", timeout);
         loop {
             let now = Instant::now();
             let res = self.selector.select(&mut events.inner, timeout);
@@ -741,11 +744,12 @@ impl Poll {
                             timeout = Some(to - elapsed);
                         }
                     }
-                }
+                },
                 Err(e) => return Err(e),
             }
         }
         self.readiness_queue.poll(&mut events.inner);
+        debug!("poll2 end <--------------");
         Ok(events.inner.len())
     }
 
@@ -822,6 +826,8 @@ impl Poll {
         }
         ret
     }
+    // 1. 某个poller 从0变成1时 才会执行polling
+    // 2. wait的线程 依次被notify 执行polling
 
 }
 

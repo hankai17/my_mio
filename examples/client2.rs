@@ -99,7 +99,7 @@ impl ClientHandler for TestClient {
     }
 
     fn on_written(&mut self) -> bool {
-        info!("write done");
+        debug!("write done");
         true
     }
 
@@ -125,7 +125,7 @@ fn main() {
             )
         })
         .target(env_logger::Target::Pipe(target))
-        .filter(None, LevelFilter::Info)
+        .filter(None, LevelFilter::Debug)
         .init();
 
     debug!("Starting main");
@@ -138,7 +138,7 @@ fn main() {
         .timer_capacity(65536);
     let event_loop = b.get_build1().unwrap();
 
-    for i in 0..4 {
+    for i in 0..2 {
         let clone = event_loop.clone();
         thread::spawn(move || {
             EventLoopBuilder::set_current_loop(clone.clone());

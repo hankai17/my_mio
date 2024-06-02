@@ -15,7 +15,7 @@ use event_imp::{Event};
 use sys::unix::{cvt, UnixReady};
 use sys::unix::io::set_cloexec;
 use std::collections::HashMap;
-use log::{debug, error};
+use log::{debug, info, error};
 
 static NEXT_ID: AtomicUsize = ATOMIC_USIZE_INIT;
 
@@ -56,6 +56,7 @@ impl Selector {
         let mut has_notify = false;
         let events_map = self.events_map();
         evts.clear();
+        debug!("epoll_wait timeout: {:?}", timeout_ms);
         unsafe {
             let cnt = cvt(libc::epoll_wait(self.epfd,
                                             evts.events.as_mut_ptr(),
@@ -69,7 +70,7 @@ impl Selector {
                 let entry: &mut JobEntry = match events_map.as_mut().unwrap().get_mut(&fd) {
                     Some(entry) => entry,
                     None => {
-                        error!("fd: {}, None", fd);
+                        error!("event_map get None, fd: {}, None", fd);
                         assert_eq!(0, 1);
                         continue;
                     },
