@@ -21,7 +21,7 @@ static NEXT_ID: AtomicUsize = ATOMIC_USIZE_INIT;
 pub struct Selector {
     id: usize,
     epfd: RawFd,
-    events_map: HashMap<i32, JobEntry>,
+    events_map: Arc<Mutex<HashMap<i32, JobEntry>>>,
 }
 
 impl Selector {
@@ -43,10 +43,16 @@ impl Selector {
         Ok(Selector {
             id: id,
             epfd: epfd,
-            events_map: HashMap::new(),
+            events_map: Arc::new(Mutex::new(HashMap::new())),
         })
     }
+
     pub fn id(&self) -> usize { self.id }
+
+    pub fn events_map(&self) -> *mut Arc<Mutex<HashMap<i32, JobEntry>>> {
+        &self.events_map as *const Arc<Mutex<HashMap<i32, JobEntry>>>  as *mut Arc<Mutex<HashMap<i32, JobEntry>>>
+    }
+
     pub fn select(&self, evts: &mut Events, timeout: Option<Duration>) -> io::Result<bool> {
         let mut notify_idx = 0;
         let timeout_ms = timeout
@@ -65,23 +71,23 @@ impl Selector {
             evts.events.set_len(cnt);
             for i in 0..cnt {
                 let fd = evts.events[i].u64 as usize as i32;
-                //let entry: &mut JobEntry = events_map.as_mut().unwrap().get_mut(&fd).unwrap();
-                let entry: &mut JobEntry = match events_map.as_mut().unwrap().get_mut(&fd) {
-                    Some(entry) => entry,
+                match events_map.as_mut().unwrap().lock().unwrap().get_mut(&fd) {
+                    Some(job_entry) => {
+                        let token = job_entry.token_entry;
+                        if token.ttype == TokenType::NotifyEvent {
+                            notify_idx = i;
+                            has_notify = true;
+                            continue;
+                        }
+                        job_entry.ready = evts.get_ready(i).unwrap();
+                        evts.entries.push(job_entry.clone());
+                    },
                     None => {
                         error!("event_map get None, fd: {}, None", fd);
-                        assert_eq!(0, 1);
+                        //assert_eq!(0, 1);
                         continue;
                     },
                 };
-                let token = entry.token_entry;
-                if token.ttype == TokenType::NotifyEvent {
-                    notify_idx = i;
-                    has_notify = true;
-                    continue;
-                }
-                entry.ready = evts.get_ready(i).unwrap();
-                evts.entries.push(entry.clone());
             }
         }
         if has_notify {
@@ -92,13 +98,9 @@ impl Selector {
         }
     }
 
-    pub fn events_map(&self) -> *mut HashMap<i32, JobEntry> {
-        &self.events_map as *const HashMap<i32, JobEntry>  as *mut HashMap<i32, JobEntry>
-    }
-
     pub fn register(&self, fd: RawFd, token: TokenEntry, interests: Ready,
             opts: PollOpt, job: Job) -> io::Result<()> {
-        debug!("register1 fd: {:?} len: {} token: {:?}", fd, self.events_map.len(), token.token);
+        debug!("register1 fd: {:?} len: {} token: {:?}", fd, self.events_map.lock().unwrap().len(), token.token);
         let mut info = libc::epoll_event {
             events: ioevent_to_epoll(interests, opts),
             u64: fd as u64
@@ -107,6 +109,8 @@ impl Selector {
         unsafe {
             events_map
                 .as_mut()
+                .unwrap()
+                .lock()
                 .unwrap()
                 .insert(
                     fd as i32,
@@ -118,7 +122,7 @@ impl Selector {
                     }
             );
             cvt(libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_ADD, fd, &mut info))?;
-            debug!("register2 fd: {:?} len: {} token: {:?}", fd, self.events_map.len(), token.token);
+            debug!("register2 fd: {:?} len: {} token: {:?}", fd, self.events_map.lock().unwrap().len(), token.token);
             Ok(())
         }
     }
@@ -138,7 +142,7 @@ impl Selector {
     }
 
     pub fn deregister(&self, fd: RawFd) -> io::Result<()> {
-        debug!("deregister1 fd: {:?} len: {} ", fd, self.events_map.len());
+        debug!("deregister1 fd: {:?} len: {} ", fd, self.events_map.lock().unwrap().len());
         let mut info = libc::epoll_event {
             events: 0,
             u64: 0,
@@ -146,9 +150,9 @@ impl Selector {
         let events_map = self.events_map();
         unsafe {
             cvt(libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_DEL, fd, &mut info))?;
-            let v = events_map.as_mut().unwrap().remove(&fd as &i32);
+            let v = events_map.as_mut().unwrap().lock().unwrap().remove(&fd as &i32);
             debug!("deregister2 fd: {:?} len: {} token: {:?}",
-                    fd, self.events_map.len(), v.unwrap().token_entry.token);
+                    fd, self.events_map.lock().unwrap().len(), v.unwrap().token_entry.token);
             Ok(())
         }
     }
