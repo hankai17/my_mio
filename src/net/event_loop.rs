@@ -231,8 +231,8 @@ impl EventLoop {
         debug!("io_process cnt: {}; len: {}", cnt, events.len());
         while i < cnt {
             match events.get_mut(i) {
-                Some(entry) => {
-                    let token = entry.token_entry;
+                Some(job_entry) => {
+                    let token = job_entry.token_entry;
                     debug!("token: {:?}", token);
                     match token.ttype {
                         TokenType::TimersEvent => {
@@ -241,9 +241,10 @@ impl EventLoop {
                             }
                         },
                         _ => {
-                            let c = &mut entry.job;
-                            let ready = entry.ready;
-                            c
+                            job_entry.state.lock().unwrap();
+                            let job = &mut job_entry.job;
+                            let ready = job_entry.ready;
+                            job
                             .lock()
                             .unwrap()(ready_as_usize(ready) as i64);
                         }

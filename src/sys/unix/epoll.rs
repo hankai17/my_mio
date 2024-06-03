@@ -1,6 +1,7 @@
 #![allow(deprecated)]
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
+use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT, AtomicPtr};
 use std::time::Duration;
 use std::{cmp, i32};
 
@@ -8,9 +9,7 @@ use libc::{c_int};
 use libc::{EPOLLERR, EPOLLHUP, EPOLLONESHOT};
 use libc::{EPOLLET, EPOLLOUT, EPOLLIN, EPOLLPRI}; // define in /usr/include/sys/epoll.h 
 
-//pub use poll::{TokenAllocator, TokenType};
-
-use {io, Ready, PollOpt, Job, JobEntry, TokenEntry, TokenType};
+use {io, Ready, PollOpt, Job, JobEntry, TokenEntry, TokenType, JobState};
 use event_imp::{Event};
 use sys::unix::{cvt, UnixReady};
 use sys::unix::io::set_cloexec;
@@ -92,10 +91,13 @@ impl Selector {
             Ok(false)
         }
     }
+
     pub fn events_map(&self) -> *mut HashMap<i32, JobEntry> {
         &self.events_map as *const HashMap<i32, JobEntry>  as *mut HashMap<i32, JobEntry>
     }
-    pub fn register(&self, fd: RawFd, token: TokenEntry, interests: Ready, opts: PollOpt, job: Job) -> io::Result<()> {
+
+    pub fn register(&self, fd: RawFd, token: TokenEntry, interests: Ready,
+            opts: PollOpt, job: Job) -> io::Result<()> {
         debug!("register1 fd: {:?} len: {} token: {:?}", fd, self.events_map.len(), token.token);
         let mut info = libc::epoll_event {
             events: ioevent_to_epoll(interests, opts),
@@ -103,14 +105,26 @@ impl Selector {
         };
         let events_map = self.events_map();
         unsafe {
-            events_map.as_mut().unwrap().insert(fd as i32, JobEntry { token_entry: token, job, ready: Ready::empty()});
+            events_map
+                .as_mut()
+                .unwrap()
+                .insert(
+                    fd as i32,
+                    JobEntry {
+                        token_entry: token,
+                        job,
+                        ready: Ready::empty(),
+                        state: Arc::new(Mutex::new(JobState::INIT))
+                    }
+            );
             cvt(libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_ADD, fd, &mut info))?;
             debug!("register2 fd: {:?} len: {} token: {:?}", fd, self.events_map.len(), token.token);
             Ok(())
         }
     }
-    pub fn reregister(&self, fd: RawFd, token: TokenEntry, interests: Ready, opts: PollOpt) -> io::Result<()> {
-        // TODO
+
+    pub fn reregister(&self, fd: RawFd, token: TokenEntry, interests: Ready,
+            opts: PollOpt) -> io::Result<()> {
         debug!("reregister {:?}", fd);
         let t = token.token;
         let mut info = libc::epoll_event {
@@ -122,6 +136,7 @@ impl Selector {
             Ok(())
         }
     }
+
     pub fn deregister(&self, fd: RawFd) -> io::Result<()> {
         debug!("deregister1 fd: {:?} len: {} ", fd, self.events_map.len());
         let mut info = libc::epoll_event {
@@ -132,7 +147,8 @@ impl Selector {
         unsafe {
             cvt(libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_DEL, fd, &mut info))?;
             let v = events_map.as_mut().unwrap().remove(&fd as &i32);
-            debug!("deregister2 fd: {:?} len: {} token: {:?}", fd, self.events_map.len(), v.unwrap().token_entry.token);
+            debug!("deregister2 fd: {:?} len: {} token: {:?}",
+                    fd, self.events_map.len(), v.unwrap().token_entry.token);
             Ok(())
         }
     }
@@ -227,6 +243,7 @@ impl Events {
                 token_entry: event.token(),
                 ready: Ready::empty(),
                 job,
+                state: Arc::new(Mutex::new(JobState::INIT))
             }
         );
     }

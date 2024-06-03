@@ -14,6 +14,7 @@ pub use event_imp:: {
     JobEntry,
     TokenType,
     TokenEntry,
+    JobState,
 };
 
 mod io;

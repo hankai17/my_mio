@@ -1,6 +1,7 @@
 use {Poll, Token};
 use std::{fmt, io, ops};
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicPtr};
 use log::debug;
 
 const READABLE: usize = 0b00001;
@@ -229,6 +230,17 @@ pub enum TokenType {
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum JobState {
+#[warn(non_camel_case_types)]
+    INIT,
+    HOLD,
+    EXEC,
+    TERM,
+    READY,
+    EXCEPT,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct TokenEntry {
     pub ttype: TokenType, 
     pub token: Token,
@@ -262,6 +274,7 @@ pub struct JobEntry {
     pub token_entry: TokenEntry,
     pub job: Job,
     pub ready: Ready,
+    pub state: Arc<Mutex<JobState>>,
 }
 
 impl Drop for JobEntry {

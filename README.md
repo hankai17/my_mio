@@ -276,3 +276,6 @@ OthersEvent   |        |
     1. poll/ES暂且认为是线程安全的
     2. 如何确保 ES返回的events 也是线程安全的? 像my_sylar那样?
 
+- 240602
+    1. fiber.cc: m_state MainFunc
+
