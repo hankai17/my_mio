@@ -279,3 +279,14 @@ OthersEvent   |        |
 - 240602
     1. fiber.cc: m_state MainFunc
 
+- 240603
+    1. muduo tcprelay.cc
+    2. timer 线程安全
+
+- 240604
+    muduo TcpConnection _reading flag
+
+- 240605
+    muduo close的设计理念 
+    muduo里是否有 enable/trigger机制
+

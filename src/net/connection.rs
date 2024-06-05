@@ -20,6 +20,15 @@ macro_rules! pub_struct {
 }
 */
 
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum StateE {
+#[warn(non_camel_case_types)]
+    Disconnected,
+    Connecting,
+    Connected,
+    Disconnecting,
+}
+
 pub type ReadJob = Box<dyn FnMut(&mut BytesMut) + 'static + Send + Sync>;
 pub type WritJob = Box<dyn FnMut()->bool + 'static + Send + Sync>;
 
@@ -33,6 +42,9 @@ pub struct TcpConnection {
 
     read_job: ReadJob,
     writ_job: WritJob,
+
+    read_enable: bool,
+    state: StateE,
 }
 
 impl TcpConnection {
@@ -48,7 +60,22 @@ impl TcpConnection {
 
             read_job: Box::new(move |_| { debug!("default read job"); }),
             writ_job: Box::new(move || { debug!("default write job"); true }),
+
+            read_enable: true,
+            state: StateE::Connecting,
         }
+    }
+
+    pub fn connected(&self) -> bool {
+        self.state == StateE::Connected
+    }
+
+    pub fn disconnected(&self) -> bool {
+        self.state == StateE::DisConnected
+    }
+
+    pub fn set_state(&mut self, state: StateE) {
+        self.state = state;
     }
 
     pub fn set_read_job(&mut self, job: ReadJob) {
@@ -60,7 +87,7 @@ impl TcpConnection {
     }
 
     fn handle_read(&mut self) -> io::Result<()> {
-        while true {
+        loop {
             let mut buf = self.read_buffer.take().unwrap();
             match self.tcp_stream.try_read_buf(&mut buf) {
                 Ok(None) => {
@@ -171,7 +198,11 @@ impl TcpConnection {
     }
 
     fn handle_error(&mut self) -> io::Result<()> {
-        info!("handle_error TODO");
+        debug_assert(self.state == StateE::Connected ||
+                self.state == StateE::Disconnecting);
+        self.set_state(StateE::Disconnected);
+        // disable channel 是否意味着 disable triggered 
+        // close
         Ok(())
     }
 
@@ -199,6 +230,7 @@ impl TcpConnection {
 
 impl Drop for TcpConnection {
     fn drop(&mut self) {
+        // assert(self.state == StateE::Disconnected);
         debug!("drop for tcpconnection {:?}", self.tcp_stream)
     }
 }
