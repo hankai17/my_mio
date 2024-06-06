@@ -218,6 +218,7 @@ impl TcpClient {
             use std::os::fd::AsRawFd;
             let fd = conn.lock().unwrap().tcp_stream.as_raw_fd();
 
+            conn.lock().unwrap().set_enabled(true);
             event_loop.register(
                 &conn.lock().unwrap().tcp_stream,
                 TokenEntry {
@@ -227,7 +228,7 @@ impl TcpClient {
                         fd as usize
                     )
                 },
-                Ready::readable() | Ready::writable(),
+                Ready::readable() | Ready::writable(),  // 默认监听读写 // 设计理念是全局只调用一次epoll_ctl
                 PollOpt::edge(), 
                 job
             ).unwrap();

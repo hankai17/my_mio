@@ -43,8 +43,11 @@ pub struct TcpConnection {
     read_job: ReadJob,
     writ_job: WritJob,
 
-    read_enable: bool,
     state: StateE,
+    read_enabled: bool,
+    write_enabled: bool,
+    read_triggered: bool,
+    write_triggered: bool,
 }
 
 impl TcpConnection {
@@ -61,8 +64,11 @@ impl TcpConnection {
             read_job: Box::new(move |_| { debug!("default read job"); }),
             writ_job: Box::new(move || { debug!("default write job"); true }),
 
-            read_enable: true,
             state: StateE::Connecting,
+            read_enabled: true,
+            write_enabled: true,
+            read_triggered: false,
+            write_triggered: false,
         }
     }
 
@@ -86,6 +92,11 @@ impl TcpConnection {
         self.writ_job = job;
     }
 
+    pub fn set_enabled(&mut self, enable: bool) {
+        self.read_enabled = enable;
+        self.write_enabled = enable;
+    }
+
     fn handle_read(&mut self) -> io::Result<()> {
         loop {
             let mut buf = self.read_buffer.take().unwrap();
@@ -93,6 +104,7 @@ impl TcpConnection {
                 Ok(None) => {
                     warn!("Conn: spurious read wakeup");
                     self.read_buffer = Some(buf);
+                    self.read_triggered = false; 
                     break;
                 }
                 Ok(Some(r)) => {
@@ -103,12 +115,14 @@ impl TcpConnection {
                     } else {
                         (self.read_job)(&mut buf);
                         self.read_buffer = Some(buf);
+                        self.read_triggered = false; 
                         self.close_stream();
                         break;
                     }
                 }
                 Err(e) => {
                     warn!("not implemented client err: {:?}", e);
+                    self.read_triggered = false; 
                     self.close_stream();
                     break;
                 }
@@ -118,6 +132,10 @@ impl TcpConnection {
     }
 
     fn write_data(&mut self) -> io::Result<()> {
+        if self.state != Connected {
+            error!("state not connected");
+            return Ok(());
+        }
         let mut buf_tmp = Some(BytesMut::with_capacity(1024)).unwrap();
         let mut buf_snd = self.write_buffer_sending.take().unwrap();
         if buf_snd.len() > 0 {
@@ -142,8 +160,9 @@ impl TcpConnection {
         //debug!("Conn {:?}: write1 ", self.tcp_stream);
         match self.tcp_stream.try_write_buf(&mut buf) {
             Ok(None) => {
-                //debug!("client flushing buf; WouldBlock");
+                debug!("client flushing buf; WouldBlock");
                 self.write_buffer_sending = Some(buf.split());
+                self.write_triggered = false;
             }
             Ok(Some(_r)) => {
                 //debug!("Conn {:?}: write2 {} bytes", self.tcp_stream, r);
@@ -151,6 +170,7 @@ impl TcpConnection {
                     self.write_buffer_sending = Some(buf.split());
                     return Ok(());
                 }
+                self.write_triggered = false;
                 let ret = (self.writ_job)();
                 self.write_buffer_sending = Some(buf.split());
                 if ret == false {
@@ -160,6 +180,7 @@ impl TcpConnection {
             }
             Err(e) => {
                 debug!("not implemented; client err: {:?}", e);
+                self.write_triggered = false;
                 //self.close_stream();
             }
         }
@@ -168,6 +189,10 @@ impl TcpConnection {
     }
 
     pub fn send(&mut self, bytes: BytesMut) -> io::Result<usize> {
+        if self.state != Connected {
+            return Ok(0);
+        }
+        // if write triggered TODO
         let len = bytes.len();
         if len == 0 {
             return Ok(0);
@@ -191,16 +216,19 @@ impl TcpConnection {
         if empty_waiting && empty_sending {
             // disable write
             //debug!("handle_write disable write TODO");
+            // do nothing ?
         } else {
             self.write_data().unwrap();
         }
         return Ok(())
     }
 
-    fn handle_error(&mut self) -> io::Result<()> {
+    fn handle_close(&mut self) -> io::Result<()> {
         debug_assert(self.state == StateE::Connected ||
                 self.state == StateE::Disconnecting);
         self.set_state(StateE::Disconnected);
+        self.set_enabled(false);
+        
         // disable channel 是否意味着 disable triggered 
         // close
         Ok(())
@@ -210,14 +238,18 @@ impl TcpConnection {
         // check closed
         let ready = ready_from_usize(event as usize);
         if ready.is_readable() {
-           self.handle_read().unwrap();
+            self.read_triggered = true; 
+            self.handle_read().unwrap();
         }
         if ready.is_writable() {
+            self.write_triggered = true; 
            self.handle_write().unwrap();
         }
         if ready.is_error() ||
                 ready.is_hup() {
-            self.handle_error().unwrap();
+            self.read_triggered = true; 
+            self.write_triggered = true; 
+            self.handle_close().unwrap();
         }
         Ok(())
     }

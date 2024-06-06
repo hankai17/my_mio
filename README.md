@@ -290,3 +290,5 @@ OthersEvent   |        |
     muduo close的设计理念 
     muduo里是否有 enable/trigger机制
 
+- 240606
+    全双工设计
