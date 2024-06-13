@@ -292,3 +292,19 @@ OthersEvent   |        |
 
 - 240606
     全双工设计
+    如何在on_connected中 快速关闭连接
+
+- 240612
+    read/write_enabled 默认全开
+    read/write_triggered  ats
+
+- 240613
+    双层写buffer的设计 对用户非常好 用户调用send接口时 不用担心有没有发出去 用起来爽
+
+    写阻塞了怎么办? 双层buffer设计 
+    置位write_triggered=false
+
+    ET LT最大区别:
+        参考《服务器设计范式》
+        参考 hammer/design.log
+
