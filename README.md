@@ -308,3 +308,4 @@ OthersEvent   |        |
         参考《服务器设计范式》
         参考 hammer/design.log
 
+    怎么关闭?
