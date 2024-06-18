@@ -42,12 +42,6 @@ fn enqueue_job(poller: Arc<EventLoop>, cb: Job) {
     ).unwrap();
 }
 
-struct Tunnel {
-    client: TcpClient,
-    client_conn: Option<Weak<Mutex<TcpConnection>>>,
-    server_conn: Option<Weak<Mutex<TcpConnection>>>,
-}
-
 struct Client {
     timer: Option<Timeout>,
     server_conn: Option<Weak<Mutex<TcpConnection>>>,
@@ -129,12 +123,18 @@ impl ClientHandler for Client {                                     // hankai2
     }
 }
 
+struct Tunnel {
+    client: TcpClient,
+    pub client_handler: Option<Weak<Mutex<Client>>>,
+    pub server_conn: Option<Weak<Mutex<TcpConnection>>>,
+}
+
 impl Tunnel {
     pub fn new(event_loop: Arc<EventLoop>, addr: &String,
             server_conn: Weak<Mutex<TcpConnection>>) -> Tunnel {
         Tunnel {
             client: TcpClient::new(event_loop),
-            client_conn: None,
+            client_handler: None,
             server_conn: Some(server_conn),                                 // hankai1
         }
     }
@@ -149,32 +149,33 @@ impl Tunnel {
         let handler = Arc::new(Mutex::new(Client::new(
             Arc::downgrade(&s_conn_clone)
         )));
-        self.client.start_connect(&"127.0.0.1:90".to_string(), handler);    // hankai2
-        // handler 变成tunnel的成员
-        //
+        self.client.start_connect(&"127.0.0.1:90".to_string(), handler.clone());    // hankai2
+        self.client_handler = Some(Arc::downgrade(&handler));
     }
 }
                                                                             // hankai0 tunnel生命是在 server端起cs时 开始的
 
-struct Server {
+struct ServerSession {
     timer: Option<Timeout>, //pub type TimerJob = Box<dyn FnMut() + 'static + Send + Sync>;
-    conn: Option<Weak<Mutex<TcpConnection>>>
+    conn: Option<Weak<Mutex<TcpConnection>>>,
+    tunnel: Option<Arc<Mutex<Tunnel>>>
 }
 
-impl Server {
+impl ServerSession {
 }
 
-impl Drop for Server {
+impl Drop for ServerSession {
     fn drop(&mut self) {
-        //println!("---------------------dropping for Server")
+        //println!("---------------------dropping for ServerSession")
     }
 }
 
-impl Handler for Server {
-    fn new() -> Server {
-        Server {
+impl Handler for ServerSession {
+    fn new() -> ServerSession {
+        ServerSession {
             timer: None,
             conn: None,
+            tunnel: None,
         }
     }
 
@@ -196,12 +197,14 @@ impl Handler for Server {
         let event_loop = EventLoopBuilder::get_current_loop();
 
 
-        let mut tunnel = Tunnel::new(
+        let mut tunnel = Arc::new(Mutex::new(
+            Tunnel::new(
                 event_loop.clone(),
                 &"127.0.0.1:90".to_string(),
-                Arc::downgrade(&conn_clone));
-        tunnel.connect();
-        // 怎样把ss 告知给cs? // 通过tunnel的成员变量handler // handler里有cs ss
+                Arc::downgrade(&conn_clone))
+        ));
+        tunnel.lock().unwrap().connect();
+        self.tunnel = Some(tunnel.clone());
 
         /*
         let timer = event_loop.timeout(
@@ -224,6 +227,7 @@ impl Handler for Server {
         if bytes.len() <= 0 {
             return;
         }
+        /*
         match &self.timer {
             Some(timer) => {
                 let event_loop = EventLoopBuilder::get_current_loop();
@@ -232,47 +236,35 @@ impl Handler for Server {
             },
             _ => {},
         }
+        */
         //println!("bytes len: {}, {:?}", bytes.len(), bytes);
-        bytes.advance(bytes.len());
-
-        let (r, s) = Registration::new2();
-        let r = Arc::new(r);
-        let s = Arc::new(s);
-
-        let r_clone = r.clone();
-        let s_clone = s.clone();
-
-        let conn = self.conn.take().unwrap();
-        let conn_clone = match conn.upgrade() {
-            Some(conn) => conn.clone(),
+        // 怎样把ss 告知给cs? // handler里有cs ss
+        let mut ss = match &self.tunnel {
+            Some(tunnel) => {
+                match &tunnel.lock().unwrap().client_handler {
+                    Some(handler) => {
+                        match handler.upgrade() {
+                            Some(cli) => {
+                                match &cli.lock().unwrap().client_conn {
+                                    Some(conn) => {
+                                        match conn.upgrade() {
+                                            Some(con) => con.clone(),
+                                            None => return,
+                                        }
+                                    },
+                                    None => return,
+                                }
+                            },
+                            None => return,
+                        }
+                    },
+                    None => return,
+                }
+            },
             None => return,
         };
-        self.conn = Some(conn);
-
-        let event_loop = EventLoopBuilder::get_current_loop();
-        let job = Arc::new(Mutex::new(move |_| {
-            let _ = r_clone.clone(); 
-            let _ = s_clone.clone();
-            let mut conn = conn_clone.lock().unwrap();
-            conn.send(
-                BytesMut::from(&b"HTTP/1.1 200 OK\r\nSet-Cookie:k1=v1\r\nContent-Length: 15\r\nConnection: Keep-Alive\r\n\r\nabcdefghijkldef"[..])
-            ).unwrap();
-        }));
-
-        let r_clone = r.clone();
-        let s_clone = s.clone();
-        s_clone.set_readiness(Ready::readable()).unwrap();
-
-        event_loop.register(
-                &r_clone,
-                TokenEntry {
-                    ttype: TokenType::OtherEvent,
-                    token: Token(0)
-                },
-                Ready::readable(),
-                PollOpt::edge(),
-                job
-        ).unwrap();
+        ss.lock().unwrap().send(bytes.clone());
+        bytes.advance(bytes.len());
     }
 
     fn on_written(&mut self) -> bool {
@@ -281,7 +273,7 @@ impl Handler for Server {
     }
 
     fn on_error(&mut self) {
-        debug!("Server onError");
+        debug!("ServerSession onError");
     }
 }
 
@@ -304,7 +296,7 @@ fn main() {
     let event_loop = b.get_build1().unwrap();
 
     let tcp_server = Arc::new(Mutex::new(TcpServer::new(event_loop.clone(), &"0.0.0.0:9528".to_string())));
-    tcp_server.lock().unwrap().start::<Server>();
+    tcp_server.lock().unwrap().start::<ServerSession>();
     TcpServer::start_internal(tcp_server);
 
     for i in 0..1 {
