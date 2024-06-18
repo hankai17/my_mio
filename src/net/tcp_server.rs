@@ -152,7 +152,7 @@ pub trait ClientHandler {
     //fn start_connect(&mut self, );
     //fn free_connection(&mut self);
     fn shutdown(&mut self);
-    //fn attach_connection(&mut self, conn: Arc<Mutex<TcpConnection>>);
+    fn attach_connection(&mut self, conn: Arc<Mutex<TcpConnection>>);
     //fn free_connection(&mut self);
 
     fn on_connect(&mut self, conn: Arc<Mutex<TcpConnection>>);
@@ -180,11 +180,13 @@ impl TcpClient {
     pub fn start_connect(&mut self, addr: &String,
             handler: Arc<Mutex<dyn ClientHandler + 'static + Send + Sync>>) {
         let event_loop = self.event_loop.clone();
+        let mut handler_clone = handler.clone();
 
         let conn_job = Arc::new(Mutex::new(move |stream: TcpStream| {
             let conn = Arc::new(Mutex::new(
                 TcpConnection::new(event_loop.clone(), stream)
             ));
+            handler_clone.lock().unwrap().attach_connection(conn.clone());
 
             conn.lock().unwrap().set_read_job(
                 Box::new (enclose! { 

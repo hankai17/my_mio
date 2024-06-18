@@ -37,7 +37,7 @@ pub struct TcpConnection {
     event_loop: Arc<EventLoop>,
     pub tcp_stream: TcpStream,
     // timer
-    read_buffer: Option<BytesMut>,
+    pub read_buffer: Option<BytesMut>,
     write_buffer_sending: Option<BytesMut>,
     write_buffer_waiting: Option<BytesMut>,
 

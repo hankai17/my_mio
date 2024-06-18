@@ -48,35 +48,35 @@ struct Tunnel {
     server_conn: Option<Weak<Mutex<TcpConnection>>>,
 }
 
-struct TestTunnel {
+struct Client {
     timer: Option<Timeout>,
     server_conn: Option<Weak<Mutex<TcpConnection>>>,
+    client_conn: Option<Weak<Mutex<TcpConnection>>>,
 }
 
-impl TestTunnel {               // tunnel的client端处理
-    fn new(server_conn: Weak<Mutex<TcpConnection>>) -> TestTunnel {
-        TestTunnel {
+impl Client {               // tunnel的client端处理
+    fn new(server_conn: Weak<Mutex<TcpConnection>>) -> Client {
+        Client {
             timer: None,
             server_conn: Some(server_conn),
+            client_conn: None,
         }
     } 
 }
 
-impl Drop for TestTunnel {
+impl Drop for Client {
     fn drop(&mut self) {
-        debug!("dropping for TestTunnel")
+        debug!("dropping for Client")
     }
 }
 
-impl ClientHandler for TestTunnel {                                     // hankai2
+impl ClientHandler for Client {                                     // hankai2
     fn shutdown(&mut self) {
     }
 
-    /*
     fn attach_connection(&mut self, conn: Arc<Mutex<TcpConnection>>) {
-        self.conn = Some(Arc::downgrade(&conn));
+        self.client_conn = Some(Arc::downgrade(&conn));
     }
-    */
 
     fn on_connect(&mut self, conn: Arc<Mutex<TcpConnection>>) {         // hankai2.1
         // if connected
@@ -91,15 +91,32 @@ impl ClientHandler for TestTunnel {                                     // hanka
         let job = Arc::new(Mutex::new(move|| {
             let mut ss = conn.lock().unwrap();                           // hankai2.2
             //ss 监听读
-
+            let mut bytes = cs.lock().unwrap().read_buffer.take().unwrap();
+            let len = bytes.len();
+            if len > 0 {
+                ss.send(bytes.clone());
+                bytes.advance(len);
+            }
+            cs.lock().unwrap().read_buffer = Some(bytes);
         }));
         enqueue_job(poller.clone(), job);
     }
 
-                                                                        // hankai 3 怎么转发客户端的数据到源站?
     fn on_recv(&mut self, bytes: &mut BytesMut) {
         info!("on_recv: {:?}", bytes);
-        bytes.advance(bytes.len());
+        let s_conn = self.server_conn.take().unwrap();
+        let cs = match s_conn.upgrade() {
+            Some(conn) => conn.clone(),
+            None => return,
+        };
+        self.server_conn = Some(s_conn);
+        
+        if bytes.len() > 0 {
+            cs.lock().unwrap().send(bytes.clone());
+            bytes.advance(bytes.len());
+        }
+
+        // job?
     }
 
     fn on_written(&mut self) -> bool {
@@ -129,30 +146,33 @@ impl Tunnel {
             None => return,
         };
         self.server_conn = Some(s_conn);
-        let handler = Arc::new(Mutex::new(TestTunnel::new(
+        let handler = Arc::new(Mutex::new(Client::new(
             Arc::downgrade(&s_conn_clone)
         )));
         self.client.start_connect(&"127.0.0.1:90".to_string(), handler);    // hankai2
+        // handler 变成tunnel的成员
+        //
     }
 }
+                                                                            // hankai0 tunnel生命是在 server端起cs时 开始的
 
-struct Test {
+struct Server {
     timer: Option<Timeout>, //pub type TimerJob = Box<dyn FnMut() + 'static + Send + Sync>;
     conn: Option<Weak<Mutex<TcpConnection>>>
 }
 
-impl Test {
+impl Server {
 }
 
-impl Drop for Test {
+impl Drop for Server {
     fn drop(&mut self) {
-        //println!("---------------------dropping for Test")
+        //println!("---------------------dropping for Server")
     }
 }
 
-impl Handler for Test {
-    fn new() -> Test {
-        Test {
+impl Handler for Server {
+    fn new() -> Server {
+        Server {
             timer: None,
             conn: None,
         }
@@ -174,6 +194,14 @@ impl Handler for Test {
         };
         self.conn = Some(conn);
         let event_loop = EventLoopBuilder::get_current_loop();
+
+
+        let mut tunnel = Tunnel::new(
+                event_loop.clone(),
+                &"127.0.0.1:90".to_string(),
+                Arc::downgrade(&conn_clone));
+        tunnel.connect();
+        // 怎样把ss 告知给cs? // 通过tunnel的成员变量handler // handler里有cs ss
 
         /*
         let timer = event_loop.timeout(
@@ -253,7 +281,7 @@ impl Handler for Test {
     }
 
     fn on_error(&mut self) {
-        debug!("Test onError");
+        debug!("Server onError");
     }
 }
 
@@ -276,7 +304,7 @@ fn main() {
     let event_loop = b.get_build1().unwrap();
 
     let tcp_server = Arc::new(Mutex::new(TcpServer::new(event_loop.clone(), &"0.0.0.0:9528".to_string())));
-    tcp_server.lock().unwrap().start::<Test>();
+    tcp_server.lock().unwrap().start::<Server>();
     TcpServer::start_internal(tcp_server);
 
     for i in 0..1 {
