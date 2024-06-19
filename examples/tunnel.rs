@@ -238,7 +238,6 @@ impl Handler for ServerSession {
         }
         */
         //println!("bytes len: {}, {:?}", bytes.len(), bytes);
-        // 怎样把ss 告知给cs? // handler里有cs ss
         let mut ss = match &self.tunnel {
             Some(tunnel) => {
                 match &tunnel.lock().unwrap().client_handler {
@@ -263,6 +262,7 @@ impl Handler for ServerSession {
             },
             None => return,
         };
+
         ss.lock().unwrap().send(bytes.clone());
         bytes.advance(bytes.len());
     }
@@ -286,6 +286,21 @@ fn sleep_ms(ms: u64) {
 fn main() {
     let _ = ::env_logger::init();
     debug!("Starting main");
+    /*
+    let pool = EventLoopPool::new(1);
+    for poller in pool.get_all_poller().iter() {
+        let tcp_server = Arc::new(Mutex::new(
+            TcpServer::new(
+                poller.clone(),
+                &"0.0.0.0:9528".to_string()
+            )
+        ));
+        tcp_server.lock().unwrap().start::<ServerSession>();
+        TcpServer::start_internal(tcp_server);
+    }
+    pool.wait();
+    */
+
     let mut b = EventLoopBuilder::new();
     b.notify_capacity(1_048_576)
         .messages_per_tick(64)
@@ -293,7 +308,7 @@ fn main() {
         .timer_wheel_size(1024)
         .timer_capacity(65536);
     
-    let event_loop = b.get_build1().unwrap();
+    let event_loop = b.get_build().unwrap();
 
     let tcp_server = Arc::new(Mutex::new(TcpServer::new(event_loop.clone(), &"0.0.0.0:9528".to_string())));
     tcp_server.lock().unwrap().start::<ServerSession>();
