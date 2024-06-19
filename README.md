@@ -311,3 +311,5 @@ OthersEvent   |        |
     怎么关闭?
 - 240619
     tunnel 压测
+    当前问题是: cs关闭了 无法通知到ss
+        需要重构connection? 加上close err处理

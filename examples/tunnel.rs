@@ -2,6 +2,7 @@ extern crate my_mio;
 extern crate bytes;
 extern crate log;
 extern crate env_logger;
+extern crate chrono;
 
 use my_mio::{PollOpt, Ready, Token, Registration, TokenType, TokenEntry};
 use my_mio::timer::{Timeout};
@@ -10,8 +11,14 @@ use my_mio::net::{EventLoop, EventLoopBuilder,  EventLoopPool, TcpConnection, Tc
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 use std::thread;
-use log::{debug, info};
 
+use log::{debug, info, LevelFilter};
+use std::io::Write;
+use std::fs::File;
+use chrono::Local;
+use env_logger::{Builder, WriteStyle};
+
+use std::net::Shutdown;
 use my_mio::net::{Connector, TcpClient, ClientHandler};
 
 type Job = Arc<Mutex<dyn FnMut() + 'static + Send + Sync>>;
@@ -149,7 +156,7 @@ impl Tunnel {
         let handler = Arc::new(Mutex::new(Client::new(
             Arc::downgrade(&s_conn_clone)
         )));
-        self.client.start_connect(&"127.0.0.1:90".to_string(), handler.clone());    // hankai2
+        self.client.start_connect(&"127.0.0.1:80".to_string(), handler.clone());    // hankai2
         self.client_handler = Some(Arc::downgrade(&handler));
     }
 }
@@ -200,7 +207,7 @@ impl Handler for ServerSession {
         let mut tunnel = Arc::new(Mutex::new(
             Tunnel::new(
                 event_loop.clone(),
-                &"127.0.0.1:90".to_string(),
+                &"127.0.0.1:80".to_string(),
                 Arc::downgrade(&conn_clone))
         ));
         tunnel.lock().unwrap().connect();
@@ -268,12 +275,37 @@ impl Handler for ServerSession {
     }
 
     fn on_written(&mut self) -> bool {
-        self.free_connection();
-        false
+        true
     }
 
     fn on_error(&mut self) {
-        debug!("ServerSession onError");
+        self.free_connection();
+        debug!("ServerSession on_error");
+        let mut ss = match &self.tunnel {
+            Some(tunnel) => {
+                match &tunnel.lock().unwrap().client_handler {
+                    Some(handler) => {
+                        match handler.upgrade() {
+                            Some(cli) => {
+                                match &cli.lock().unwrap().client_conn {
+                                    Some(conn) => {
+                                        match conn.upgrade() {
+                                            Some(con) => con.clone(),
+                                            None => return,
+                                        }
+                                    },
+                                    None => return,
+                                }
+                            },
+                            None => return,
+                        }
+                    },
+                    None => return,
+                }
+            },
+            None => return,
+        };
+        ss.lock().unwrap().shutdown(Shutdown::Write);
     }
 }
 
@@ -284,7 +316,25 @@ fn sleep_ms(ms: u64) {
 }
 
 fn main() {
-    let _ = ::env_logger::init();
+    //let _ = ::env_logger::init();
+    let target = Box::new(File::create("/tmp/test.txt").expect("Can't create file"));
+	Builder::new()
+        .format(|buf, record| {
+            writeln!(
+                buf,
+                "{} {:?} {}:{} [{}] - {}",
+                Local::now().format("%Y-%m-%dT%H:%M:%S%.3f"),
+                thread::current().id(),
+                record.file().unwrap_or("unknown"),
+                record.line().unwrap_or(0),
+                record.level(),
+                record.args()
+            )
+        })
+        .target(env_logger::Target::Pipe(target))
+        .filter(None, LevelFilter::Debug)
+        .init();
+
     debug!("Starting main");
     /*
     let pool = EventLoopPool::new(1);

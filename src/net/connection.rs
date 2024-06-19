@@ -32,6 +32,7 @@ pub enum StateE {
 
 pub type ReadJob = Box<dyn FnMut(&mut BytesMut) + 'static + Send + Sync>;
 pub type WritJob = Box<dyn FnMut()->bool + 'static + Send + Sync>;
+pub type CloseJob = Box<dyn FnMut() + 'static + Send + Sync>;
 
 pub struct TcpConnection {
     event_loop: Arc<EventLoop>,
@@ -43,6 +44,7 @@ pub struct TcpConnection {
 
     read_job: ReadJob,
     writ_job: WritJob,
+    close_job: CloseJob,
 
     read_enabled: bool,
     write_enabled: bool,
@@ -64,6 +66,7 @@ impl TcpConnection {
 
             read_job: Box::new(move |_| { debug!("default read job"); }),
             writ_job: Box::new(move || { debug!("default write job"); true }),
+            close_job: Box::new(move || { debug!("default close job"); }),
 
             read_enabled: true,
             write_enabled: true,
@@ -84,6 +87,10 @@ impl TcpConnection {
 
     pub fn set_writ_job(&mut self, job: WritJob) {
         self.writ_job = job;
+    }
+
+    pub fn set_close_job(&mut self, job: CloseJob) {
+        self.close_job = job;
     }
 
     pub fn set_enabled(&mut self, enable: bool) {
@@ -111,14 +118,14 @@ impl TcpConnection {
                         (self.read_job)(&mut buf);
                         self.read_buffer = Some(buf);
                         self.read_triggered = false; 
-                        self.close_stream();
+                        self.handle_close();
                         break;
                     }
                 }
                 Err(e) => {
                     warn!("not implemented client err: {:?}", e);
                     self.read_triggered = false; 
-                    self.close_stream();
+                    self.handle_close();
                     break;
                 }
             };
@@ -156,7 +163,7 @@ impl TcpConnection {
                 self.write_triggered = false;
             }
             Ok(Some(_r)) => {
-                //debug!("Conn {:?}: write2 {} bytes", self.tcp_stream, r);
+                debug!("Conn: write2 {} bytes", _r);
                 if buf.len() > 0 {
                     self.write_buffer_sending = Some(buf.split());
                     return Ok(());
@@ -165,14 +172,14 @@ impl TcpConnection {
                 let ret = (self.writ_job)();
                 self.write_buffer_sending = Some(buf.split());
                 if ret == false {
-                    //debug!("close stream1");
-                    self.close_stream();
+                    debug!("close stream1");
+                    self.handle_close();
                 }
             }
             Err(e) => {
                 debug!("not implemented; client err: {:?}", e);
                 self.write_triggered = false;
-                //self.close_stream();
+                //self.handle_close();
             }
         }
 
@@ -214,16 +221,22 @@ impl TcpConnection {
     }
 
     fn handle_close(&mut self) -> io::Result<()> {
+        if self.closed {
+            return Ok(())
+        }
         self.set_enabled(false);
         self.closed = true;
         
+        //self.handle_read().unwrap();
+        (self.close_job)();
         // disable channel 是否意味着 disable triggered 
-        // close
+        self.close_stream();
         Ok(())
     }
 
     pub fn handle_event(&mut self, event: i64) -> io::Result<()> {
         let ready = ready_from_usize(event as usize);
+        debug!("handle_event ready: {:?}", ready);
         if ready.is_readable() {
             self.read_triggered = true; 
             self.handle_read().unwrap();
@@ -257,9 +270,6 @@ impl TcpConnection {
     }
 
     pub fn close_stream(&mut self) {
-        self.set_enabled(false);
-        self.closed = true;
-        // job set null
         self.event_loop.deregister(&self.tcp_stream).unwrap();
         debug!("close_stream {:?} deregister done", self.tcp_stream);
     }
