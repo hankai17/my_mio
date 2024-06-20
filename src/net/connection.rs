@@ -3,9 +3,9 @@ use net::{TryRead, TryWrite};
 use bytes::{BufMut, BytesMut};
 use event_imp::{ready_from_usize};
 use net::{EventLoop, TcpStream};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 use std::net::Shutdown;
-use log::{debug, info, warn, error};
+use log::{debug, warn};
 
 unsafe impl Send for TcpConnection {}
 unsafe impl Sync for TcpConnection {}
@@ -20,15 +20,6 @@ macro_rules! pub_struct {
     }
 }
 */
-
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
-pub enum StateE {
-#[warn(non_camel_case_types)]
-    Disconnected,
-    Connecting,
-    Connected,
-    Disconnecting,
-}
 
 pub type ReadJob = Box<dyn FnMut(&mut BytesMut) + 'static + Send + Sync>;
 pub type WritJob = Box<dyn FnMut()->bool + 'static + Send + Sync>;
@@ -118,14 +109,14 @@ impl TcpConnection {
                         (self.read_job)(&mut buf);
                         self.read_buffer = Some(buf);
                         self.read_triggered = false; 
-                        self.handle_close();
+                        self.handle_close().unwrap();
                         break;
                     }
                 }
                 Err(e) => {
                     warn!("not implemented client err: {:?}", e);
                     self.read_triggered = false; 
-                    self.handle_close();
+                    self.handle_close().unwrap();
                     break;
                 }
             };
@@ -173,7 +164,7 @@ impl TcpConnection {
                 self.write_buffer_sending = Some(buf.split());
                 if ret == false {
                     debug!("close stream1");
-                    self.handle_close();
+                    self.handle_close().unwrap();
                 }
             }
             Err(e) => {

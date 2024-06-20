@@ -2,13 +2,13 @@ use {channel, Poll, Events, Token, TokenAllocator, TokenType, TokenEntry};
 use event::Evented;
 use event_imp::{Ready, PollOpt, Job, ready_as_usize, TimerJob};
 use std::sync::atomic::{AtomicBool};
-use std::sync::atomic::Ordering::{self, Acquire, Release, AcqRel, Relaxed, SeqCst};
+use std::sync::atomic::Ordering::{self, Acquire};
 use timer::{self, Timer, Timeout};
 use std::{io, usize};
 use std::default::Default;
 use std::time::Duration;
 use std::{fmt, error, any};
-use std::sync::{Arc, Mutex, Barrier};
+use std::sync::{Arc, Mutex};
 use std::thread_local;
 use poll::CURRENT_TOKEN_ALLOCATOR;
 use std::thread::{self, JoinHandle};
@@ -124,7 +124,6 @@ unsafe impl Sync for EventLoop {}
 pub struct EventLoop {
     run: AtomicBool,
     pub poll: Poll,
-    events: UnsafeCell<Events>,
     timer: UnsafeCell<Timer<TimerJob>>,
     notify_tx: channel::SyncSender<i32>,
     notify_rx: channel::Receiver<i32>,
@@ -163,7 +162,6 @@ impl EventLoop {
         Ok(EventLoop {
             run: AtomicBool::new(false),
             poll,
-            events: UnsafeCell::new(Events::with_capacity(1024)),
             timer: UnsafeCell::new(timer),
             notify_tx: tx,
             notify_rx: rx,
@@ -238,7 +236,7 @@ impl EventLoop {
                             }
                         },
                         _ => {
-                            job_entry.state.lock().unwrap();
+                            //job_entry.state.lock().unwrap();
                             let job = &mut job_entry.job;
                             let ready = job_entry.ready;
                             job

@@ -1,7 +1,6 @@
 use {Poll, Token};
 use std::{fmt, io, ops};
 use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicPtr};
 use log::debug;
 
 const READABLE: usize = 0b00001;

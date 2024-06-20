@@ -1,7 +1,7 @@
 #![allow(deprecated)]
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT, AtomicPtr};
+use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 use std::time::Duration;
 use std::{cmp, i32};
 
@@ -14,7 +14,7 @@ use event_imp::{Event};
 use sys::unix::{cvt, UnixReady};
 use sys::unix::io::set_cloexec;
 use std::collections::HashMap;
-use log::{debug, info, error};
+use log::{debug, error};
 
 static NEXT_ID: AtomicUsize = ATOMIC_USIZE_INIT;
 

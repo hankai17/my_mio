@@ -9,7 +9,7 @@ use std::sync::atomic::Ordering::{self, Acquire, Release, AcqRel, Relaxed, SeqCs
 use std::time::{Duration, Instant};
 use std::collections::HashMap;
 use std::cell::RefCell;
-use log::{debug, info, trace};
+use log::{debug};
 
 use event_imp::{self as event, Ready, Event, Evented, PollOpt, Job, JobEntry, TokenEntry, TokenType};
 use {Token, sys};

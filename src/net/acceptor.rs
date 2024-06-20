@@ -1,6 +1,6 @@
 use net::{EventLoop, TcpStream, TcpListener};
 use std::net::{SocketAddr};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 use {PollOpt, Ready, Token, Job, TokenType, TokenEntry};
 
 pub type AcceptorJob = Box<dyn FnMut(TcpStream, SocketAddr) + 'static + Send + Sync>;

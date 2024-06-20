@@ -1,9 +1,6 @@
 use std::{io};
-use bytes::{BytesMut};
 use {PollOpt, Ready, Token, TokenType, TokenEntry};
-use net::{EventLoop, EventLoopBuilder, TcpStream, Acceptor, TcpConnection};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::net::{SocketAddr};
+use net::{EventLoop, EventLoopBuilder, TcpStream};
 use std::sync::{Arc, Mutex};
 use event_imp::ready_from_usize;
 use log::{debug, info, warn};
@@ -17,7 +14,6 @@ pub struct Connector {
     timer: Option<Timeout>,
     tcp_stream: Option<TcpStream>,
     event_loop: Arc<EventLoop>,
-    is_connected: bool,
     on_conn_job: ConnJob,
 }
 
@@ -36,7 +32,6 @@ impl Connector {
             timer: None,
             tcp_stream: None,
             event_loop,
-            is_connected: false,
             on_conn_job: Arc::new(Mutex::new(move |_| { true })),
         }
     }
@@ -88,7 +83,7 @@ impl Connector {
         }
 
         if ready.is_writable() {
-            self.handle_on_connect();
+            self.handle_on_connect().unwrap();
         }
 
         if ready.is_error() ||
@@ -106,7 +101,7 @@ impl Connector {
             enclose! {
                 (this)
                 move |val: i64| {
-                    this.lock().unwrap().handle_event(val);
+                    this.lock().unwrap().handle_event(val).unwrap();
                 }
             }
         ));
@@ -124,7 +119,7 @@ impl Connector {
                             info!("connect timeout");
                             let event_loop = this.lock().unwrap().event_loop.clone();
                             event_loop.clear_timeout(this.lock().unwrap().timer.as_ref().unwrap());
-                            event_loop.deregister(this.lock().unwrap().tcp_stream.as_ref().unwrap());
+                            event_loop.deregister(this.lock().unwrap().tcp_stream.as_ref().unwrap()).unwrap();
                             // close
                         }
                     }

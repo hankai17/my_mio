@@ -4,7 +4,6 @@ use net::{EventLoop, TcpStream, Acceptor, TcpConnection, Connector};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::net::{SocketAddr};
 use std::sync::{Arc, Mutex};
-use log::{debug, info, warn, error};
 
 macro_rules! enclose {
     ( ($( $x:ident ),*) $y:expr ) => {
@@ -59,7 +58,6 @@ unsafe impl Send for TcpServer {}
 unsafe impl Sync for TcpServer {}
 
 static SOCKET_TOKEN_ID: AtomicUsize = AtomicUsize::new(0);
-static CSOCKET_TOKEN_ID: AtomicUsize = AtomicUsize::new(0);
 
 impl TcpServer {
     pub fn new(event_loop: Arc<EventLoop>, addr: &String) -> TcpServer {
@@ -189,7 +187,7 @@ impl TcpClient {
     pub fn start_connect(&mut self, addr: &String,
             handler: Arc<Mutex<dyn ClientHandler + 'static + Send + Sync>>) {
         let event_loop = self.event_loop.clone();
-        let mut handler_clone = handler.clone();
+        let handler_clone = handler.clone();
 
         let conn_job = Arc::new(Mutex::new(move |stream: TcpStream| {
             let conn = Arc::new(Mutex::new(
@@ -244,7 +242,6 @@ impl TcpClient {
                 TokenEntry {
                     ttype: TokenType::SocketEvent, 
                     token: Token (
-                        //CSOCKET_TOKEN_ID.fetch_add(1, Ordering::Relaxed) + 1
                         fd as usize
                     )
                 },
