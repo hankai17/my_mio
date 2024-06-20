@@ -313,3 +313,5 @@ OthersEvent   |        |
     tunnel 压测
     当前问题是: cs关闭了 无法通知到ss
         需要重构connection? 加上close err处理
+- 240620
+    tunnel 多线程

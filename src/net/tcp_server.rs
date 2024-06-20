@@ -215,6 +215,15 @@ impl TcpClient {
                 })
             );
 
+            conn.lock().unwrap().set_close_job(
+                Box::new (enclose! {
+                    (handler)
+                    move || {
+                        handler.lock().unwrap().on_error()
+                    }
+                })
+            );
+
             let job = Arc::new(Mutex::new(
                 enclose! {
                     (conn)

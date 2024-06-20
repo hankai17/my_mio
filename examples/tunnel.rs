@@ -127,6 +127,14 @@ impl ClientHandler for Client {                                     // hankai2
 
     fn on_error(&mut self) {
         info!("connect error");
+        self.client_conn = None;
+        let s_conn = self.server_conn.take().unwrap();
+        let cs = match s_conn.upgrade() {
+            Some(conn) => conn.clone(),
+            None => return,
+        };
+        self.server_conn = Some(s_conn);
+        cs.lock().unwrap().shutdown(Shutdown::Write);
     }
 }
 
@@ -332,11 +340,10 @@ fn main() {
             )
         })
         .target(env_logger::Target::Pipe(target))
-        .filter(None, LevelFilter::Debug)
+        .filter(None, LevelFilter::Error)
         .init();
 
     debug!("Starting main");
-    /*
     let pool = EventLoopPool::new(1);
     for poller in pool.get_all_poller().iter() {
         let tcp_server = Arc::new(Mutex::new(
@@ -349,8 +356,8 @@ fn main() {
         TcpServer::start_internal(tcp_server);
     }
     pool.wait();
-    */
 
+    /*
     let mut b = EventLoopBuilder::new();
     b.notify_capacity(1_048_576)
         .messages_per_tick(64)
@@ -374,5 +381,6 @@ fn main() {
         debug!("spawn thread done");
     }
     sleep_ms(1000 * 1000);
+    */
 }
 
