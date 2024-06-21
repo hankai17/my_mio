@@ -63,6 +63,20 @@ impl ServerSession {               // tunnel的client端处理
             server_conn: None,
         }
     } 
+
+    pub fn get_client_conn(&mut self) -> Option<Arc<Mutex<TcpConnection>>> {
+        match self.client_conn.as_mut() {
+            Some(conn) => conn.upgrade(),
+            None => None,
+        }
+    }
+
+    pub fn get_server_conn(&mut self) -> Option<Arc<Mutex<TcpConnection>>> {
+        match self.server_conn.as_mut() {
+            Some(conn) => conn.upgrade(),
+            None => None,
+        }
+    }
 }
 
 impl Drop for ServerSession {
@@ -169,6 +183,29 @@ impl Tunnel {
         self.client.start_connect(&self.addr.to_string(), session.clone());
         self.server_session = Some(Arc::downgrade(&session));
     }
+
+    pub fn get_client_conn(&mut self) -> Option<Arc<Mutex<TcpConnection>>> {
+        match self.client_conn.as_mut() {
+            Some(conn) => conn.upgrade(),
+            None => None,
+        }
+    }
+
+    pub fn get_server_session(&mut self) -> Option<Arc<Mutex<ServerSession>>> {
+        match self.server_session.as_mut() {
+            Some(session) => session.upgrade(),
+            None => None,
+        }
+    }
+
+    pub fn get_server_conn(&mut self) -> Option<Arc<Mutex<TcpConnection>>> {
+        match self.get_server_session() {
+            Some(session) => {
+                session.lock().unwrap().get_server_conn()
+            },
+            None => None,
+        }
+    }
 }
 
 struct TunnelServer {
@@ -178,6 +215,14 @@ struct TunnelServer {
 }
 
 impl TunnelServer {
+    pub fn get_server_conn(&mut self) -> Option<Arc<Mutex<TcpConnection>>> {
+        match &self.tunnel {
+            Some(tunnel) => {
+                tunnel.lock().unwrap().get_server_conn()
+            },
+            None => None,
+        }
+    }
 }
 
 impl Drop for TunnelServer {
@@ -254,59 +299,10 @@ impl Handler for TunnelServer {
         }
         */
         //println!("bytes len: {}, {:?}", bytes.len(), bytes);
-        let ss = match &self.tunnel {
-            Some(tunnel) => {
-                match &tunnel.lock().unwrap().server_session {
-                    Some(handler) => {
-                        match handler.upgrade() {
-                            Some(cli) => {
-                                match &cli.lock().unwrap().server_conn {
-                                    Some(conn) => {
-                                        match conn.upgrade() {
-                                            Some(con) => con.clone(),
-                                            None => return,
-                                        }
-                                    },
-                                    None => return,
-                                }
-                            },
-                            None => return,
-                        }
-                    },
-                    None => return,
-                }
-            },
+        let ss = match self.get_server_conn() {
+            Some(conn) => conn.clone(),
             None => return,
         };
-
-        /*
-        let mut ss = self.tunnel.unwrap_or(None)
-                        .lock().unwrap()
-                        .server_session.unwrap_or(None)
-                        .upgrade().unwrap_or(None)
-                        .lock().unwrap()
-                        .server_conn.unwrap_or(None)
-                        .upgrade();
-        let mut ss = match ss {
-            Some(ss) => ss,
-            None => return,
-        };
-        */
-        //fn fun_lock()
-
-        /*
-        let mut ss = self.tunnel.unwrap_or(None)
-                        .lock().unwrap()
-                        .server_session.unwrap_or(None)
-                        .upgrade().unwrap_or(None)
-                        .lock().unwrap()
-                        .server_conn.unwrap_or(None)
-                        .upgrade();
-        let mut ss = match ss {
-            Some(ss) => ss,
-            None => return,
-        };
-        */
 
         ss.lock().unwrap().send(bytes.clone()).unwrap();
         bytes.advance(bytes.len());
@@ -319,28 +315,8 @@ impl Handler for TunnelServer {
     fn on_error(&mut self) {
         self.free_connection();
         debug!("TunnelServer on_error");
-        let ss = match &self.tunnel {
-            Some(tunnel) => {
-                match &tunnel.lock().unwrap().server_session {
-                    Some(handler) => {
-                        match handler.upgrade() {
-                            Some(cli) => {
-                                match &cli.lock().unwrap().server_conn {
-                                    Some(conn) => {
-                                        match conn.upgrade() {
-                                            Some(con) => con.clone(),
-                                            None => return,
-                                        }
-                                    },
-                                    None => return,
-                                }
-                            },
-                            None => return,
-                        }
-                    },
-                    None => return,
-                }
-            },
+        let ss = match self.get_server_conn() {
+            Some(conn) => conn.clone(),
             None => return,
         };
         ss.lock().unwrap().shutdown(Shutdown::Write).unwrap();
