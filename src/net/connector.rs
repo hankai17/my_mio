@@ -43,16 +43,6 @@ impl Connector {
     fn handle_on_connect(&mut self) -> io::Result<()> {
         // check connect ret
         // del event
-        //let _ = (self.on_conn_job.lock().unwrap())(self.tcp_stream.take().unwrap());
-        /*
-        let cb = match self.on_conn_job.lock() {
-            Some(cb) => cb,
-            None => {
-                debug!("cb is None");
-                assert_eq!(0, 1);
-            },
-        };
-        */
         let mut cb = self.on_conn_job.lock().unwrap();
 
         let stream = match self.tcp_stream.take() {
@@ -63,6 +53,7 @@ impl Connector {
                 return Ok(());
             },
         };
+        println!("stream: {:?}", stream);
 
         cb(stream);
 

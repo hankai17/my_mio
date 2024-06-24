@@ -95,12 +95,10 @@ impl ClientHandler for ServerSession {
 
     fn on_connect(&mut self, new_conn: Arc<Mutex<TcpConnection>>) {
         // if connected
-        let conn = self.client_conn.take().unwrap();
-        let cs = match conn.upgrade() {
+        let cs = match self.get_client_conn() {
             Some(conn) => conn.clone(),
             None => return,
         };
-        self.client_conn = Some(conn);
 
         let poller = EventLoopBuilder::get_current_loop();
         let job = Arc::new(Mutex::new(move|| {
@@ -119,18 +117,14 @@ impl ClientHandler for ServerSession {
 
     fn on_recv(&mut self, bytes: &mut BytesMut) {
         info!("on_recv: {:?}", bytes);
-        let conn = self.client_conn.take().unwrap();
-        let cs = match conn.upgrade() {
+        let cs = match self.get_client_conn() {
             Some(conn) => conn.clone(),
             None => return,
         };
-        self.client_conn = Some(conn);
-        
         if bytes.len() > 0 {
             cs.lock().unwrap().send(bytes.clone()).unwrap();
             bytes.advance(bytes.len());
         }
-
         // job?
     }
 
@@ -141,13 +135,10 @@ impl ClientHandler for ServerSession {
 
     fn on_error(&mut self) {
         info!("connect error");
-        self.server_conn = None;
-        let conn = self.client_conn.take().unwrap();
-        let cs = match conn.upgrade() {
+        let cs = match self.get_client_conn() {
             Some(conn) => conn.clone(),
             None => return,
         };
-        self.client_conn = Some(conn);
         cs.lock().unwrap().shutdown(Shutdown::Write).unwrap();
     }
 }
@@ -171,14 +162,12 @@ impl Tunnel {
     }
 
     pub fn connect(&mut self) {
-        let conn = self.client_conn.take().unwrap();
-        let s_conn_clone = match conn.upgrade() {
+        let cs = match self.get_client_conn() {
             Some(conn) => conn.clone(),
             None => return,
         };
-        self.client_conn = Some(conn);
         let session = Arc::new(Mutex::new(ServerSession::new(
-            Arc::downgrade(&s_conn_clone)
+            Arc::downgrade(&cs)
         )));
         self.client.start_connect(&self.addr.to_string(), session.clone());
         self.server_session = Some(Arc::downgrade(&session));
@@ -210,11 +199,18 @@ impl Tunnel {
 
 struct TunnelServer {
     //timer: Option<Timeout>, //pub type TimerJob = Box<dyn FnMut() + 'static + Send + Sync>;
-    conn: Option<Weak<Mutex<TcpConnection>>>,
+    client_conn: Option<Weak<Mutex<TcpConnection>>>,
     tunnel: Option<Arc<Mutex<Tunnel>>>
 }
 
 impl TunnelServer {
+    pub fn get_client_conn(&mut self) -> Option<Arc<Mutex<TcpConnection>>> {
+        match &self.client_conn {
+            Some(conn) => conn.upgrade(),
+            None => None,
+        }
+    }
+
     pub fn get_server_conn(&mut self) -> Option<Arc<Mutex<TcpConnection>>> {
         match &self.tunnel {
             Some(tunnel) => {
@@ -235,34 +231,30 @@ impl Handler for TunnelServer {
     fn new() -> TunnelServer {
         TunnelServer {
             //timer: None,
-            conn: None,
+            client_conn: None,
             tunnel: None,
         }
     }
 
     fn attach_connection(&mut self, conn: Arc<Mutex<TcpConnection>>) {
-        self.conn = Some(Arc::downgrade(&conn));
+        self.client_conn = Some(Arc::downgrade(&conn));
     }
 
     fn free_connection(&mut self) {
-        self.conn = None;
+        self.client_conn = None;
     }
 
     fn on_accept(&mut self) {
-        let conn = self.conn.take().unwrap();
-        let conn_clone = match conn.upgrade() {
+        let cc = match self.get_client_conn() {
             Some(conn) => conn.clone(),
             None => return,
         };
-        self.conn = Some(conn);
         let event_loop = EventLoopBuilder::get_current_loop();
-
-
         let tunnel = Arc::new(Mutex::new(
             Tunnel::new(
                 event_loop.clone(),
                 &"127.0.0.1:80".to_string(),
-                Arc::downgrade(&conn_clone))
+                Arc::downgrade(&cc))
         ));
         tunnel.lock().unwrap().connect();
         self.tunnel = Some(tunnel.clone());
@@ -347,11 +339,12 @@ fn main() {
             )
         })
         .target(env_logger::Target::Pipe(target))
-        .filter(None, LevelFilter::Error)
+        .filter(None, LevelFilter::Debug)
         .init();
 
     debug!("Starting main");
-    let pool = EventLoopPool::new(1);
+    /*
+    let pool = EventLoopPool::new(4);
     for poller in pool.get_all_poller().iter() {
         let tcp_server = Arc::new(Mutex::new(
             TcpServer::new(
@@ -363,8 +356,8 @@ fn main() {
         TcpServer::start_internal(tcp_server);
     }
     pool.wait();
+    */
 
-    /*
     let mut b = EventLoopBuilder::new();
     b.notify_capacity(1_048_576)
         .messages_per_tick(64)
@@ -373,21 +366,24 @@ fn main() {
         .timer_capacity(65536);
     
     let event_loop = b.get_build().unwrap();
-
-    let tcp_server = Arc::new(Mutex::new(TcpServer::new(event_loop.clone(), &"0.0.0.0:9528".to_string())));
+    let tcp_server = Arc::new(Mutex::new(
+            TcpServer::new(
+                event_loop.clone(),
+                &"0.0.0.0:9528".to_string()
+            )
+    ));
     tcp_server.lock().unwrap().start::<TunnelServer>();
     TcpServer::start_internal(tcp_server);
 
-    for i in 0..1 {
+    for _i in 0..1 {
         let clone = event_loop.clone();
         thread::spawn(move || {
             EventLoopBuilder::set_current_loop(clone.clone());
-            clone.run();
+            clone.run().unwrap();
             debug!("clone run done");
         });
         debug!("spawn thread done");
     }
     sleep_ms(1000 * 1000);
-    */
 }
 

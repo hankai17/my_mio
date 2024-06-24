@@ -315,3 +315,7 @@ OthersEvent   |        |
         需要重构connection? 加上close err处理
 - 240620
     tunnel 多线程
+
+- 240624
+    handle_write 的 close处理
+    connector 的 handle_close处理
