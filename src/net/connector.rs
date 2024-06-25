@@ -41,8 +41,6 @@ impl Connector {
     }
 
     fn handle_on_connect(&mut self) -> io::Result<()> {
-        // check connect ret
-        // del event
         let mut cb = self.on_conn_job.lock().unwrap();
 
         let stream = match self.tcp_stream.take() {
@@ -53,7 +51,19 @@ impl Connector {
                 return Ok(());
             },
         };
+
         println!("stream: {:?}", stream);
+        /*
+        match stream.take_error() {     // io::Result<Option<io::Error>> 
+            Ok(res) => {
+                warn!("res: {:?}", res);
+                cb(stream);
+                self.handle_close();    // 需要把错误抛到上层?
+                return Ok(());
+            },
+            Err(err) => {},
+        }
+        */
 
         cb(stream);
 
@@ -79,6 +89,17 @@ impl Connector {
 
         if ready.is_error() ||
                 ready.is_hup() {
+        }
+        Ok(())
+    }
+
+    pub fn handle_close(&mut self) -> io::Result<()> {
+        match self.tcp_stream.as_mut() {
+            Some(stream) => {
+                self.event_loop.deregister(stream).unwrap();
+            },
+            None => {
+            },
         }
         Ok(())
     }

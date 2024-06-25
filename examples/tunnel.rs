@@ -55,7 +55,7 @@ struct ServerSession {
     server_conn: Option<Weak<Mutex<TcpConnection>>>,
 }
 
-impl ServerSession {               // tunnel的client端处理
+impl ServerSession {
     fn new(conn: Weak<Mutex<TcpConnection>>) -> ServerSession {
         ServerSession {
             //timer: None,
@@ -94,7 +94,14 @@ impl ClientHandler for ServerSession {
     }
 
     fn on_connect(&mut self, new_conn: Arc<Mutex<TcpConnection>>) {
-        // if connected
+        match new_conn.lock().unwrap().tcp_stream.take_error() {
+            Ok(res) => {
+                debug!("on_connect failed: {:?}", res);
+                self.on_error();
+                return;
+            },
+            Err(err) => {},
+        }
         let cs = match self.get_client_conn() {
             Some(conn) => conn.clone(),
             None => return,
@@ -139,6 +146,7 @@ impl ClientHandler for ServerSession {
             Some(conn) => conn.clone(),
             None => return,
         };
+        debug!("close client session");
         cs.lock().unwrap().shutdown(Shutdown::Write).unwrap();
     }
 }

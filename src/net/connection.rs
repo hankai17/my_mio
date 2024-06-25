@@ -170,7 +170,7 @@ impl TcpConnection {
             Err(e) => {
                 debug!("not implemented; client err: {:?}", e);
                 self.write_triggered = false;
-                //self.handle_close().unwrap();
+                self.handle_close().unwrap();
             }
         }
 
