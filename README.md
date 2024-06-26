@@ -319,3 +319,10 @@ OthersEvent   |        |
 - 240624
     handle_write 的 close处理
     connector 的 handle_close处理
+- 240626
+    是直接handle_close 
+        有死锁的可能
+    还是 把handle_close放到job里 然后enqueue 队列里?
+    !!!!!! 应用层的实现中(eg: on_connect/on_recv) 不能有对vc的直接操作 必须enqueu队列处理 否则会死锁
+    因为一旦操作了 就可能 导致session上层死锁
+

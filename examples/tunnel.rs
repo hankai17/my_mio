@@ -97,7 +97,7 @@ impl ClientHandler for ServerSession {
         match new_conn.lock().unwrap().tcp_stream.take_error() {
             Ok(res) => {
                 debug!("on_connect failed: {:?}", res);
-                self.on_error();
+                //self.on_error(); // 禁止这样调用!
                 return;
             },
             Err(err) => {},
@@ -147,7 +147,12 @@ impl ClientHandler for ServerSession {
             None => return,
         };
         debug!("close client session");
-        cs.lock().unwrap().shutdown(Shutdown::Write).unwrap();
+
+        let poller = EventLoopBuilder::get_current_loop();
+        let job = Arc::new(Mutex::new(move|| {
+            cs.lock().unwrap().shutdown(Shutdown::Write).unwrap();
+        }));
+        enqueue_job(poller.clone(), job);
     }
 }
 
@@ -319,7 +324,12 @@ impl Handler for TunnelServer {
             Some(conn) => conn.clone(),
             None => return,
         };
-        ss.lock().unwrap().shutdown(Shutdown::Write).unwrap();
+
+        let poller = EventLoopBuilder::get_current_loop();
+        let job = Arc::new(Mutex::new(move|| {
+            ss.lock().unwrap().shutdown(Shutdown::Write).unwrap();
+        }));
+        enqueue_job(poller.clone(), job);
     }
 }
 

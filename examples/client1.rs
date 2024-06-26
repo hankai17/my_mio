@@ -88,7 +88,7 @@ impl ClientHandler for TestClient {
             let mut conn = conn.lock().unwrap();
             conn.send(
                 BytesMut::from(&b"GET /klsdjf HTTP/1.1\r\nHost: 0.0.0.0:90\r\nUser-Agent: curl/7.61.1\r\nAccept: */*\r\n"[..])
-            ).unwrap(); // 由于已经调用过conn->set_writ_job 且writ_job也是ClientHandler 所以死锁
+            ).unwrap(); // 由于已经调用过conn->set_writ_job 且writ_job也是ClientHandler 所以死锁 // 是由于on_connect跟send完后调用的on_recv均需要 clienthandler的锁导致
         }));
         enqueue_job(poller.clone(), job);
     }

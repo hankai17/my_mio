@@ -169,6 +169,7 @@ impl TcpConnection {
             }
             Err(e) => {
                 debug!("not implemented; client err: {:?}", e);
+                self.write_buffer_sending = Some(buf.split());
                 self.write_triggered = false;
                 self.handle_close().unwrap();
             }
@@ -178,6 +179,7 @@ impl TcpConnection {
     }
 
     pub fn send(&mut self, bytes: BytesMut) -> io::Result<usize> {
+        // triggered TODO
         if self.write_enabled == false {
             return Ok(0);
         }
@@ -227,7 +229,7 @@ impl TcpConnection {
 
     pub fn handle_event(&mut self, event: i64) -> io::Result<()> {
         let ready = ready_from_usize(event as usize);
-        debug!("handle_event ready: {:?}", ready);
+        debug!("stream: {:?}, handle_event ready: {:?}", self.tcp_stream, ready);
         if ready.is_readable() {
             self.read_triggered = true; 
             self.handle_read().unwrap();

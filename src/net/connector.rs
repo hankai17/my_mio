@@ -52,7 +52,6 @@ impl Connector {
             },
         };
 
-        println!("stream: {:?}", stream);
         /*
         match stream.take_error() {     // io::Result<Option<io::Error>> 
             Ok(res) => {
@@ -72,7 +71,7 @@ impl Connector {
 
     pub fn handle_event(&mut self, event: i64) -> io::Result<()> {
         let ready = ready_from_usize(event as usize);
-        debug!("ready: {:?}", ready);
+        debug!("connect stream: {:?}, ready: {:?}", self.tcp_stream.as_mut().unwrap(), ready);
 
         match &self.timer {
             Some(timer) => {
