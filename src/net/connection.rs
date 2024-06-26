@@ -92,11 +92,10 @@ impl TcpConnection {
     fn handle_read(&mut self) -> io::Result<()> {
         // read_enabled
         loop {
-            let mut buf = self.read_buffer.take().unwrap();
+            let mut buf = self.read_buffer.as_mut().unwrap();
             match self.tcp_stream.try_read_buf(&mut buf) {
                 Ok(None) => {
                     warn!("Conn: spurious read wakeup");
-                    self.read_buffer = Some(buf);
                     self.read_triggered = false; 
                     break;
                 }
@@ -104,10 +103,8 @@ impl TcpConnection {
                     debug!("Conn: read {} bytes, {:?}", r, buf);
                     if r > 0 {
                         (self.read_job)(&mut buf);
-                        self.read_buffer = Some(buf);
                     } else {
                         (self.read_job)(&mut buf);
-                        self.read_buffer = Some(buf);
                         self.read_triggered = false; 
                         self.handle_close().unwrap();
                         break;
@@ -126,21 +123,18 @@ impl TcpConnection {
 
     fn write_data(&mut self) -> io::Result<()> {
         let mut buf_tmp = Some(BytesMut::with_capacity(1024)).unwrap();
-        let mut buf_snd = self.write_buffer_sending.take().unwrap();
+        let buf_snd = self.write_buffer_sending.as_mut().unwrap();
         if buf_snd.len() > 0 {
             buf_tmp = buf_snd.split();
         }
         if buf_tmp.len() == 0 {
             loop {
-                let mut buf = self.write_buffer_waiting.take().unwrap();
+                let buf = self.write_buffer_waiting.as_mut().unwrap();
                 if buf.len() > 0 {
                     buf_tmp = buf.split();
-                    self.write_buffer_waiting = Some(buf);
                     break;
                 }
                 // onWritten() // all data consumed done
-                self.write_buffer_waiting = Some(buf);
-                self.write_buffer_sending = Some(buf_snd);
                 return Ok(())
             }
         }
@@ -150,18 +144,15 @@ impl TcpConnection {
         match self.tcp_stream.try_write_buf(&mut buf) {
             Ok(None) => {
                 debug!("client flushing buf; WouldBlock");
-                self.write_buffer_sending = Some(buf.split());
                 self.write_triggered = false;
             }
             Ok(Some(_r)) => {
                 debug!("Conn: write2 {} bytes", _r);
                 if buf.len() > 0 {
-                    self.write_buffer_sending = Some(buf.split());
                     return Ok(());
                 }
                 self.write_triggered = false;
                 let ret = (self.writ_job)();
-                self.write_buffer_sending = Some(buf.split());
                 if ret == false {
                     debug!("close stream1");
                     self.handle_close().unwrap();
@@ -169,7 +160,6 @@ impl TcpConnection {
             }
             Err(e) => {
                 debug!("not implemented; client err: {:?}", e);
-                self.write_buffer_sending = Some(buf.split());
                 self.write_triggered = false;
                 self.handle_close().unwrap();
             }
@@ -187,9 +177,8 @@ impl TcpConnection {
         if len == 0 {
             return Ok(0);
         }
-        let mut buffer = self.write_buffer_waiting.take().unwrap();
+        let buffer = self.write_buffer_waiting.as_mut().unwrap();
         buffer.put(bytes);
-        self.write_buffer_waiting = Some(buffer);
         self.write_data().unwrap();
         return Ok(len);
     }

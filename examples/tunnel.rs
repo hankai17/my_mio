@@ -100,7 +100,7 @@ impl ClientHandler for ServerSession {
                 //self.on_error(); // 禁止这样调用!
                 return;
             },
-            Err(err) => {},
+            Err(_) => {},
         }
         let cs = match self.get_client_conn() {
             Some(conn) => conn.clone(),
