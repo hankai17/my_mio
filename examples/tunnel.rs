@@ -308,9 +308,14 @@ impl Handler for TunnelServer {
             Some(conn) => conn.clone(),
             None => return,
         };
-
-        ss.lock().unwrap().send(bytes.clone()).unwrap();
+        let poller = EventLoopBuilder::get_current_loop();
+        let bytes_clone = bytes.clone();
+        let job = Arc::new(Mutex::new(move|| {
+            ss.lock().unwrap().send(bytes_clone.clone()).unwrap();
+            //ss.lock().unwrap().send(bytes_clone).unwrap();
+        }));
         bytes.advance(bytes.len());
+        enqueue_job(poller.clone(), job);
     }
 
     fn on_written(&mut self) -> bool {
@@ -393,7 +398,7 @@ fn main() {
     tcp_server.lock().unwrap().start::<TunnelServer>();
     TcpServer::start_internal(tcp_server);
 
-    for _i in 0..1 {
+    for _i in 0..2 {
         let clone = event_loop.clone();
         thread::spawn(move || {
             EventLoopBuilder::set_current_loop(clone.clone());
