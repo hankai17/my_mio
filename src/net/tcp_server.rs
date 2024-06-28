@@ -4,6 +4,7 @@ use net::{EventLoop, TcpStream, Acceptor, TcpConnection, Connector};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::net::{SocketAddr};
 use std::sync::{Arc, Mutex};
+use log::{debug};
 
 macro_rules! enclose {
     ( ($( $x:ident ),*) $y:expr ) => {
@@ -74,6 +75,7 @@ impl TcpServer {
         let session = self.session_alloc.unwrap()();
         session.lock().unwrap().attach_connection(conn.clone());
         session.lock().unwrap().on_accept();
+        debug!("accept: {:?}", &conn.lock().unwrap().tcp_stream);
 
         conn.lock().unwrap().set_read_job(
             Box::new (enclose! {

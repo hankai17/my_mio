@@ -94,7 +94,43 @@ impl ClientHandler for ServerSession {
     }
 
     fn on_connect(&mut self, new_conn: Arc<Mutex<TcpConnection>>) {
-        match new_conn.lock().unwrap().tcp_stream.take_error() {
+        /*
+        let ok = match new_conn.lock().unwrap().tcp_stream.take_error() {
+            Ok(res) => {
+                debug!("on_connect failed: {:?}", res);
+                //self.on_error(); // 禁止这样调用!
+                false
+            },
+            Err(_) => { true },
+        };
+        let cs = match self.get_client_conn() {
+            Some(conn) => conn.clone(),
+            None => return,
+        };
+
+        let poller = EventLoopBuilder::get_current_loop();
+        if ok {
+            let job = Arc::new(Mutex::new(move|| {
+                let mut ss = new_conn.lock().unwrap();
+                //ss 监听读
+                let mut bytes = cs.lock().unwrap().read_buffer.take().unwrap();
+                let len = bytes.len();
+                if len > 0 {
+                    ss.send(bytes.clone()).unwrap();
+                    bytes.advance(len);
+                }
+                cs.lock().unwrap().read_buffer = Some(bytes);
+            }));
+            enqueue_job(poller.clone(), job);
+        } else {
+            let job = Arc::new(Mutex::new(move|| {
+                //self.on_error(); 
+                cs.lock().unwrap().shutdown(Shutdown::Write).unwrap();
+            }));
+            enqueue_job(poller.clone(), job);
+        }
+        */
+		match new_conn.lock().unwrap().tcp_stream.take_error() {
             Ok(res) => {
                 debug!("on_connect failed: {:?}", res);
                 //self.on_error(); // 禁止这样调用!
