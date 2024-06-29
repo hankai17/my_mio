@@ -25,7 +25,8 @@ pub enum NotifyError<T> {
 impl<M: any::Any> error::Error for NotifyError<M> {
     fn description(&self) -> &str {
         match *self {
-            NotifyError::Io(ref err) => err.description(),
+            //NotifyError::Io(ref err) => err.description(),
+            NotifyError::Io(ref _err) => "io err todo",
             NotifyError::Closed(..) => "The receiving end has hung up",
             NotifyError::Full(..) => "Queue is full"
         }
