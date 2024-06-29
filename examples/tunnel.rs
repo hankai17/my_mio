@@ -132,9 +132,11 @@ impl ClientHandler for ServerSession {
         */
 		match new_conn.lock().unwrap().tcp_stream.take_error() {
             Ok(res) => {
-                debug!("on_connect failed: {:?}", res);
-                //self.on_error(); // 禁止这样调用!
-                return;
+                if let Some(res) = res {
+                    debug!("on_connect failed: {:?}", res);
+                    //self.on_error(); // 禁止这样调用!
+                    return;
+                }
             },
             Err(_) => {},
         }
@@ -146,14 +148,14 @@ impl ClientHandler for ServerSession {
         let poller = EventLoopBuilder::get_current_loop();
         let job = Arc::new(Mutex::new(move|| {
             let mut ss = new_conn.lock().unwrap();
-            //ss 监听读
-            let mut bytes = cs.lock().unwrap().read_buffer.take().unwrap();
+            let mut cs = cs.lock().unwrap();
+            //let mut bytes = cs.lock().unwrap().read_buffer.as_mut().unwrap(); // 借用了一个drop的值 // 在这一行bytes立即被drop了
+            let bytes = cs.read_buffer.as_mut().unwrap();
             let len = bytes.len();
             if len > 0 {
                 ss.send(bytes.clone()).unwrap();
                 bytes.advance(len);
             }
-            cs.lock().unwrap().read_buffer = Some(bytes);
         }));
         enqueue_job(poller.clone(), job);
     }
@@ -368,7 +370,8 @@ impl Handler for TunnelServer {
 
         let poller = EventLoopBuilder::get_current_loop();
         let job = Arc::new(Mutex::new(move|| {
-            ss.lock().unwrap().shutdown(Shutdown::Write).unwrap();
+            //ss.lock().unwrap().shutdown(Shutdown::Write).unwrap();
+            ss.lock().unwrap().shutdown(Shutdown::Write);
         }));
         enqueue_job(poller.clone(), job);
     }
@@ -398,7 +401,7 @@ fn main() {
             )
         })
         .target(env_logger::Target::Pipe(target))
-        .filter(None, LevelFilter::Debug)
+        .filter(None, LevelFilter::Warn)
         .init();
 
     debug!("Starting main");
@@ -434,7 +437,7 @@ fn main() {
     tcp_server.lock().unwrap().start::<TunnelServer>();
     TcpServer::start_internal(tcp_server);
 
-    for _i in 0..2 {
+    for _i in 0..4 {
         let clone = event_loop.clone();
         thread::spawn(move || {
             EventLoopBuilder::set_current_loop(clone.clone());
