@@ -3,7 +3,7 @@ Thread 6 (Thread 0x7feecd60c700 (LWP 47129)):
 #0  0x00007feeceecb9bd in syscall () from /usr/lib64/libc.so.6
 #1  0x0000557e5506bda4 in std::sys::unix::futex::futex_wait () at library/std/src/sys/unix/futex.rs:62
 #2  std::sys::unix::locks::futex_mutex::Mutex::lock_contended () at library/std/src/sys/unix/locks/futex_mutex.rs:56
-#3  0x0000557e55097910 in my_mio::net::tcp_server::TcpClient::start_connect::{{closure}}::{{closure}} () at library/std/src/sys/unix/futex.rs:104
+#3  0x0000557e55097910 in my_mio::net::tcp_server::TcpClient::start_connect::{{closure}}::{{closure}} () at library/std/src/sys/unix/futex.rs:104   ############## hankai1 osvc的锁 -> handler的锁
 #4  0x0000557e5509f43f in my_mio::net::event_loop::EventLoop::run_once () at library/std/src/sys/unix/futex.rs:104
 #5  0x0000557e5509f7e7 in my_mio::net::event_loop::EventLoop::run () at library/std/src/sys/unix/futex.rs:104
 #6  0x0000557e55078ef8 in std::sys_common::backtrace::__rust_begin_short_backtrace () at library/std/src/sys/unix/futex.rs:104
@@ -17,10 +17,10 @@ Thread 5 (Thread 0x7feecd80d700 (LWP 47128)):
 #0  0x00007feeceecb9bd in syscall () from /usr/lib64/libc.so.6
 #1  0x0000557e5506bda4 in std::sys::unix::futex::futex_wait () at library/std/src/sys/unix/futex.rs:62
 #2  std::sys::unix::locks::futex_mutex::Mutex::lock_contended () at library/std/src/sys/unix/locks/futex_mutex.rs:56
-#3  0x0000557e5506efd4 in <tunnel::ServerSession as my_mio::net::tcp_server::ClientHandler>::on_connect () at library/std/src/sys/unix/futex.rs:104
-#4  0x0000557e55096796 in my_mio::net::tcp_server::TcpClient::start_connect::{{closure}} () at library/std/src/sys/unix/futex.rs:104
-#5  0x0000557e550a45f1 in my_mio::net::connector::Connector::handle_event () at library/std/src/sys/unix/futex.rs:104
-#6  0x0000557e550a5300 in my_mio::net::connector::Connector::connect::{{closure}} () at library/std/src/sys/unix/futex.rs:104
+#3  0x0000557e5506efd4 in <tunnel::ServerSession as my_mio::net::tcp_server::ClientHandler>::on_connect () at librtex.rs:104                ################# hankaiy osvc的锁? vc的锁? 应该是osvc的锁 即 handler -> osvc
+#4  0x0000557e55096796 in my_mio::net::tcp_server::TcpClient::start_connect::{{closure}} () at library/std/src/sys/unix/futex.rs:104        ################# hankaix handler的锁
+#5  0x0000557e550a45f1 in my_mio::net::connector::Connector::handle_event () at library/std/src/sys/unix/futex.rs:104                       ################# hankai2 拿到cb(conn_job的锁)的锁
+#6  0x0000557e550a5300 in my_mio::net::connector::Connector::connect::{{closure}} () at library/std/src/sys/unix/futex.rs:104               ################# hankai1 connector的锁
 #7  0x0000557e5509f43f in my_mio::net::event_loop::EventLoop::run_once () at library/std/src/sys/unix/futex.rs:104
 #8  0x0000557e5509f7e7 in my_mio::net::event_loop::EventLoop::run () at library/std/src/sys/unix/futex.rs:104
 #9  0x0000557e55078ef8 in std::sys_common::backtrace::__rust_begin_short_backtrace () at library/std/src/sys/unix/futex.rs:104
