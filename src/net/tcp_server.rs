@@ -195,6 +195,18 @@ impl TcpClient {
             let conn = Arc::new(Mutex::new(
                 TcpConnection::new(event_loop.clone(), stream)
             ));
+            
+            match conn.lock().unwrap().tcp_stream.take_error() {
+                Ok(res) => {
+                    if let Some(res) = res {
+                        debug!("start_connect connect failed: {:?}", res);
+                        handler_clone.lock().unwrap().on_error();
+                        return false;
+                    }
+                },
+                Err(_) => {},
+            }
+
             handler_clone.lock().unwrap().attach_connection(conn.clone());
 
             conn.lock().unwrap().set_read_job(

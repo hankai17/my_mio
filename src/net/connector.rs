@@ -64,7 +64,9 @@ impl Connector {
         }
         */
 
-        cb(stream);
+        let res = cb(stream);
+        if res == false {
+        }
 
         Ok(())
     }

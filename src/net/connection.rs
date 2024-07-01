@@ -95,7 +95,7 @@ impl TcpConnection {
             let mut buf = self.read_buffer.as_mut().unwrap();
             match self.tcp_stream.try_read_buf(&mut buf) {
                 Ok(None) => {
-                    warn!("Conn: spurious read wakeup");
+                    debug!("Conn: spurious read wakeup");
                     self.read_triggered = false; 
                     break;
                 }
