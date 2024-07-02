@@ -10,17 +10,6 @@ use log::{debug, warn};
 unsafe impl Send for TcpConnection {}
 unsafe impl Sync for TcpConnection {}
 
-/*
-macro_rules! pub_struct {
-    ($name:ident {$($field:ident: $t:ty,)*}) => {
-        #[derive(Debug, Clone, PartialEq)]
-        pub struct $name {
-            $(pub $field: $t),*
-        }
-    }
-}
-*/
-
 pub type ReadJob = Box<dyn FnMut(&mut BytesMut) + 'static + Send + Sync>;
 pub type WritJob = Box<dyn FnMut()->bool + 'static + Send + Sync>;
 pub type CloseJob = Box<dyn FnMut() + 'static + Send + Sync>;
@@ -28,7 +17,6 @@ pub type CloseJob = Box<dyn FnMut() + 'static + Send + Sync>;
 pub struct TcpConnection {
     event_loop: Arc<EventLoop>,
     pub tcp_stream: TcpStream,
-    // timer
     pub read_buffer: Option<BytesMut>,
     write_buffer_sending: Option<BytesMut>,
     write_buffer_waiting: Option<BytesMut>,
@@ -90,7 +78,6 @@ impl TcpConnection {
     }
 
     fn handle_read(&mut self) -> io::Result<()> {
-        // read_enabled
         loop {
             let mut buf = self.read_buffer.as_mut().unwrap();
             match self.tcp_stream.try_read_buf(&mut buf) {
@@ -134,13 +121,12 @@ impl TcpConnection {
                     buf_tmp = buf.split();
                     break;
                 }
-                // onWritten() // all data consumed done
                 return Ok(())
             }
         }
 
         let mut buf = buf_tmp;
-        //debug!("Conn {:?}: write1 ", self.tcp_stream);
+        debug!("Conn {:?}: write1 ", self.tcp_stream);
         match self.tcp_stream.try_write_buf(&mut buf) {
             Ok(None) => {
                 debug!("client flushing buf; WouldBlock");
@@ -169,7 +155,6 @@ impl TcpConnection {
     }
 
     pub fn send(&mut self, bytes: BytesMut) -> io::Result<usize> {
-        // triggered TODO
         if self.write_enabled == false {
             return Ok(0);
         }
@@ -193,9 +178,7 @@ impl TcpConnection {
             empty_sending = true;
         }
         if empty_waiting && empty_sending {
-            // disable write
-            //debug!("handle_write disable write TODO");
-            // do nothing ?
+            debug!("handle_write disable write TODO");
         } else {
             self.write_data().unwrap();
         }
@@ -209,9 +192,7 @@ impl TcpConnection {
         self.set_enabled(false);
         self.closed = true;
         
-        //self.handle_read().unwrap();
         (self.close_job)();
-        // disable channel 是否意味着 disable triggered 
         self.close_stream();
         Ok(())
     }
@@ -239,14 +220,10 @@ impl TcpConnection {
     pub fn shutdown(&mut self, how: Shutdown) -> io::Result<()> {
         if how == Shutdown::Read {
             self.read_enabled = false;
-            // clear read buffer
         } else if how == Shutdown::Write {
             self.write_enabled = false;
-            // clear write buffer
         } else {
             self.set_enabled(false);
-            // clear read buffer
-            // clear write buffer
         }
         self.tcp_stream.shutdown(how)
     }
@@ -259,7 +236,6 @@ impl TcpConnection {
 
 impl Drop for TcpConnection {
     fn drop(&mut self) {
-        // assert(self.state == StateE::Disconnected);
         debug!("drop for tcpconnection {:?}", self.tcp_stream)
     }
 }

@@ -12,11 +12,8 @@ pub struct Acceptor {
     tcp_listener: TcpListener,
     event_loop: Arc<EventLoop>,
     is_listening: bool,
-    accept_cb: fn(TcpStream, SocketAddr),
     acceptor_job: AcceptorJob
 }
-
-fn default_accept_cb(_stream: TcpStream, _addr: SocketAddr) {}
 
 impl Acceptor {
     pub fn new(event_loop: Arc<EventLoop>, addr: &String) -> Acceptor {
@@ -24,28 +21,14 @@ impl Acceptor {
             tcp_listener: TcpListener::new(&(addr.parse().unwrap())),
             event_loop: event_loop,
             is_listening: false,
-            accept_cb: default_accept_cb,
             acceptor_job: Box::new(move |_, _| { println!("default acceptor job"); })
         }
-    }
-
-    //pub fn set_accept_cb(&mut self, cb: impl Fn(TcpStream, SocketAddr)) {
-    //pub fn set_accept_cb(&mut self, cb: FnMut(TcpStream, SocketAddr)) {
-    //pub fn set_accept_cb(&mut self, cb: FnMut(TcpStream, SocketAddr)) {
-    pub fn set_accept_cb(&mut self, cb: fn(TcpStream, SocketAddr)) {
-        self.accept_cb = cb;
     }
 
     pub fn set_accept_job(&mut self, job: AcceptorJob) {
         self.acceptor_job = job;
     }
 
-    /*
-    pub fn accept(&self) -> io::Result<(TcpStream, SocketAddr)> {
-        let (s, a) = try!(self.accept_std());
-        Ok((TcpStream::from_stream(s)?, a))
-    }
-    */
     pub fn handle_read(&mut self, _val: i64) {
         use std::io::ErrorKind::WouldBlock;
         use std::io::ErrorKind::Interrupted;
@@ -66,6 +49,7 @@ impl Acceptor {
             }
         }
     }
+
     pub fn bind(&mut self, job: Job) {
         self.event_loop.register(
                 &self.tcp_listener, 

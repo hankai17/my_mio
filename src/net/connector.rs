@@ -52,18 +52,6 @@ impl Connector {
             },
         };
 
-        /*
-        match stream.take_error() {     // io::Result<Option<io::Error>> 
-            Ok(res) => {
-                warn!("res: {:?}", res);
-                cb(stream);
-                self.handle_close();    // 需要把错误抛到上层?
-                return Ok(());
-            },
-            Err(err) => {},
-        }
-        */
-
         let res = cb(stream);
         if res == false {
         }
@@ -73,7 +61,8 @@ impl Connector {
 
     pub fn handle_event(&mut self, event: i64) -> io::Result<()> {
         let ready = ready_from_usize(event as usize);
-        debug!("connect stream: {:?}, ready: {:?}", self.tcp_stream.as_mut().unwrap(), ready);
+        debug!("connect stream: {:?}, ready: {:?}",
+                self.tcp_stream.as_mut().unwrap(), ready);
 
         match &self.timer {
             Some(timer) => {
@@ -133,7 +122,6 @@ impl Connector {
                             let event_loop = this.lock().unwrap().event_loop.clone();
                             event_loop.clear_timeout(this.lock().unwrap().timer.as_ref().unwrap());
                             event_loop.deregister(this.lock().unwrap().tcp_stream.as_ref().unwrap()).unwrap();
-                            // close
                         }
                     }
                 )
@@ -142,7 +130,6 @@ impl Connector {
                 Ok(timer) => this.lock().unwrap().timer = Some(timer),
                 _ => {
                     warn!("connect set timeout failed");
-                    // close stream
                     return;
                 },
             }

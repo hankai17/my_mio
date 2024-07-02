@@ -16,7 +16,6 @@ macro_rules! enclose {
 }
 
 pub trait Handler {
-    //type Connection;
     fn new() -> Self where Self: Sized;
     fn attach_connection(&mut self, conn: Arc<Mutex<TcpConnection>>);
     fn free_connection(&mut self);
@@ -24,35 +23,12 @@ pub trait Handler {
     fn on_recv(&mut self, bytes: &mut BytesMut);
     fn on_written(&mut self) -> bool;
     fn on_error(&mut self);
-    //fn send(&mut self, bytes: &mut BytesMut) -> io::Result<()>;
-    ////fn shutdown();
-    ////fn safeShutdown();
 }
-
-/*
-pub struct SessionManager {
-    // map<string, weak<Session>>
-}
-
-impl SessionManager {
-    /*
-    fn add(&s: String, session: Arc<Mutex<Session>>) -> bool {
-        false
-    }
-    fn del(&s: String) {
-    }
-    */
-}
-*/
 
 pub struct TcpServer {
     event_loop: Arc<EventLoop>, 
     acceptor: Arc<Mutex<Acceptor>>,
-    // timer
     session_alloc: Option<fn() -> Arc<Mutex<dyn Handler + 'static + Send + Sync>>>,
-    // on_read_cb
-    // on_written_cb
-    // on_err_cb
 }
 
 unsafe impl Send for TcpServer {}
@@ -158,12 +134,8 @@ impl TcpServer {
 }
 
 pub trait ClientHandler {
-    //fn start_connect(&mut self, );
-    //fn free_connection(&mut self);
     fn shutdown(&mut self);
     fn attach_connection(&mut self, conn: Arc<Mutex<TcpConnection>>);
-    //fn free_connection(&mut self);
-
     fn on_connect(&mut self, conn: Arc<Mutex<TcpConnection>>);
     fn on_recv(&mut self, bytes: &mut BytesMut);
     fn on_written(&mut self) -> bool;
@@ -259,7 +231,7 @@ impl TcpClient {
                         fd as usize
                     )
                 },
-                Ready::readable() | Ready::writable(),  // 默认监听读写 // 设计理念是全局只调用一次epoll_ctl
+                Ready::readable() | Ready::writable(),
                 PollOpt::edge(), 
                 job
             ).unwrap();
