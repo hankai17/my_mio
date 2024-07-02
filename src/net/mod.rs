@@ -9,6 +9,7 @@ pub use self::event_loop::{
     EventLoop,
     EventLoopBuilder,
     EventLoopPool,
+    enqueue_job,
 };
 
 mod acceptor;

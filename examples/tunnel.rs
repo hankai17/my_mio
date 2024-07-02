@@ -4,12 +4,9 @@ extern crate log;
 extern crate env_logger;
 extern crate chrono;
 
-use my_mio::{PollOpt, Ready, Token, Registration, TokenType, TokenEntry};
-//use my_mio::timer::{Timeout};
 use bytes::{Buf, BytesMut};
-use my_mio::net::{EventLoop, EventLoopBuilder,  EventLoopPool, TcpConnection, TcpServer, Handler};
+use my_mio::net::{EventLoop, EventLoopBuilder,  EventLoopPool, TcpConnection, TcpServer, Handler, enqueue_job};
 use std::sync::{Arc, Mutex, Weak};
-use std::time::Duration;
 use std::thread;
 
 use log::{debug, info, LevelFilter};
@@ -21,36 +18,7 @@ use env_logger::{Builder};
 use std::net::Shutdown;
 use my_mio::net::{TcpClient, ClientHandler};
 
-type Job = Arc<Mutex<dyn FnMut() + 'static + Send + Sync>>;
-
-fn enqueue_job(poller: Arc<EventLoop>, cb: Job) {
-    let (r, s) = Registration::new2();
-    let r = Arc::new(r);
-    let s = Arc::new(s);
-
-    let r_clone = r.clone();
-    let s_clone = s.clone();
-
-    let job = Arc::new(Mutex::new(move |_| {
-        let _ = r_clone.clone(); 
-        let _ = s_clone.clone();
-        cb.lock().unwrap()();
-    }));
-    s.set_readiness(Ready::readable()).unwrap();
-    poller.register(
-            &r,
-            TokenEntry {
-                ttype: TokenType::OtherEvent,
-                token: Token(0)
-            },
-            Ready::readable(),
-            PollOpt::edge(),
-            job
-    ).unwrap();
-}
-
 struct ServerSession {
-    //timer: Option<Timeout>,
     client_conn: Option<Weak<Mutex<TcpConnection>>>,
     server_conn: Option<Weak<Mutex<TcpConnection>>>,
 }
@@ -58,7 +26,6 @@ struct ServerSession {
 impl ServerSession {
     fn new(conn: Weak<Mutex<TcpConnection>>) -> ServerSession {
         ServerSession {
-            //timer: None,
             client_conn: Some(conn),
             server_conn: None,
         }
@@ -94,47 +61,10 @@ impl ClientHandler for ServerSession {
     }
 
     fn on_connect(&mut self, new_conn: Arc<Mutex<TcpConnection>>) {
-        /*
-        let ok = match new_conn.lock().unwrap().tcp_stream.take_error() {
-            Ok(res) => {
-                debug!("on_connect failed: {:?}", res);
-                //self.on_error(); // 禁止这样调用!
-                false
-            },
-            Err(_) => { true },
-        };
-        let cs = match self.get_client_conn() {
-            Some(conn) => conn.clone(),
-            None => return,
-        };
-
-        let poller = EventLoopBuilder::get_current_loop();
-        if ok {
-            let job = Arc::new(Mutex::new(move|| {
-                let mut ss = new_conn.lock().unwrap();
-                //ss 监听读
-                let mut bytes = cs.lock().unwrap().read_buffer.take().unwrap();
-                let len = bytes.len();
-                if len > 0 {
-                    ss.send(bytes.clone()).unwrap();
-                    bytes.advance(len);
-                }
-                cs.lock().unwrap().read_buffer = Some(bytes);
-            }));
-            enqueue_job(poller.clone(), job);
-        } else {
-            let job = Arc::new(Mutex::new(move|| {
-                //self.on_error(); 
-                cs.lock().unwrap().shutdown(Shutdown::Write).unwrap();
-            }));
-            enqueue_job(poller.clone(), job);
-        }
-        */
 		match new_conn.lock().unwrap().tcp_stream.take_error() {
             Ok(res) => {
                 if let Some(res) = res {
                     debug!("on_connect failed: {:?}", res);
-                    //self.on_error(); // 禁止这样调用!
                     return;
                 }
             },
@@ -146,10 +76,9 @@ impl ClientHandler for ServerSession {
         };
 
         let poller = EventLoopBuilder::get_current_loop();
-        let job = Arc::new(Mutex::new(move|| {
+        let job = Arc::new(Mutex::new(move|_| {
             let mut ss = new_conn.lock().unwrap();
             let mut cs = cs.lock().unwrap();
-            //let mut bytes = cs.lock().unwrap().read_buffer.as_mut().unwrap(); // 借用了一个drop的值 // 在这一行bytes立即被drop了
             let bytes = cs.read_buffer.as_mut().unwrap();
             let len = bytes.len();
             if len > 0 {
@@ -187,7 +116,7 @@ impl ClientHandler for ServerSession {
         debug!("close client session");
 
         let poller = EventLoopBuilder::get_current_loop();
-        let job = Arc::new(Mutex::new(move|| {
+        let job = Arc::new(Mutex::new(move|_| {
             cs.lock().unwrap().shutdown(Shutdown::Write).unwrap();
         }));
         enqueue_job(poller.clone(), job);
@@ -249,7 +178,6 @@ impl Tunnel {
 }
 
 struct TunnelServer {
-    //timer: Option<Timeout>, //pub type TimerJob = Box<dyn FnMut() + 'static + Send + Sync>;
     client_conn: Option<Weak<Mutex<TcpConnection>>>,
     tunnel: Option<Arc<Mutex<Tunnel>>>
 }
@@ -274,14 +202,12 @@ impl TunnelServer {
 
 impl Drop for TunnelServer {
     fn drop(&mut self) {
-        //println!("---------------------dropping for TunnelServer")
     }
 }
 
 impl Handler for TunnelServer {
     fn new() -> TunnelServer {
         TunnelServer {
-            //timer: None,
             client_conn: None,
             tunnel: None,
         }
@@ -309,48 +235,20 @@ impl Handler for TunnelServer {
         ));
         tunnel.lock().unwrap().connect();
         self.tunnel = Some(tunnel.clone());
-
-        /*
-        let timer = event_loop.timeout(
-            Duration::from_millis(1000 * 3),
-            Box::new(
-                move || {
-                    //println!("timeout test...");
-                    conn_clone.lock().unwrap().close_stream();
-                }
-            )
-        );
-        match timer {
-            Ok(timer) => self.timer = Some(timer),
-            _ => return,
-        }
-        */
     }
 
     fn on_recv(&mut self, bytes: &mut BytesMut) {
         if bytes.len() <= 0 {
             return;
         }
-        /*
-        match &self.timer {
-            Some(timer) => {
-                let event_loop = EventLoopBuilder::get_current_loop();
-                event_loop.clear_timeout(&timer);
-                //println!("timeout cancel")
-            },
-            _ => {},
-        }
-        */
-        //println!("bytes len: {}, {:?}", bytes.len(), bytes);
         let ss = match self.get_server_conn() {
             Some(conn) => conn.clone(),
             None => return,
         };
         let poller = EventLoopBuilder::get_current_loop();
         let bytes_clone = bytes.clone();
-        let job = Arc::new(Mutex::new(move|| {
+        let job = Arc::new(Mutex::new(move|_| {
             ss.lock().unwrap().send(bytes_clone.clone()).unwrap();
-            //ss.lock().unwrap().send(bytes_clone).unwrap();
         }));
         bytes.advance(bytes.len());
         enqueue_job(poller.clone(), job);
@@ -369,23 +267,14 @@ impl Handler for TunnelServer {
         };
 
         let poller = EventLoopBuilder::get_current_loop();
-        let job = Arc::new(Mutex::new(move|| {
-            //ss.lock().unwrap().shutdown(Shutdown::Write).unwrap();
+        let job = Arc::new(Mutex::new(move|_| {
             let _ = ss.lock().unwrap().shutdown(Shutdown::Write);
         }));
         enqueue_job(poller.clone(), job);
     }
 }
 
-fn sleep_ms(ms: u64) {
-    //use std::thread;
-    //use std::time::Duration;
-    thread::sleep(Duration::from_millis(ms));
-}
-
 fn main() {
-    //let _ = ::env_logger::init();
-    sleep_ms(1);
     let target = Box::new(File::create("/tmp/test.txt").expect("Can't create file"));
 	Builder::new()
         .format(|buf, record| {
@@ -417,35 +306,5 @@ fn main() {
         TcpServer::start_internal(tcp_server);
     }
     pool.wait();
-
-    /*
-    let mut b = EventLoopBuilder::new();
-    b.notify_capacity(1_048_576)
-        .messages_per_tick(64)
-        .timer_tick(Duration::from_millis(100))
-        .timer_wheel_size(1024)
-        .timer_capacity(65536);
-    
-    let event_loop = b.get_build().unwrap();
-    let tcp_server = Arc::new(Mutex::new(
-            TcpServer::new(
-                event_loop.clone(),
-                &"0.0.0.0:9528".to_string()
-            )
-    ));
-    tcp_server.lock().unwrap().start::<TunnelServer>();
-    TcpServer::start_internal(tcp_server);
-
-    for _i in 0..4 {
-        let clone = event_loop.clone();
-        thread::spawn(move || {
-            EventLoopBuilder::set_current_loop(clone.clone());
-            clone.run().unwrap();
-            debug!("clone run done");
-        });
-        debug!("spawn thread done");
-    }
-    sleep_ms(1000 * 1000);
-    */
 }
 

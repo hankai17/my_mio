@@ -1,4 +1,4 @@
-use {Poll, Events, Token, TokenType, TokenEntry};
+use {Poll, Events, Token, TokenType, TokenEntry, Registration};
 use event::Evented;
 use event_imp::{Ready, PollOpt, Job, ready_as_usize, TimerJob};
 use std::sync::atomic::{AtomicBool};
@@ -295,5 +295,31 @@ impl EventLoopPool {
             handle.join().unwrap();
         }
     }
+}
+
+pub fn enqueue_job(poller: Arc<EventLoop>, cb: Job) {
+    let (r, s) = Registration::new2();
+    let r = Arc::new(r);
+    let s = Arc::new(s);
+
+    let r_clone = r.clone();
+    let s_clone = s.clone();
+
+    let job = Arc::new(Mutex::new(move |_| {
+        let _ = r_clone.clone(); 
+        let _ = s_clone.clone();
+        cb.lock().unwrap()(0);
+    }));
+    s.set_readiness(Ready::readable()).unwrap();
+    poller.register(
+            &r,
+            TokenEntry {
+                ttype: TokenType::OtherEvent,
+                token: Token(0)
+            },
+            Ready::readable(),
+            PollOpt::edge(),
+            job
+    ).unwrap();
 }
 
