@@ -237,7 +237,7 @@ fn enqueue_with_wakeup(queue: *mut(), node: &ReadinessNode) -> io::Result<()> {
 }
 
 impl ReadinessNode {
-    fn new(queue: *mut(), token: TokenEntry, interest: Ready,                    // 表达的意思是queue内部可变(非const queue)
+    fn new(queue: *mut(), token: TokenEntry, interest: Ready,
             opt: PollOpt, ref_count: usize) -> ReadinessNode {
         ReadinessNode {
             state: AtomicState::new(interest, opt),
@@ -294,7 +294,7 @@ fn release_node(ptr: *mut ReadinessNode) {
         if queue.is_null() {
             return;
         }
-        let _: Arc<ReadinessQueueInner> = mem::transmute(queue);    // 偷着引用计数-1
+        let _: Arc<ReadinessQueueInner> = mem::transmute(queue);
     }
 }
 
@@ -317,10 +317,8 @@ impl ReadinessQueueInner {
 
     fn enqueue_node_with_wakeup(&self, node: &ReadinessNode) -> io::Result<()> {
         if self.enqueue_node(node) {
-            //debug!("enqueue_node need wakeup");
             self.wakeup()?;
         } else {
-            //debug!("enqueue_node need not wakeup");
         }
         Ok(())
     }
@@ -329,7 +327,7 @@ impl ReadinessQueueInner {
         let node_ptr = node as * const _ as * mut _;
         node.next_readiness.store(ptr::null_mut(), Relaxed);
         unsafe {
-            let mut prev = self.head_readiness.load(Acquire);                   // 这里加上mut后 是mut *mut ReadinessNode
+            let mut prev = self.head_readiness.load(Acquire);
             loop {
                 if prev == self.closed_marker() {
                     debug_assert!(node_ptr != self.closed_marker());
@@ -340,7 +338,7 @@ impl ReadinessQueueInner {
                     }
                     return false;
                 }
-                let res = self.head_readiness.compare_exchange(prev, node_ptr,  // head_readiness的值为 新节点node_ptr
+                let res = self.head_readiness.compare_exchange(prev, node_ptr,
                         AcqRel, Acquire);
                 match res {
                     Ok(_) => break,
@@ -349,8 +347,7 @@ impl ReadinessQueueInner {
             }
             debug_assert!((*prev).next_readiness.load(Relaxed).is_null());
             (*prev).next_readiness.store(node_ptr, Release);
-            prev == self.sleep_marker()                                         // hankai2 如果入队时 头节点是sleep_marker 那么需要notify pipe
-                                                                                //      业务层频繁调用enqueue_node 仅第一次排入node时 才会调用notify
+            prev == self.sleep_marker()
         }
     }
 
@@ -363,7 +360,7 @@ impl ReadinessQueueInner {
                 return;
             }
             self.end_marker.next_readiness.store(ptr::null_mut(), Relaxed);
-            let res = self.head_readiness.compare_exchange(s_marker, e_marker,  // hankai3.<1|2>.1 将标准节点从sleep 换成 end
+            let res = self.head_readiness.compare_exchange(s_marker, e_marker,
                     AcqRel, Acquire);
             match res {
                 Ok(val) => {
@@ -380,13 +377,13 @@ impl ReadinessQueueInner {
 
     unsafe fn dequeue_node(&self, until: *mut ReadinessNode)
             -> Dequeue {
-        let mut tail = *(self.tail_readiness.get());                            // *mut ReadinessNode类型
+        let mut tail = *(self.tail_readiness.get());
         let mut next = (*tail).next_readiness.load(Acquire);
         if tail == self.end_marker()
                 || tail == self.sleep_marker()
                 || tail == self.closed_marker() {
             if next.is_null() {
-                self.clear_sleep_marker();                                      // hankai3.1(ES引擎 hankai2是业务层) capacity特别大 弹出节点弹到了最后一个
+                self.clear_sleep_marker();
                 return Dequeue::Empty;
             }
             *self.tail_readiness.get() = next;
@@ -452,7 +449,7 @@ impl ReadinessQueue {
     fn poll(&self, dst: &mut sys::Events) {
         let mut until = ptr::null_mut();
         if dst.len() == dst.capacity() {
-            self.inner.clear_sleep_marker();                                // hankai3.2 如果ES socket事件非常多
+            self.inner.clear_sleep_marker();
         }
         'outer:
         while dst.len() < dst.capacity() {
@@ -522,7 +519,7 @@ impl ReadinessQueue {
         let res = self.inner.head_readiness
                 .compare_exchange(emarker, smarker, AcqRel, Acquire);
         match res {
-            Ok(val) => {                                                    // hankai1 如果传入超时时间>0/或传入空 而且head/tail都指向了最初的end_marker 那么这里会重置head/tail指向为sleep_marker
+            Ok(val) => {
                 debug_assert!(val != smarker);
                 debug_assert!(unsafe {
                     *self.inner.tail_readiness.get() == emarker
@@ -530,10 +527,10 @@ impl ReadinessQueue {
                 debug_assert!(self.inner.end_marker.next_readiness
                         .load(Relaxed).is_null());
                 unsafe { *self.inner.tail_readiness.get() = smarker };
-                true                                                        // epoll则有超时时间或恒阻塞
+                true
             },
             Err(val) => {
-                debug_assert!(val != smarker);                              // 如果已经是sleep了 那么让epoll 立即返回
+                debug_assert!(val != smarker);
                 return false;
             },
         }
@@ -561,7 +558,7 @@ impl Drop for ReadinessQueue {
 
 pub struct Poll {
     selector: sys::Selector,
-    readiness_queue: ReadinessQueue,    // poller + 无锁队列
+    readiness_queue: ReadinessQueue,
     lock_state: AtomicUsize,
     lock: Mutex<()>,
     condvar: Condvar,
@@ -684,7 +681,7 @@ impl Poll {
             let mut lock = self.lock.lock().unwrap();
             let mut inc = false;
             loop {
-                if curr & 1 == 0 {                      // 最先执行poll2函数的线程执行完毕 (-1 变成偶数了)
+                if curr & 1 == 0 {
                     let mut next = curr | 1;
                     if inc {
                         next -= 2;
@@ -700,7 +697,7 @@ impl Poll {
                     }
                     break;
                 }
-                if timeout == zero {                    // 是个很紧急的poll 但是拿不到锁 直接返回Ok // 这个设计不合理
+                if timeout == zero {
                     if inc {
                         self.lock_state.fetch_sub(2, SeqCst);
                     }
@@ -709,7 +706,7 @@ impl Poll {
                 if !inc {
                     let next = curr.checked_add(2).expect("overflow");
                     let actual = match self.lock_state
-                            .compare_exchange(curr, next, SeqCst, SeqCst) {     // 确保每个线程按序 +2 eg: 3 5 7最后得到7
+                            .compare_exchange(curr, next, SeqCst, SeqCst) {
                         Ok(val) => val,
                         Err(val) => val,
                     };
@@ -726,28 +723,25 @@ impl Poll {
                         let elapsed = now.elapsed();
                         if elapsed >= to {
                             timeout = zero;
-                        } else {                        // 虚假超时
+                        } else {
                             timeout = Some(to - elapsed);
                         }
                         l
                     }
                     None => {
-                        self.condvar.wait(lock).unwrap()// 4个线程 0线程一直polling 1~3线程wait
+                        self.condvar.wait(lock).unwrap()
                     }
                 };
                 curr = self.lock_state.load(SeqCst);
             }
         }
         let ret = self.poll2(events, timeout, interruptible);
-        if 1 != self.lock_state.fetch_and(!1, Release) {// poll - 1
-            let _lock = self.lock.lock().unwrap();      // 老值不为1 说明poll有竞争 poll被其它线程inc了 // lock_stat & fff1110 
+        if 1 != self.lock_state.fetch_and(!1, Release) {
+            let _lock = self.lock.lock().unwrap();
             self.condvar.notify_one();
         }
         ret
     }
-    // 1. 某个poller 从0变成1时 才会执行polling
-    // 2. wait的线程 依次被notify 执行polling
-
 }
 
 impl fmt::Debug for Poll {
@@ -832,13 +826,13 @@ impl RegistrationInner {
         debug_assert!(mem::size_of::<Arc<ReadinessQueueInner>>() == mem::size_of::<*mut ()>());
         if queue.is_null() {
             let actual = match self.readiness_queue.compare_exchange(queue, other,
-                    Release, Relaxed) {                                                 // node中的queue 指向poll中的queue
+                    Release, Relaxed) {
                 Ok(val) => val,
                 Err(val) => val,
             };
             if actual.is_null() {
                 self.ref_count.fetch_add(1, Relaxed);
-                mem::forget(poll.readiness_queue.clone());                              // 平白无故让引用计数+1 // 为什么不设计一个强引用呢?
+                mem::forget(poll.readiness_queue.clone());
             } else {
                 if actual != other {
                     return Err(io::Error::new(io::ErrorKind::Other,
@@ -862,7 +856,7 @@ impl RegistrationInner {
         let mut state = self.state.load(Relaxed);
         let mut next;
         let curr_token_pos = state.token_write_pos();
-        let curr_token = unsafe { self::token(self, curr_token_pos) };                  // 获取这个时刻的 写位置处的token值
+        let curr_token = unsafe { self::token(self, curr_token_pos) };
         let mut next_token_pos = curr_token_pos;
         if token != curr_token {
             next_token_pos = state.next_token_pos();
@@ -882,7 +876,7 @@ impl RegistrationInner {
             if !next.effective_readiness().is_empty() {
                 next.set_queued();
             }
-            let actual = self.state.compare_and_swap(state, next, Release);             // 更新node中state的值
+            let actual = self.state.compare_and_swap(state, next, Release);
             if actual == state {
                 break;
             }

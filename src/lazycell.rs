@@ -1,12 +1,8 @@
 use std::cell::UnsafeCell;
 use std::mem;
-//use std::sync::atomic::{AtomicUsize, Ordering};
 
-
-pub struct LazyCell<T> {                // 封装的是 一个编译期大小不能确定的枚举值
-                                        // 目的是为了判断 在编译期这个值有无初始化?
-    inner: UnsafeCell<Option<T>>,       // Option包装的是枚举(Some None) 
-                                        // UnsafeCell作用是编译期不能决定大小
+pub struct LazyCell<T> {
+    inner: UnsafeCell<Option<T>>,
 }
 
 impl<T> LazyCell<T> {
@@ -15,7 +11,7 @@ impl<T> LazyCell<T> {
     }
 
     pub fn fill(&self, value: T) -> Result<(), T> {
-        let slot = unsafe { &mut *self.inner.get() };   // 解引用会 消除mut
+        let slot = unsafe { &mut *self.inner.get() };
         if slot.is_some() {
             return Err(value);
         }
@@ -105,7 +101,7 @@ impl<T> LazyCell<T> {
 
 impl<T: Copy> LazyCell<T> {
     #[allow(dead_code)]
-    pub fn get(&self) -> Option<T> {                    // 打破了引用的两大定律?
+    pub fn get(&self) -> Option<T> {
         unsafe { *self.inner.get() }
     }
 }

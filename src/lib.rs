@@ -16,9 +16,6 @@ pub use event_imp:: {
     TokenEntry,
 };
 
-//mod io;
-//pub use io::deprecated::would_block;
-
 mod token;
 pub use token::Token;
 

@@ -51,7 +51,8 @@ impl Selector {
     pub fn id(&self) -> usize { self.id }
 
     pub fn events_map(&self) -> *mut Arc<Mutex<HashMap<i32, JobEntry>>> {
-        &self.events_map as *const Arc<Mutex<HashMap<i32, JobEntry>>>  as *mut Arc<Mutex<HashMap<i32, JobEntry>>>
+        &self.events_map as *const Arc<Mutex<HashMap<i32, JobEntry>>> 
+            as *mut Arc<Mutex<HashMap<i32, JobEntry>>>
     }
 
     pub fn select(&self, evts: &mut Events, timeout: Option<Duration>) -> io::Result<bool> {
@@ -101,7 +102,8 @@ impl Selector {
 
     pub fn register(&self, fd: RawFd, token: TokenEntry, interests: Ready,
             opts: PollOpt, job: Job) -> io::Result<()> {
-        debug!("register1 fd: {:?} len: {} token: {:?}", fd, self.events_map.lock().unwrap().len(), token.token);
+        debug!("register1 fd: {:?} len: {} token: {:?}",
+                fd, self.events_map.lock().unwrap().len(), token.token);
         let mut info = libc::epoll_event {
             events: ioevent_to_epoll(interests, opts),
             u64: fd as u64
@@ -122,7 +124,8 @@ impl Selector {
                     }
             );
             cvt(libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_ADD, fd, &mut info))?;
-            debug!("register2 fd: {:?} len: {} token: {:?}", fd, self.events_map.lock().unwrap().len(), token.token);
+            debug!("register2 fd: {:?} len: {} token: {:?}",
+                    fd, self.events_map.lock().unwrap().len(), token.token);
             Ok(())
         }
     }
@@ -142,7 +145,8 @@ impl Selector {
     }
 
     pub fn deregister(&self, fd: RawFd) -> io::Result<()> {
-        debug!("deregister1 fd: {:?} len: {} ", fd, self.events_map.lock().unwrap().len());
+        debug!("deregister1 fd: {:?} len: {} ",
+                fd, self.events_map.lock().unwrap().len());
         let mut info = libc::epoll_event {
             events: 0,
             u64: 0,
@@ -194,8 +198,8 @@ impl Drop for Selector {
 }
 
 pub struct Events {
-    events: Vec<libc::epoll_event>, // fd
-    entries: Vec<JobEntry>, // <JobEntry>
+    events: Vec<libc::epoll_event>,
+    entries: Vec<JobEntry>,
 }
 
 impl Events {

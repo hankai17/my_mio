@@ -135,7 +135,7 @@ pub struct Timer<T> {
     inner:      LazyCell<Inner>,
 }
 
-fn duration_to_tick(elapsed: Duration, tick_ms: u64) -> Tick {                  // elapsed是多少个tick_ms组成 向上取整
+fn duration_to_tick(elapsed: Duration, tick_ms: u64) -> Tick {
     let elapsed_ms = convert::millis(elapsed);
     elapsed_ms.saturating_add(tick_ms / 2) / tick_ms
 }
@@ -148,7 +148,7 @@ const TICK_MAX: Tick = u64::MAX;
 impl<T> Timer<T> {
     fn new(tick_ms: u64, num_slots: usize, capacity: usize,
             start: Instant) -> Timer<T> {
-        let num_slots = num_slots.next_power_of_two();                          // 取2的幂 向上取
+        let num_slots = num_slots.next_power_of_two();
         let capacity = capacity.next_power_of_two();
         let mask = (num_slots as u64) - 1;
         let wheel = iter::repeat(WheelEntry {
@@ -176,25 +176,25 @@ impl<T> Timer<T> {
     fn set_timeout_at(&mut self, delay_from_start: Duration,
             state: T) -> Result<Timeout> {
         let mut tick = duration_to_tick(delay_from_start, self.tick_ms);
-        if tick < self.tick {                                                   // 最小定时个数为self.tick
+        if tick < self.tick {
             tick = self.tick + 1;
         }
         self.insert(tick, state)
     }
 
-    fn insert(&mut self, tick: Tick, state: T) -> Result<Timeout> {             // hankai2 添加一个定时器 返回定时器句柄
+    fn insert(&mut self, tick: Tick, state: T) -> Result<Timeout> {
         let slot = (tick & self.mask) as usize;
         let curr = self.wheel[slot];
-        let entry = Entry::new(state, tick, curr.head);                         // next
+        let entry = Entry::new(state, tick, curr.head);
         let token = Token(self.entries.insert(entry));
         if curr.head != EMPTY {
-            self.entries[curr.head.into()].links.prev = token;                  // prev
+            self.entries[curr.head.into()].links.prev = token;
         }
         self.wheel[slot] = WheelEntry {
             next_tick: cmp::min(tick, curr.next_tick),
             head: token,
         };
-        self.schedule_readiness(tick);                                          // hankai2.1 可能立即唤醒线程 线程中让node入队
+        self.schedule_readiness(tick);
         Ok(
             Timeout {
                 token,
@@ -220,7 +220,7 @@ impl<T> Timer<T> {
         self.poll_to(target_tick)
     }
 
-    fn poll_to(&mut self, mut target_tick: Tick) -> Option<T> {                 // hankai2.2 如约唤醒
+    fn poll_to(&mut self, mut target_tick: Tick) -> Option<T> {
         if target_tick < self.tick {
             target_tick = self.tick;
         }
@@ -228,21 +228,21 @@ impl<T> Timer<T> {
             let curr = self.next;
             if curr == EMPTY {
                 self.tick += 1;
-                let slot = self.slot_for(self.tick);                            // 依次遍历槽位
-                self.next = self.wheel[slot].head;                              // 1 self.next指向槽位头节点
+                let slot = self.slot_for(self.tick);
+                self.next = self.wheel[slot].head;
                 if self.next == EMPTY {
                     self.wheel[slot].next_tick = TICK_MAX;
                 }
             } else {
                 let slot = self.slot_for(self.tick);
                 if curr == self.wheel[slot].head {
-                    self.wheel[slot].next_tick = TICK_MAX;                      // 2 重置槽位头 为TICK_MAX
+                    self.wheel[slot].next_tick = TICK_MAX;
                 }
-                let links = self.entries[curr.into()].links;                    // 拿到头节点的links
-                if links.tick <= self.tick {                                    // 真过期
+                let links = self.entries[curr.into()].links;
+                if links.tick <= self.tick {
                     self.unlink(&links, curr);
                     return Some(self.entries.remove(curr.into()).state);
-                } else {                                                        // 假过期 取下一个
+                } else {
                     let next_tick = self.wheel[slot].next_tick;
                     self.wheel[slot].next_tick = cmp::min(next_tick,
                             links.tick);
@@ -276,7 +276,7 @@ impl<T> Timer<T> {
         }
     }
 
-    fn schedule_readiness(&self, tick: Tick) {                      // 传参为 定时器要唤醒的时间 确保此值需小于stat定时时间 // hankai1.1
+    fn schedule_readiness(&self, tick: Tick) {
         if let Some(inner) = self.inner.borrow() {
             let mut curr = inner
                             .wakeup_state
@@ -289,7 +289,7 @@ impl<T> Timer<T> {
                         Ordering::Release, Ordering::Relaxed);
                 match res {
                     Ok(_) => {
-                        inner.wakeup_thread.thread().unpark();      // 如果传入的时间小于stat定时时间 则唤醒线程
+                        inner.wakeup_thread.thread().unpark();
                         return;
                     },
                     Err(v) => curr = v,
@@ -305,7 +305,7 @@ impl<T> Timer<T> {
                 return Some(self.tick);
             }
         }
-        self.wheel.iter().map(|e| e.next_tick).min()                // 遍历所有桶 拿到最小值
+        self.wheel.iter().map(|e| e.next_tick).min()
     }
 
     fn slot_for(&self, tick: Tick) -> usize {
@@ -320,7 +320,7 @@ impl<T> Default for Timer<T> {
 }
 
 fn spawn_wakeup_thread(state: WakeupState, s: SetReadiness, 
-        start: Instant, tick_ms: u64) -> thread::JoinHandle<()> {                       // 线程循环判断 stat定时器 到期则入队 // hankai0
+        start: Instant, tick_ms: u64) -> thread::JoinHandle<()> {
     thread::Builder::new()
     .name("timer".to_string())
     .spawn(move || {
@@ -330,22 +330,22 @@ fn spawn_wakeup_thread(state: WakeupState, s: SetReadiness,
                 return;
             }
             let now_tick = current_tick(start, tick_ms);
-            if now_tick < sleep_until_tick {                                            // 定时未到睡眠
+            if now_tick < sleep_until_tick {
                 match tick_ms.checked_mul(sleep_until_tick - now_tick) {
                     Some(sleep_duration) => {
-                        thread::park_timeout(Duration::from_millis(sleep_duration));    // 定时器定多久 线程就睡眠多久
+                        thread::park_timeout(Duration::from_millis(sleep_duration));
                     }
                     None => {
                         thread::park();
                     }
                 }
-                sleep_until_tick = state.load(Ordering::Acquire) as Tick;               // 定时到 或 被唤醒 // 更新睡眠时间
-            } else {                                                                    // 定时到
+                sleep_until_tick = state.load(Ordering::Acquire) as Tick;
+            } else {
                 let res = state.compare_exchange(sleep_until_tick as usize,
                         usize::MAX, Ordering::AcqRel, Ordering::Acquire);
                 match res {
                     Ok(_) => {
-                        let _ = s.set_readiness(Ready::readable());                     // 定时到 入队
+                        let _ = s.set_readiness(Ready::readable());
                         sleep_until_tick = usize::MAX as Tick;
                     },
                     Err(v) => sleep_until_tick = v as Tick,
@@ -365,13 +365,13 @@ impl<T> Evented for Timer<T> {
         }
         let (r, s) = Registration::new(poll, token, interest, opts);
         let wakeup_state = Arc::new(AtomicUsize::new(usize::MAX));
-        let thread_handle = spawn_wakeup_thread(                                        // hankai0
+        let thread_handle = spawn_wakeup_thread(
             wakeup_state.clone(),
             s.clone(),
             self.start,
             self.tick_ms
         );
-        self.inner.fill(Inner {                                                         // hankai1 分配r/s 初始化inner
+        self.inner.fill(Inner {
             registration: r,
             set_readiness: s,
             wakeup_state,
