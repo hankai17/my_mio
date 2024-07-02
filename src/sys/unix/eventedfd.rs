@@ -1,6 +1,7 @@
-use {io, Ready, Poll, PollOpt, poll, Job, TokenEntry};
+use {Ready, Poll, PollOpt, poll, Job, TokenEntry};
 use event::Evented;
 use std::os::unix::io::RawFd;
+use std::{io};
 
 pub struct EventedFd<'a>(pub &'a RawFd); // RawFd的声明周期 跟struct一样长
 

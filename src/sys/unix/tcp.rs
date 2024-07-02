@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, io};
 use std::io::{Read, Write};
 use std::net::{self, SocketAddr};
 use std::os::unix::io::{RawFd, FromRawFd, IntoRawFd, AsRawFd};
@@ -7,7 +7,7 @@ use std::time::Duration;
 use net2::TcpStreamExt;
 use iovec::IoVec;
 
-use {io, Ready, Poll, PollOpt, Job, TokenEntry};
+use {Ready, Poll, PollOpt, Job, TokenEntry};
 use event::Evented;
 
 use sys::unix::eventedfd::EventedFd;

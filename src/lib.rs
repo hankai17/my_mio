@@ -14,11 +14,10 @@ pub use event_imp:: {
     JobEntry,
     TokenType,
     TokenEntry,
-    JobState,
 };
 
-mod io;
-pub use io::deprecated::would_block;
+//mod io;
+//pub use io::deprecated::would_block;
 
 mod token;
 pub use token::Token;
@@ -40,7 +39,6 @@ pub mod unix {
 
 mod lazycell;
 
-//pub mod channel;
 pub mod timer;
 
 pub mod net;

@@ -1,8 +1,9 @@
 use std::fs::File;
+use std::{io};
 use std::io::{Read, Write};
 use std::os::unix::io::{IntoRawFd, AsRawFd, FromRawFd, RawFd};
 
-use {io, Ready, Poll, PollOpt, Job, TokenEntry};
+use {Ready, Poll, PollOpt, Job, TokenEntry};
 use event::Evented;
 use unix::EventedFd;
 use sys::unix::cvt;

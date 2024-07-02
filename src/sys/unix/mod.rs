@@ -39,7 +39,7 @@ impl IsMinusOne for isize {
     fn is_minus_one(&self) -> bool { *self == -1 }
 }
 
-fn cvt<T: IsMinusOne>(t: T) -> ::io::Result<T> {
+fn cvt<T: IsMinusOne>(t: T) -> std::io::Result<T> {
     use std::io;
     if t.is_minus_one() {
         Err(io::Error::last_os_error())
@@ -48,7 +48,7 @@ fn cvt<T: IsMinusOne>(t: T) -> ::io::Result<T> {
     }
 }
 
-pub fn pipe() -> ::io::Result<(Io, Io)> {
+pub fn pipe() -> std::io::Result<(Io, Io)> {
     dlsym!(fn pipe2(*mut c_int, c_int) -> c_int);
     let mut pipes = [0; 2];
     unsafe {

@@ -1,11 +1,11 @@
 use lazycell::LazyCell;
 use slab::Slab;
-use std::{cmp, fmt, u64, usize, iter, thread};
+use std::{io, cmp, fmt, u64, usize, iter, thread};
 use std::time::{Duration, Instant};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use event::Evented;
-use {convert, io, Ready, Poll, PollOpt, Token, Registration, SetReadiness, Job, TokenEntry};
+use {convert, Ready, Poll, PollOpt, Token, Registration, SetReadiness, Job, TokenEntry};
 
 type Tick = u64;
 

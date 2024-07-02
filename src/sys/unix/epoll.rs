@@ -9,7 +9,8 @@ use libc::{c_int};
 use libc::{EPOLLERR, EPOLLHUP, EPOLLONESHOT};
 use libc::{EPOLLET, EPOLLOUT, EPOLLIN, EPOLLPRI}; // define in /usr/include/sys/epoll.h 
 
-use {io, Ready, PollOpt, Job, JobEntry, TokenEntry, TokenType, JobState};
+use std::{io};
+use {Ready, PollOpt, Job, JobEntry, TokenEntry, TokenType};
 use event_imp::{Event};
 use sys::unix::{cvt, UnixReady};
 use sys::unix::io::set_cloexec;
@@ -118,7 +119,6 @@ impl Selector {
                         token_entry: token,
                         job,
                         ready: Ready::empty(),
-                        state: Arc::new(Mutex::new(JobState::INIT))
                     }
             );
             cvt(libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_ADD, fd, &mut info))?;
@@ -247,7 +247,6 @@ impl Events {
                 token_entry: event.token(),
                 ready: Ready::empty(),
                 job,
-                state: Arc::new(Mutex::new(JobState::INIT))
             }
         );
     }

@@ -2,8 +2,8 @@ pub use self::pipe::Awakener;
 
 mod pipe {
     use sys::unix;
-    use {io, Ready, Poll, PollOpt, Job, TokenEntry};
-    use std::io::{Read, Write};
+    use {Ready, Poll, PollOpt, Job, TokenEntry};
+    use std::io::{self, Read, Write};
     use event::Evented;
 
     pub struct Awakener {

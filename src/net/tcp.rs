@@ -1,12 +1,12 @@
 use std::fmt;
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 use std::net::{self, SocketAddr, SocketAddrV4, SocketAddrV6, Ipv4Addr, Ipv6Addr};
 use std::time::Duration;
 
 use net2::TcpBuilder;
 use iovec::IoVec;
 
-use {io, sys, Ready, Poll, PollOpt, Job, TokenEntry};
+use {sys, Ready, Poll, PollOpt, Job, TokenEntry};
 use event::Evented;
 use poll::SelectorId;
 
