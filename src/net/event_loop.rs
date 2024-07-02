@@ -1,4 +1,4 @@
-use {channel, Poll, Events, Token, TokenAllocator, TokenType, TokenEntry};
+use {Poll, Events, Token, TokenType, TokenEntry};
 use event::Evented;
 use event_imp::{Ready, PollOpt, Job, ready_as_usize, TimerJob};
 use std::sync::atomic::{AtomicBool};
@@ -7,76 +7,12 @@ use timer::{self, Timer, Timeout};
 use std::{io, usize};
 use std::default::Default;
 use std::time::Duration;
-use std::{fmt, error, any};
 use std::sync::{Arc, Mutex};
 use std::thread_local;
-use poll::CURRENT_TOKEN_ALLOCATOR;
 use std::thread::{self, JoinHandle};
 use std::cell::UnsafeCell;
 use std::sync::mpsc::channel;
 use log::{debug, warn};
-
-pub enum NotifyError<T> {
-    Io(io::Error),
-    Full(T),
-    Closed(Option<T>),
-}
-
-impl<M: any::Any> error::Error for NotifyError<M> {
-    fn description(&self) -> &str {
-        match *self {
-            //NotifyError::Io(ref err) => err.description(),
-            NotifyError::Io(ref _err) => "io err todo",
-            NotifyError::Closed(..) => "The receiving end has hung up",
-            NotifyError::Full(..) => "Queue is full"
-        }
-    }
-
-    fn cause(&self) -> Option<&dyn error::Error> {
-        match *self {
-            NotifyError::Io(ref err) => Some(err),
-            _ => None
-        }
-    }
-}
-
-impl<M> From<channel::TrySendError<M>> for NotifyError<M> {
-    fn from(src: channel::TrySendError<M>) -> NotifyError<M> {
-        match src {
-            channel::TrySendError::Io(e) => NotifyError::Io(e),
-            channel::TrySendError::Full(v) => NotifyError::Full(v),
-            channel::TrySendError::Disconnected(v) => NotifyError::Closed(Some(v)),
-        }
-    }
-}
-
-impl<M> fmt::Debug for NotifyError<M> {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            NotifyError::Io(ref e) => {
-                write!(fmt, "NotifyError::IO({:?})", e)
-            }
-            NotifyError::Full(..) => {
-                write!(fmt, "NotifyError::Full(..)")
-            }
-            NotifyError::Closed(..) => {
-                write!(fmt, "NotifyError::Closed(..)")
-            }
-        }
-    }
-}
-
-impl<M> fmt::Display for NotifyError<M> {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            NotifyError::Io(ref e) => {
-                write!(fmt, "IO error: {}", e)
-            }
-            NotifyError::Full(..) => write!(fmt, "Full"),
-            NotifyError::Closed(..) => write!(fmt, "Closed"),
-        }
-    }
-}
 
 #[derive(Copy, Clone, Debug)]
 struct Config {
@@ -99,26 +35,6 @@ impl Default for Config {
     }
 }
 
-pub struct Sender<M> {
-    tx: channel::SyncSender<M>
-}
-
-impl<M> Clone for Sender<M> {
-    fn clone(&self) -> Sender<M> {
-        Sender { tx: self.tx.clone() }
-    }
-}
-
-impl<M> Sender<M> {
-    fn new(tx: channel::SyncSender<M>) -> Sender<M> {
-        Sender { tx }
-    }
-    pub fn send(&self, msg: M) -> Result<(), NotifyError<M>> {
-        self.tx.try_send(msg)?;
-        Ok(())
-    }
-}
-
 unsafe impl Send for EventLoop {}
 unsafe impl Sync for EventLoop {}
 
@@ -126,31 +42,16 @@ pub struct EventLoop {
     run: AtomicBool,
     pub poll: Poll,
     timer: UnsafeCell<Timer<TimerJob>>,
-    notify_tx: channel::SyncSender<i32>,
-    notify_rx: channel::Receiver<i32>,
-    config: Config,
 }
 
 impl EventLoop {
     fn configured(config: Config) -> io::Result<EventLoop> {
-        let token_allocator = Arc::new(Mutex::new(TokenAllocator::new()));
-        CURRENT_TOKEN_ALLOCATOR.set(token_allocator);
         let poll = Poll::new()?;
         let timer = timer::Builder::default()
             .tick_duration(config.timer_tick)
             .num_slots(config.timer_wheel_size)
             .capacity(config.timer_capacity)
             .build();
-        let (tx, rx) = channel::sync_channel(config.notify_capacity);
-        poll.register(&rx,
-            TokenEntry {
-                ttype: TokenType::NotifyEvent,
-                token: Token(0)
-            },
-            Ready::readable(),
-            PollOpt::edge() | PollOpt::oneshot(),
-            Arc::new(Mutex::new(move |_| {}))
-        )?;
         poll.register(&timer,
             TokenEntry {
                 ttype: TokenType::TimersEvent,
@@ -164,18 +65,11 @@ impl EventLoop {
             run: AtomicBool::new(false),
             poll,
             timer: UnsafeCell::new(timer),
-            notify_tx: tx,
-            notify_rx: rx,
-            config,
         })
     }
 
     pub fn new() -> io::Result<EventLoop> {
         EventLoop::configured(Config::default())
-    }
-
-    pub fn channel(&self) -> Sender<i32> {
-        Sender::new(self.notify_tx.clone())
     }
 
     pub fn timeout(&self, delay: Duration, token: TimerJob)
@@ -237,7 +131,6 @@ impl EventLoop {
                             }
                         },
                         _ => {
-                            //job_entry.state.lock().unwrap();
                             let job = &mut job_entry.job;
                             let ready = job_entry.ready;
                             job
@@ -398,10 +291,6 @@ impl EventLoopPool {
     }
 
     pub fn wait(self) {
-        /*
-        self.threads.into_iter()
-            .map(|th| th.join().unwrap());
-        */
         for handle in self.threads {
             handle.join().unwrap();
         }

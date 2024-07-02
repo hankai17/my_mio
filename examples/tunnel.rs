@@ -371,7 +371,7 @@ impl Handler for TunnelServer {
         let poller = EventLoopBuilder::get_current_loop();
         let job = Arc::new(Mutex::new(move|| {
             //ss.lock().unwrap().shutdown(Shutdown::Write).unwrap();
-            ss.lock().unwrap().shutdown(Shutdown::Write);
+            let _ = ss.lock().unwrap().shutdown(Shutdown::Write);
         }));
         enqueue_job(poller.clone(), job);
     }

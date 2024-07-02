@@ -24,7 +24,7 @@ mod token;
 pub use token::Token;
 
 mod poll;
-pub use poll::{Poll, Registration, SetReadiness, TokenAllocator};
+pub use poll::{Poll, Registration, SetReadiness};
 
 pub mod event {
     pub use super::poll::{Events}; 
@@ -40,7 +40,7 @@ pub mod unix {
 
 mod lazycell;
 
-pub mod channel;
+//pub mod channel;
 pub mod timer;
 
 pub mod net;

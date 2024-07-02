@@ -1,6 +1,6 @@
 use std::cell::UnsafeCell;
 use std::mem;
-use std::sync::atomic::{AtomicUsize, Ordering};
+//use std::sync::atomic::{AtomicUsize, Ordering};
 
 
 pub struct LazyCell<T> {                // 封装的是 一个编译期大小不能确定的枚举值
@@ -109,79 +109,4 @@ impl<T: Copy> LazyCell<T> {
         unsafe { *self.inner.get() }
     }
 }
-
-const NONE: usize = 0;
-const LOCK: usize = 1;
-const SOME: usize = 2;
-
-pub struct AtomicLazyCell<T> {
-    inner: UnsafeCell<Option<T>>,
-    state: AtomicUsize,
-}
-
-impl<T> AtomicLazyCell<T> {
-    pub fn new() -> AtomicLazyCell<T> {
-        Self {
-            inner: UnsafeCell::new(None),
-            state: AtomicUsize::new(NONE),
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn fill(&self, t: T) -> Result<(), T> {
-        let res = self.state.compare_exchange(NONE, LOCK,
-                Ordering::Acquire, Ordering::Acquire);
-        match res {
-            Ok(_) => {},
-            Err(_) => return Err(t),
-        }
-        unsafe { *self.inner.get() = Some(t) };
-        let res = self.state.compare_exchange(LOCK, SOME,
-                Ordering::Release, Ordering::Relaxed);
-        match res {
-            Ok(_) => {},
-            Err(_) => panic!("unable to release lock"),
-        }
-        Ok(())
-    }
-
-    #[allow(dead_code)]
-    pub fn replace(&mut self, value: T) -> Option<T> {
-        match mem::replace(self.state.get_mut(), SOME) {
-            NONE | SOME => {}
-            _ => panic!("cell in inconsistent state"),
-        }
-        mem::replace(unsafe { &mut *self.inner.get() }, Some(value))
-    }
-
-    #[allow(dead_code)]
-    pub fn filled(&self) -> bool {
-        self.state.load(Ordering::Acquire) == SOME
-    }
-
-    pub fn borrow(&self) -> Option<&T> {
-        match self.state.load(Ordering::Acquire) {
-            SOME => unsafe { &*self.inner.get() }.as_ref(),
-            _ => None,
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn into_inner(self) -> Option<T> {
-        self.inner.into_inner()
-    }
-}
-
-impl<T: Copy> AtomicLazyCell<T> {
-    #[allow(dead_code)]
-    pub fn get(&self) -> Option<T> {
-        match self.state.load(Ordering::Acquire) {
-            SOME => unsafe { *self.inner.get() },
-            _ => None,
-        }
-    }
-}
-
-unsafe impl<T: Sync + Send> Sync for AtomicLazyCell<T> {}
-unsafe impl<T: Send> Send for AtomicLazyCell<T> {}
 

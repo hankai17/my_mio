@@ -7,8 +7,6 @@ use std::cell::UnsafeCell;
 use std::sync::{Arc, Mutex, Condvar};
 use std::sync::atomic::Ordering::{self, Acquire, Release, AcqRel, Relaxed, SeqCst};
 use std::time::{Duration, Instant};
-use std::collections::HashMap;
-use std::cell::RefCell;
 use log::{debug};
 
 use event_imp::{self as event, Ready, Event, Evented, PollOpt, Job, JobEntry, TokenEntry, TokenType};
@@ -26,70 +24,7 @@ const MASK_2: usize = 4 - 1;
 const MASK_4: usize = 16 - 1;
 const QUEUED_MASK: usize = 1 << QUEUED_SHIFT;
 const DROPPED_MASK: usize = 1 << DROPPED_SHIFT;
-
 const MAX_REFCOUNT: usize = (isize::MAX) as usize;
-
-pub struct IdAllocator {
-    counter: AtomicUsize,
-    free: Mutex<Vec<usize>>,
-}
-
-impl IdAllocator {
-    pub fn new() -> Self {
-        IdAllocator {
-            counter: AtomicUsize::new(0),
-            free: Mutex::new(Vec::new()),
-        }
-    }
-    pub fn alloc(&self) -> usize {
-        self.free
-            .lock()
-            .and_then(|mut free| {
-                match free.pop() {
-                    Some(v) => Ok(v),
-                    None => Ok(self.counter.fetch_add(1, Ordering::Relaxed))
-                }
-            })
-            .unwrap()
-    }
-    pub fn kill(&self, id: usize) {
-        self.free.lock().unwrap().push(id);
-    }
-}
-
-pub struct TokenAllocator {
-    id: IdAllocator,
-    token_map: HashMap<usize, TokenEntry>,
-}
-
-impl TokenAllocator {
-    pub fn new() -> Self {
-        TokenAllocator {
-            id: IdAllocator::new(),
-            token_map: HashMap::new(),
-        }
-    }
-    pub fn alloc(&mut self, ttype: TokenType, token: Token) -> usize {
-        let id = self.id.alloc();
-        // thread safe TODO
-        let entry = TokenEntry {
-            ttype,
-            token,
-        };
-        self.token_map.insert(id, entry);
-        id
-    }
-    pub fn get(&mut self, id: usize) -> TokenEntry {
-        *self.token_map.get(&id).unwrap()
-    }
-    pub fn get_entry(&mut self, id: usize) -> Option<TokenEntry> {
-        self.token_map.get(&id).copied()
-    }
-    pub fn dealloc(&mut self, id: usize) {
-        self.token_map.remove(&id);
-        self.id.kill(id);
-    }
-}
 
 pub struct SelectorId {
     id: AtomicUsize,
@@ -639,23 +574,7 @@ pub fn selector(poll: &Poll) -> &sys::Selector {
     &poll.selector
 }
 
-thread_local! {
-    pub static CURRENT_TOKEN_ALLOCATOR: RefCell<Arc<Mutex<TokenAllocator>>> = panic!("!");
-}
-
 impl Poll {
-    pub fn get_current_token_allocator() -> Arc<Mutex<TokenAllocator>> {
-        let ptr = CURRENT_TOKEN_ALLOCATOR.with(
-            |allocator| -> *mut Arc<Mutex<TokenAllocator>> {
-                return allocator.as_ptr()
-            }
-        );
-        unsafe {
-            let clone = (*ptr).clone();
-            clone
-        }
-    }
-
     pub fn new() -> io::Result<Poll> {
         is_send::<Poll>(); 
         is_sync::<Poll>(); 
