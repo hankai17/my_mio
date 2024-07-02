@@ -405,7 +405,6 @@ fn main() {
         .init();
 
     debug!("Starting main");
-    /*
     let pool = EventLoopPool::new(4);
     for poller in pool.get_all_poller().iter() {
         let tcp_server = Arc::new(Mutex::new(
@@ -418,8 +417,8 @@ fn main() {
         TcpServer::start_internal(tcp_server);
     }
     pool.wait();
-    */
 
+    /*
     let mut b = EventLoopBuilder::new();
     b.notify_capacity(1_048_576)
         .messages_per_tick(64)
@@ -447,5 +446,6 @@ fn main() {
         debug!("spawn thread done");
     }
     sleep_ms(1000 * 1000);
+    */
 }
 
