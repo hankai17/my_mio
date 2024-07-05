@@ -14,6 +14,7 @@ use poll::CURRENT_TOKEN_ALLOCATOR;
 use std::thread::{self, JoinHandle};
 use std::cell::UnsafeCell;
 use std::sync::mpsc::channel;
+use rand::Rng;
 use log::{debug, warn};
 
 pub enum NotifyError<T> {
@@ -393,15 +394,17 @@ impl EventLoopPool {
         self.loops[0].clone()
     }
 
+    pub fn get_random_poller(&self) -> Arc<EventLoop> {
+        let idx = rand::thread_rng().gen_range(0..self.loops.len());
+        self.loops[idx].clone()
+    }
+
     pub fn get_all_poller(&self) -> Vec<Arc<EventLoop>> {
         self.loops.clone()
     }
 
     pub fn wait(self) {
-        /*
-        self.threads.into_iter()
-            .map(|th| th.join().unwrap());
-        */
+        //self.threads.into_iter().map(|th| th.join().unwrap());  //  cannot move out of `self.threads` which is behind a shared reference
         for handle in self.threads {
             handle.join().unwrap();
         }

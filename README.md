@@ -326,3 +326,8 @@ OthersEvent   |        |
     !!!!!! 应用层的实现中(eg: on_connect/on_recv) 不能有对vc的直接操作 必须enqueu队列处理 否则会死锁
     因为一旦操作了 就可能 导致session上层死锁
 
+- 240704
+    io_uring 尝试
+    多线程场景下 对一个长事务 enqueue到不同的线程中执行
+    做一个产品
+
