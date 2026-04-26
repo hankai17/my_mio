@@ -21,8 +21,8 @@ static NEXT_ID: AtomicUsize = ATOMIC_USIZE_INIT;
 pub struct Selector {
     id: usize,
     epfd: RawFd,
-    events_map: Arc<Mutex<HashMap<i32, JobEntry>>>,
-}
+    events_map: Arc<Mutex<HashMap<i32, JobEntry>>>,                     // 重构思路: 外层用Selector时用Arc包装 这样多线程可以共享引用
+}                                                                       //   events_map 用Mutex<hash>   这样多线程共享引用只有一个线程可以lock
 
 impl Selector {
     pub fn new() -> io::Result<Selector> {
@@ -30,8 +30,8 @@ impl Selector {
             dlsym!(fn epoll_create1(c_int) -> c_int);
             match epoll_create1.get() {
                 Some(epoll_create1_fn) => {
-                    cvt(epoll_create1_fn(libc::EPOLL_CLOEXEC))?
-                }
+                    cvt(epoll_create1_fn(libc::EPOLL_CLOEXEC))?         // 要么a)提取T的实例然后继续执行该函数 
+                }                                                       // 要么b)退出整个函数并返Result<_, ::io>错误
                 None=> {
                     let fd = cvt(libc::epoll_create(1024))?;
                     drop(set_cloexec(fd));

@@ -25,9 +25,9 @@ impl<F> DlSym<F> {
     pub fn get(&self) -> Option<&F> {
         assert_eq!(mem::size_of::<F>(), mem::size_of::<usize>());
         unsafe {
-            if self.addr.load(Ordering::SeqCst) == 0 {
-                self.addr.store(fetch(self.name), Ordering::SeqCst);
-            }
+            if self.addr.load(Ordering::SeqCst) == 0 {                  // 原子操作是原子的没有问题 但它只能保证单条语句(一行)的原子性
+                self.addr.store(fetch(self.name), Ordering::SeqCst);    // 保证不了多条语句被编译器乱序 比如这条语句(可以拆成两行)如果是Order::Relaxed 那么就有可能乱序(先store后fetch)
+            }                                                           // 虽然SeqCst保证了内存序 但它保证不了多线程对他同时store(但也没啥问题 建议配合CAS操作)
             if self.addr.load(Ordering::SeqCst) == 1 {
                 None
             } else {
