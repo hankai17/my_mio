@@ -283,8 +283,8 @@ impl Drop for JobEntry {
 }
 
 pub trait Evented {
-    fn register(&self, poll: &Poll, token: TokenEntry, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()>;
-    fn reregister(&self, poll: &Poll, token: TokenEntry, interest: Ready, opts: PollOpt) -> io::Result<()>;
+    fn register(&self, poll: &Poll, token: TokenEntry, interest: Ready, opts: PollOpt, job: Job) -> io::Result<()>; // rust的面向对象强制开发者在定义方法时就思考资源的访问方式 这里就是不可变借用
+    fn reregister(&self, poll: &Poll, token: TokenEntry, interest: Ready, opts: PollOpt) -> io::Result<()>;         //  相比之下 c++中的this就没有这个功能
     fn deregister(&self, poll: &Poll) -> io::Result<()>;
 }
 

@@ -53,43 +53,58 @@ impl Selector {
         &self.events_map as *const Arc<Mutex<HashMap<i32, JobEntry>>>  as *mut Arc<Mutex<HashMap<i32, JobEntry>>>
     }
 
-    pub fn select(&self, evts: &mut Events, timeout: Option<Duration>) -> io::Result<bool> {
+	pub fn with_events_map<F, R>(&self, f: F) -> R 
+    where F: FnOnce(&mut HashMap<i32, JobEntry>) -> R, {
+        let mut map = self.events_map.lock().unwrap();  // 或 expect
+        f(&mut *map)
+    }
+
+    pub fn with_events_map_readonly<F, R>(&self, f: F) -> R 
+    where F: FnOnce(&HashMap<i32, JobEntry>) -> R, {
+        let map = self.events_map.lock().unwrap();
+        f(&*map)
+    }
+
+    pub fn select(&self, evts: &mut Events, timeout: Option<Duration>) -> io::Result<bool> {    // rust的面向对象强制开发者在定义方法时就思考资源的访问方式 这里就是不可变借用
         let mut notify_idx = 0;
         let timeout_ms = timeout
                 .map(|to| cmp::min(millis(to), i32::MAX as u64) as i32)
                 .unwrap_or(-1);
         let mut has_notify = false;
-        let events_map = self.events_map();
         evts.clear();
         debug!("epoll_wait timeout: {:?}", timeout_ms);
-        unsafe {
-            let cnt = cvt(libc::epoll_wait(self.epfd,
-                                            evts.events.as_mut_ptr(),
-                                            evts.events.capacity() as i32,
-                                            timeout_ms))?;
-            let cnt = cnt as usize;
+        let cnt = unsafe {
+            let ret = cvt(libc::epoll_wait(self.epfd,
+                            evts.events.as_mut_ptr(),
+                            evts.events.capacity() as i32,
+                            timeout_ms))?;
+            let cnt = ret as usize;
             evts.events.set_len(cnt);
-            for i in 0..cnt {
-                let fd = evts.events[i].u64 as usize as i32;
-                match events_map.as_mut().unwrap().lock().unwrap().get_mut(&fd) {
-                    Some(job_entry) => {
-                        let token = job_entry.token_entry;
-                        if token.ttype == TokenType::NotifyEvent {
-                            notify_idx = i;
-                            has_notify = true;
-                            continue;
-                        }
-                        job_entry.ready = evts.get_ready(i).unwrap();
-                        evts.entries.push(job_entry.clone());
-                    },
-                    None => {
-                        error!("event_map get None, fd: {}, None", fd);
-                        //assert_eq!(0, 1);
-                        continue;
-                    },
-                };
-            }
-        }
+            cnt
+        };
+		self.with_events_map(|map| {            // 加锁时机太长
+    		for i in 0..cnt {
+    		    let fd = evts.events[i].u64 as i32;
+    		    match map.get_mut(&fd) {
+    		        Some(job_entry) => {
+    		            let token = job_entry.token_entry;
+    		            if token.ttype == TokenType::NotifyEvent {
+    		                notify_idx = i;
+    		                has_notify = true;
+    		                continue;
+    		            }
+
+    		            job_entry.ready = evts.get_ready(i).unwrap();
+    		            evts.entries.push(job_entry.clone());
+    		        }
+    		        None => {
+    		            error!("event_map get None, fd: {}", fd);
+    		            // assert_eq!(0, 1);
+    		            continue;
+    		        }
+    		    }
+    		}
+		});
         if has_notify {
             evts.events.remove(notify_idx);
             Ok(true)
@@ -105,22 +120,16 @@ impl Selector {
             events: ioevent_to_epoll(interests, opts),
             u64: fd as u64
         };
-        let events_map = self.events_map();
         unsafe {
-            events_map
-                .as_mut()
-                .unwrap()
-                .lock()
-                .unwrap()
-                .insert(
-                    fd as i32,
-                    JobEntry {
-                        token_entry: token,
-                        job,
-                        ready: Ready::empty(),
-                        state: Arc::new(Mutex::new(JobState::INIT))
-                    }
-            );
+            self.with_events_map(|map| map.insert(
+                fd as i32,
+                JobEntry {
+                    token_entry: token,
+                    job,
+                    ready: Ready::empty(),
+                    state: Arc::new(Mutex::new(JobState::INIT))
+                }
+            ));
             cvt(libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_ADD, fd, &mut info))?;
             debug!("register2 fd: {:?} len: {} token: {:?}", fd, self.events_map.lock().unwrap().len(), token.token);
             Ok(())
@@ -147,10 +156,9 @@ impl Selector {
             events: 0,
             u64: 0,
         };
-        let events_map = self.events_map();
         unsafe {
             cvt(libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_DEL, fd, &mut info))?;
-            let v = events_map.as_mut().unwrap().lock().unwrap().remove(&fd as &i32);
+            let v = self.with_events_map(|map| map.remove(&fd as &i32));
             debug!("deregister2 fd: {:?} len: {} token: {:?}",
                     fd, self.events_map.lock().unwrap().len(), v.unwrap().token_entry.token);
             Ok(())
