@@ -15,10 +15,10 @@ impl<T> LazyCell<T> {
     }
 
     pub fn fill(&self, value: T) -> Result<(), T> {
-        let slot = unsafe { &mut *self.inner.get() };   // 解引用会 消除mut
-        if slot.is_some() {
-            return Err(value);
-        }
+        let slot = unsafe { &mut *self.inner.get() };   // get 返回的是*mut类型  rust中要求必须对裸指针添加unsafe保护
+        if slot.is_some() {                             //  self.inner.get() 返回 *mut Option<T>（可变裸指针）
+            return Err(value);                          //  *self.inner.get() 对裸指针解引用，产生一个 Option<T> 的位置（place）注意这里的可变性没有了，但还没有产生引用。 
+        }                                               //      具体产生什么引用看是怎么定义的 eg: 这里的&mut 就是可变引用
         *slot = Some(value);
         Ok(())
     }
@@ -26,7 +26,6 @@ impl<T> LazyCell<T> {
     #[allow(dead_code)]
     pub fn replace(&mut self, value: T) -> Option<T> {
         mem::replace(
-            //unsafe { &mut *self.inner.get() },
             self.inner.get_mut(),
             Some(value)
         )
@@ -76,7 +75,7 @@ impl<T> LazyCell<T> {
         if let Some(value) = self.borrow() {
             return Ok(value);
         }
-        let value = f()?;
+        let value = f()?;                               // 失败返回 Result<T, E> 
         if self.fill(value).is_err() {
             panic!("try_borrow_with: cell was filled by closure")
         }
@@ -98,14 +97,14 @@ impl<T> LazyCell<T> {
     }
 
     #[allow(dead_code)]
-    pub fn into_inner(self) -> Option<T> {
+    pub fn into_inner(self) -> Option<T> {              // 消费self
         self.inner.into_inner()
     }
 }
 
-impl<T: Copy> LazyCell<T> {
+impl<T: Copy> LazyCell<T> {                             // 类型擦除: 确保T已实现Copy 即T可拷贝
     #[allow(dead_code)]
-    pub fn get(&self) -> Option<T> {                    // 打破了引用的两大定律?
+    pub fn get(&self) -> Option<T> {
         unsafe { *self.inner.get() }
     }
 }
