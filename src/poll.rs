@@ -302,9 +302,9 @@ fn enqueue_with_wakeup(queue: *mut(), node: &ReadinessNode) -> io::Result<()> {
 }
 
 impl ReadinessNode {
-    fn new(queue: *mut(), token: TokenEntry, interest: Ready,                    // 表达的意思是queue内部可变(非const queue)
-            opt: PollOpt, ref_count: usize) -> ReadinessNode {
-        ReadinessNode {
+    fn new(queue: *mut(), token: TokenEntry, interest: Ready,                   // 接收任意类型的可变空指针(void*) // 表达的意思是queue内部可变(非const queue)
+            opt: PollOpt, ref_count: usize) -> ReadinessNode {                  // *mut () 是 Rust 中一种常见的类型擦除（type erasure）技巧
+        ReadinessNode {                                                         //  典型的不透明指针（opaque pointer/type-erased pointer）用法
             state: AtomicState::new(interest, opt),
             token_0: UnsafeCell::new(token),
             token_1: UnsafeCell::new(TokenEntry { token: Token(0), ttype: TokenType::TokenEvent} ),
@@ -332,7 +332,7 @@ impl ReadinessNode {
     }
 
     fn enqueue_with_wakeup(&self) -> io::Result::<()> {
-        let queue = self.readiness_queue.load(Acquire);
+        let queue = self.readiness_queue.load(Acquire); // queue 的类型是 *mut ()（裸指针，指向 ()）
         if queue.is_null() {
             return Ok(())
         }
@@ -396,7 +396,7 @@ impl ReadinessQueueInner {
         unsafe {
             let mut prev = self.head_readiness.load(Acquire);                   // 这里加上mut后 是mut *mut ReadinessNode
             loop {
-                if prev == self.closed_marker() {
+                if prev == self.closed_marker() {                               // 如果是 head/tail都指向 sleep 也是可以enqueue成功的
                     debug_assert!(node_ptr != self.closed_marker());
                     debug_assert!(node_ptr != self.sleep_marker());
                     if node_ptr != self.end_marker() {
@@ -431,7 +431,7 @@ impl ReadinessQueueInner {
             let res = self.head_readiness.compare_exchange(s_marker, e_marker,  // hankai3.<1|2>.1 将标准节点从sleep 换成 end
                     AcqRel, Acquire);
             match res {
-                Ok(val) => {
+                Ok(val) => {                                                    // 即把 head/tail原先的都指向sleep 改为指向end_mark初始态
                     debug_assert!(val != e_marker);
                     *self.tail_readiness.get() = e_marker;
                 },
@@ -447,7 +447,7 @@ impl ReadinessQueueInner {
             -> Dequeue {
         let mut tail = *(self.tail_readiness.get());                            // *mut ReadinessNode类型
         let mut next = (*tail).next_readiness.load(Acquire);
-        if tail == self.end_marker()
+        if tail == self.end_marker()                                            // 如果 tail指向sleep head指向新节点 也是可以dequeue成功的
                 || tail == self.sleep_marker()
                 || tail == self.closed_marker() {
             if next.is_null() {
@@ -465,7 +465,7 @@ impl ReadinessQueueInner {
             *self.tail_readiness.get() = next;
             return Dequeue::Data(tail);
         }
-        if self.head_readiness.load(Acquire) != tail {
+        if self.head_readiness.load(Acquire) != tail {                          // 队列只剩最后一个节点 即head/tail均指向最后一个节点
             return Dequeue::Inconsistent;
         }
         self.enqueue_node(&*self.end_marker);
@@ -572,22 +572,22 @@ impl ReadinessQueue {
         }
     }
 
-    fn prepare_for_sleep(&self) -> bool {
+    fn prepare_for_sleep(&self) -> bool {                                   // 是否睡眠: 1.初始态即head/tail都指向end即队列是空的则睡眠 并让head/tail都指向sleep 2.队列非空则不睡眠
         let emarker = self.inner.end_marker();
         let smarker = self.inner.sleep_marker();
         let tail = unsafe { *self.inner.tail_readiness.get() };
         if tail == smarker {
             return self.inner.head_readiness.load(Acquire) == smarker;
         }
-        if tail != emarker {
-            return false;
+        if tail != emarker {                                                // tail指向end 说明当前轮次里未有消费(dequeue_node)
+            return false;                                                   // tail不指向end 说明正在消费队列
         }
         self.inner.sleep_marker.next_readiness
                 .store(ptr::null_mut(), Relaxed);
         let res = self.inner.head_readiness
                 .compare_exchange(emarker, smarker, AcqRel, Acquire);
         match res {
-            Ok(val) => {                                                    // hankai1 如果传入超时时间>0/或传入空 而且head/tail都指向了最初的end_marker 那么这里会重置head/tail指向为sleep_marker
+            Ok(val) => {                                                    // hankai1 如果传入超时时间>0/或传入空 而且head/tail都指向了最初的end_marker 那么这里会重置head/tail指向为sleep_marker  // 当前队列为空 即初始态
                 debug_assert!(val != smarker);
                 debug_assert!(unsafe {
                     *self.inner.tail_readiness.get() == emarker
@@ -598,7 +598,7 @@ impl ReadinessQueue {
                 true                                                        // epoll则有超时时间或恒阻塞
             },
             Err(val) => {
-                debug_assert!(val != smarker);                              // 如果已经是sleep了 那么让epoll 立即返回
+                debug_assert!(val != smarker);                              // 如果已经是sleep了 那么让epoll 立即返回 // 当前队列非空
                 return false;
             },
         }

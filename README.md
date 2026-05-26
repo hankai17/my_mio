@@ -159,7 +159,9 @@ OthersEvent   |        |
               |   ES   |
               +--------+
 - 240509
-    mpsc 入队
+    mpsc 入队:
+
+  end_marker
     +--+
     +__+
     head/tail指向本身 本身在源码中即是end_marker
@@ -188,13 +190,29 @@ OthersEvent   |        |
     head------------------------
                 2tail         2next
                               2tail
+                如果1tail是三剑客特殊节点 并且1next非空 则 更新tail(2tail)指向1next  next后移即2next
+                大白话:
+                    在进入dequeue_node函数前 tail指向的是预要弹出的节点 
+                    如果tail指向的是三剑客节点 那么取后面的节点即可
+
     变成:
     +--+          2
-    +__+ -nxt->  +--+
+    +__+         +--+
                  +--+
                   ^ 
     tail----------+
     head----------+
+
+    继续弹最后一个元素时 会插入end_mark:
+
+                  2          end_mark
+                 +--+  -nxt-> +--+
+                 +--+         +--+
+                  ^             ^
+    tail----------+             |
+    next------------------------+
+
+    更新tail_readiness head_readiness均指向end_mark 返回tail给用户 即变成mpsc入队时的
 
 - 240510
     ES层        如果epoll有超时时间 且队列消费完毕 那么就将标准节点换成sleep
