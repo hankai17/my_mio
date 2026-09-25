@@ -33,7 +33,7 @@ impl Selector {
                     cvt(epoll_create1_fn(libc::EPOLL_CLOEXEC))?         // 要么a)提取T的实例然后继续执行该函数 
                 }                                                       // 要么b)退出整个函数并返Result<_, ::io>错误
                 None=> {
-                    let fd = cvt(libc::epoll_create(1024))?;
+                    let fd = cvt(libc::epoll_create(1024))?;            // 只能用在返回 Result 或 Option 的函数里
                     drop(set_cloexec(fd));
                     fd
                 }

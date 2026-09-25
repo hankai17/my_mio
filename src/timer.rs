@@ -151,7 +151,7 @@ impl<T> Timer<T> {
         let num_slots = num_slots.next_power_of_two();                          // 取2的幂 向上取
         let capacity = capacity.next_power_of_two();
         let mask = (num_slots as u64) - 1;
-        let wheel = iter::repeat(WheelEntry {
+        let wheel = iter::repeat(WheelEntry {                                   // 迭代器组合子链式调用: repeat是无限调用 taken(n)是取前n个 collect为收集成集合类型
             next_tick: TICK_MAX,
             head: EMPTY
         }).take(num_slots).collect();
@@ -160,7 +160,7 @@ impl<T> Timer<T> {
             entries: Slab::with_capacity(capacity),
             wheel,
             start,
-            tick: 0,
+            tick: 0,                                                            // 从定时器开始 到现在经过了多少tick
             next: EMPTY,
             mask,
             inner: LazyCell::new(),
@@ -169,7 +169,7 @@ impl<T> Timer<T> {
 
     pub fn set_timeout(&mut self, delay_from_now: Duration,
             state: T) -> Result<Timeout> {
-        let delay_from_start = self.start.elapsed() + delay_from_now;
+        let delay_from_start = self.start.elapsed() + delay_from_now;           // elapsed(): 从start到现在过了多久
         self.set_timeout_at(delay_from_start, state)
     }
 
@@ -186,7 +186,7 @@ impl<T> Timer<T> {
         let slot = (tick & self.mask) as usize;
         let curr = self.wheel[slot];
         let entry = Entry::new(state, tick, curr.head);                         // next
-        let token = Token(self.entries.insert(entry));
+        let token = Token(self.entries.insert(entry));                          // slab.insert 返回的是 新插入元素在 Slab 中的索引位置
         if curr.head != EMPTY {
             self.entries[curr.head.into()].links.prev = token;                  // prev
         }

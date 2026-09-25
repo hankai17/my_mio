@@ -68,7 +68,7 @@ struct Inner {
     set_readiness: AtomicLazyCell<SetReadiness>,
 }
 
-pub struct SenderCtl {
+pub struct SenderCtl {                                                          // 内部可变性组合 设计模式
     inner: Arc<Inner>,
 }
 

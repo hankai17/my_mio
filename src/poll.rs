@@ -640,8 +640,8 @@ pub fn selector(poll: &Poll) -> &sys::Selector {
 }
 
 thread_local! {
-    pub static CURRENT_TOKEN_ALLOCATOR: RefCell<Arc<Mutex<TokenAllocator>>> = panic!("!");
-}
+    pub static CURRENT_TOKEN_ALLOCATOR: RefCell<Arc<Mutex<TokenAllocator>>> = panic!("!");  // RefCell: 单线程内部可变性，运行时检查借用
+}                                                                                           // 必须手动 set 初始化，否则一用就 panic
 
 impl Poll {
     pub fn get_current_token_allocator() -> Arc<Mutex<TokenAllocator>> {
@@ -788,7 +788,7 @@ impl Poll {
                     return Ok(0);
                 }
                 if !inc {
-                    let next = curr.checked_add(2).expect("overflow");
+                    let next = curr.checked_add(2).expect("overflow");  // 不会修改原始值
                     let actual = match self.lock_state
                             .compare_exchange(curr, next, SeqCst, SeqCst) {     // 确保每个线程按序 +2 eg: 3 5 7最后得到7
                         Ok(val) => val,
@@ -820,7 +820,7 @@ impl Poll {
             }
         }
         let ret = self.poll2(events, timeout, interruptible);
-        if 1 != self.lock_state.fetch_and(!1, Release) {// poll - 1
+        if 1 != self.lock_state.fetch_and(!1, Release) {// 会修改原始值
             let _lock = self.lock.lock().unwrap();      // 老值不为1 说明poll有竞争 poll被其它线程inc了 // lock_stat & fff1110 
             self.condvar.notify_one();
         }
@@ -942,17 +942,16 @@ impl RegistrationInner {
         }
         let mut state = self.state.load(Relaxed);
         let mut next;
-        let curr_token_pos = state.token_write_pos();
-        let curr_token = unsafe { self::token(self, curr_token_pos) };                  // 获取这个时刻的 写位置处的token值
+        let curr_token_pos = state.token_write_pos();                                   // state 的 write_pos: 0 1 2
+        let curr_token = unsafe { self::token(self, curr_token_pos) };                  // 获取这个时刻的 写位置处的token
         let mut next_token_pos = curr_token_pos;
-        if token != curr_token {
+        if token != curr_token {                                                        // 如果传入的token(POD对象里包含: 类型 + token值) 不等于 写位置处的token
             next_token_pos = state.next_token_pos();
             match next_token_pos {
                 0 => unsafe { *self.token_0.get() = token },
                 1 => unsafe { *self.token_1.get() = token },
                 2 => unsafe { *self.token_2.get() = token },
-                _ => unreachable!(),
-            }
+                _ => unreachable!(), }
         }
         loop {
             next = state;

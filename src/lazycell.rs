@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub struct LazyCell<T> {                // 封装的是 一个编译期大小不能确定的枚举值
                                         // 目的是为了判断 在编译期这个值有无初始化?
-    inner: UnsafeCell<Option<T>>,       // Option包装的是枚举(Some None) 
+    inner: UnsafeCell<Option<T>>,       // Option包装的是枚举(Some None)    // 它告诉编译器：“这个字段虽然通过 &self（共享引用）访问，但允许被修改”。 而已
                                         // UnsafeCell作用是编译期不能决定大小
 }
 
@@ -16,7 +16,7 @@ impl<T> LazyCell<T> {
 
     pub fn fill(&self, value: T) -> Result<(), T> {
         let slot = unsafe { &mut *self.inner.get() };   // get 返回的是*mut类型  rust中要求必须对裸指针添加unsafe保护
-        if slot.is_some() {                             //  self.inner.get() 返回 *mut Option<T>（可变裸指针）
+        if slot.is_some() {                             //  self.inner.get() 返回 *mut Option<T>（可变裸指针）                              // 如果没有值 则初始化 如果有值则返回 这就是懒的含义 // 把昂贵的( 配置加载、数据库连接、大对象构建、正则表达式编译、缓存等初始化成本高但不一定会被用到 )初始化操作推迟到真正需要的那一刻，并且只做一次
             return Err(value);                          //  *self.inner.get() 对裸指针解引用，产生一个 Option<T> 的位置（place）注意这里的可变性没有了，但还没有产生引用。 
         }                                               //      具体产生什么引用看是怎么定义的 eg: 这里的&mut 就是可变引用
         *slot = Some(value);
