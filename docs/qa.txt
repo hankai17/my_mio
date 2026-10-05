@@ -1,0 +1,58 @@
+pub struct Registry {
+    inner: Arc<RegistryInner>,
+}
+
+struct RegistryInner {
+    map: RwLock<HashMap<i32, JobEntry>>,
+}
+
+// 这是 “Newtype + Interior Mutability” 的经典组合模式
+// Registry 对外 只暴露干净的 API
+// RegistryInner 对内  可换成 DashMap、parking_lot、lock-free 结构
+// 即Registry 尽可能的对外提供&self语义的接口
+
+
+这种设计模式 可以吗?
+这个模式解决的是"封装"，不是"架构"
+
+-------------------------------------------------
+
+Selector 在上层poll/event_loop中 是怎么使用的
+Poll 按值持有 Selector，不对外暴露
+
+Poll 按值持有 Selector 这种设计好吗? 
+1. 所有权清晰，RAII 管住了 epfd 的生命周期
+2. Selector 是 Poll 的组成部分，不是独立共享资源 它是 Poll 内部实现细节，逻辑上不可能脱离 Poll 
+单独存在（它需要配合 readiness_queue 才构成完整 ES）。按值持有最准确地表达了这种"组合"关系。
+
+Poll 被 Arc<EventLoop> 共享 → &self 一路传染
+导致所有线程手里只有 &Poll → &Selector，永远拿不到 &mut Selector
+
+Arc<EventLoop>（多线程共享）
+   └─ &Poll（共享引用）
+        └─ &Selector（共享引用，改不了）
+             └─ 逼出 Arc<Mutex<HashMap>> 做内部可变性
+                  └─ select 里持锁遍历、clone
+
+-------------------------------------------------
+上层设计的时候用 Arc<> 封装EventLoop/Poll ? 为何不用Arc<Mutex> 封装?
+    Arc<T> 这个类型只给你 &T
+    lock 返回值会有 *mut 底层是 内部可变性的unsafe机制
+    EventLoop::run() 是长阻塞调用 如果用Arc<Mutex>则阻塞其它线程
+        线程模型是  register(accept线程) / deregister(ES线程) / select(ES线程) 三方抢同一把锁 
+        业务线程 ──register──┐
+        业务线程 ──deregister┤──→ HashMap<fd, JobEntry>  ← 一份共享可变表
+        poller线程 ──select──┘
+     
+
+为何 with_events_map 能轻松绕过裸指针 实现内部可变性? 其根本技术是什么？
+    UnsafeCell<T>
+
+register / deregister / select 三方抢同一把锁 
+
+主要是 connect相关函数 按照业界设计理念 connect可以在任意线程调用 所以就涉及到同步问题
+在hammer/muduo中(asyn/runInLoop) 基本上是把connect封装起来 扔到绑定的poller线程里  即塞到poller线程的队列上执行
+
+而mio中 没有设计(诸如 asyn/runInLoop) 只有暴力的Arc<Mutex<hashmap>> 这种方式
+    
+-------------------------------------------------
